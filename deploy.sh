@@ -9,6 +9,12 @@ echo "Starting deployment..."
 echo "Installing dependencies..."
 npm install
 
+echo "Checking database..."
+if [ ! -f "inventory.db" ]; then
+    echo "Database not found. Initializing..."
+    node scripts/init-db.js
+fi
+
 echo "Building application..."
 npm run build
 
