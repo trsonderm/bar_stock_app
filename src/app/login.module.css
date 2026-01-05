@@ -1,0 +1,136 @@
+.container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 1rem;
+}
+
+.card {
+    width: 100%;
+    max-width: 400px;
+    background-color: var(--bg-card);
+    padding: 2rem;
+    border-radius: var(--radius);
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.title {
+    font-size: 2rem;
+    font-weight: bold;
+    margin-bottom: 2rem;
+    color: var(--accent-color);
+}
+
+.display {
+    width: 100%;
+    margin-bottom: 2rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.pinParams {
+    height: 3rem;
+    width: 100%;
+    background-color: #374151;
+    /* gray-700 */
+    border-radius: 0.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2rem;
+    letter-spacing: 0.5em;
+    font-family: monospace;
+}
+
+.error {
+    color: var(--error-color);
+    margin-top: 0.5rem;
+    font-size: 0.875rem;
+}
+
+.keypad {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+    margin-bottom: 2rem;
+    width: 100%;
+}
+
+.key {
+    height: 4rem;
+    background-color: #374151;
+    color: white;
+    font-size: 1.5rem;
+    font-weight: 600;
+    border-radius: 0.5rem;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.key:hover {
+    background-color: #4b5563;
+}
+
+.key:active {
+    transform: scale(0.95);
+}
+
+.keyClr {
+    background-color: rgba(127, 29, 29, 0.5);
+}
+
+.keyClr:hover {
+    background-color: rgba(127, 29, 29, 0.7);
+}
+
+.submitBtn {
+    width: 100%;
+    padding: 1rem;
+    background-color: var(--accent-color);
+    color: white;
+    font-size: 1.25rem;
+    font-weight: bold;
+    border-radius: 0.5rem;
+    transition: background-color 0.2s;
+}
+
+.submitBtn:hover {
+    background-color: var(--accent-hover);
+}
+
+.submitBtn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.footer {
+    margin-top: 3rem;
+}
+
+.link {
+    color: #9ca3af;
+    text-decoration: underline;
+    font-size: 0.875rem;
+}
+
+.link:hover {
+    color: white;
+}
+
+@media (max-width: 480px) {
+    .card {
+        padding: 1.5rem 1rem;
+    }
+
+    .key {
+        height: 3.5rem;
+    }
+}

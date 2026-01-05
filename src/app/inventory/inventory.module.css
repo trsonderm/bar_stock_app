@@ -1,0 +1,309 @@
+.container {
+    min-height: 100vh;
+    padding: 1rem;
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid #374151;
+}
+
+.title {
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: var(--accent-color);
+}
+
+
+.logoutBtn {
+    background-color: #374151;
+    /* gray-700 */
+    color: #e5e7eb;
+    /* gray-200 */
+    padding: 0.5rem 1rem;
+    border-radius: 0.5rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    transition: all 0.2s;
+    border: none;
+    cursor: pointer;
+}
+
+.logoutBtn:hover {
+    background-color: #4b5563;
+    /* gray-600 */
+    color: white;
+    text-decoration: none;
+}
+
+.controls {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 2rem;
+    flex-wrap: wrap;
+}
+
+.sortBtn {
+    padding: 0.5rem 1rem;
+    background-color: var(--bg-card);
+    color: #9ca3af;
+    border-radius: 0.5rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    transition: all 0.2s;
+}
+
+.completedBtn {
+    background-color: #3b82f6;
+    color: white;
+    padding: 0.5rem 1rem;
+    border-radius: 0.5rem;
+    font-weight: 500;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-size: 0.875rem;
+}
+
+.completedBtn:hover {
+    background-color: #2563eb;
+}
+
+.sortBtnActive {
+    background-color: var(--accent-color);
+    color: white;
+}
+
+.newItemBtn {
+    margin-left: auto;
+    padding: 0.5rem 1rem;
+    background-color: #059669;
+    /* emerald-600 */
+    color: white;
+    border-radius: 0.5rem;
+    font-size: 0.875rem;
+    font-weight: bold;
+}
+
+.newItemBtn:hover {
+    background-color: #047857;
+    /* emerald-700 */
+}
+
+.list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.itemCard {
+    display: flex;
+    align-items: center;
+    background-color: var(--bg-card);
+    padding: 1rem;
+    border-radius: var(--radius);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.itemInfo {
+    flex: 1;
+}
+
+.itemName {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: white;
+}
+
+.itemType {
+    font-size: 0.75rem;
+    color: #9ca3af;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-top: 0.25rem;
+}
+
+.stockControls {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.5rem;
+}
+
+.stockBtn {
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    font-weight: bold;
+    transition: all 0.2s;
+}
+
+.minusBtn {
+    background-color: #374151;
+    /* gray-700 */
+    color: #f87171;
+    /* red-400 */
+}
+
+.minusBtn:hover {
+    background-color: #4b5563;
+    /* gray-600 */
+}
+
+.plusBtn {
+    background-color: #374151;
+    color: #34d399;
+    /* emerald-400 */
+}
+
+.plusBtn:hover {
+    background-color: #4b5563;
+}
+
+.plusBtn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+.quantity {
+    font-size: 1.5rem;
+    font-weight: bold;
+    min-width: 2ch;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
+
+.modalOverlay {
+    position: fixed;
+    inset: 0;
+    background-color: rgba(0, 0, 0, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 50;
+    padding: 1rem;
+}
+
+.modal {
+    background-color: var(--bg-card);
+    padding: 2rem;
+    border-radius: var(--radius);
+    width: 100%;
+    max-width: 400px;
+}
+
+.modalTitle {
+    font-size: 1.25rem;
+    font-weight: bold;
+    margin-bottom: 1.5rem;
+    color: white;
+}
+
+.formGroup {
+    margin-bottom: 1rem;
+}
+
+.label {
+    display: block;
+    font-size: 0.875rem;
+    color: #9ca3af;
+    margin-bottom: 0.5rem;
+}
+
+.input {
+    width: 100%;
+    padding: 0.75rem;
+    background-color: #111827;
+    border: 1px solid #374151;
+    border-radius: 0.5rem;
+    color: white;
+    font-size: 1rem;
+}
+
+.input:focus {
+    outline: 2px solid var(--accent-color);
+    border-color: transparent;
+}
+
+.modalActions {
+    display: flex;
+    gap: 1rem;
+    margin-top: 2rem;
+}
+
+.cancelBtn {
+    flex: 1;
+    padding: 0.75rem;
+    background-color: #374151;
+    color: white;
+    border-radius: 0.5rem;
+    font-weight: 600;
+}
+
+.submitModalBtn {
+    flex: 1;
+    padding: 0.75rem;
+    background-color: var(--accent-color);
+    color: white;
+    border-radius: 0.5rem;
+    font-weight: 600;
+}
+
+@media (max-width: 640px) {
+    .header {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 1rem;
+    }
+
+    .title {
+        text-align: center;
+    }
+
+    .header>div {
+        justify-content: center;
+        width: 100%;
+    }
+
+    .controls {
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .sortBtn,
+    .newItemBtn {
+        width: 100%;
+        text-align: center;
+    }
+
+    .filters {
+        padding-bottom: 0.5rem;
+    }
+
+    .itemCard {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1rem;
+    }
+
+    .itemInfo {
+        width: 100%;
+    }
+
+    .stockControls {
+        width: 100%;
+        justify-content: space-between;
+        flex-direction: row;
+        align-items: center;
+    }
+}

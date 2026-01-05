@@ -1,66 +1,124 @@
-import Image from "next/image";
-import styles from "./page.module.css";
+'use client';
 
-export default function Home() {
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+
+import styles from './login.module.css';
+
+export default function LoginPage() {
+  const [pin, setPin] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const router = useRouter();
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin }),
+      });
+
+      const data = await res.json();
+
+      if (res.ok) {
+        if (data.role === 'admin') {
+          router.push('/admin/dashboard');
+        } else {
+          router.push('/inventory');
+        }
+      } else {
+        setError(data.error || 'Login failed');
+      }
+    } catch (err) {
+      setError('An error occurred');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const appendDigit = (digit: string) => {
+    if (pin.length < 4) {
+      setPin(prev => prev + digit);
+    }
+  };
+
+  const clearPin = () => setPin('');
+  const backspace = () => setPin(prev => prev.slice(0, -1));
+
   return (
-    <div className={styles.page}>
-      <main className={styles.main}>
-        <Image
-          className={styles.logo}
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className={styles.intro}>
-          <h1>To get started, edit the page.tsx file.</h1>
-          <p>
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className={styles.container}>
+      <div className={styles.card}>
+        <h1 className={styles.title}>Stock Login</h1>
+
+        <div className={styles.display}>
+          <div className={styles.pinParams}>
+            {pin.split('').map(() => '•').join('')}
+          </div>
+          {error && <p className={styles.error}>{error}</p>}
         </div>
-        <div className={styles.ctas}>
-          <a
-            className={styles.primary}
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+
+        <div className={styles.keypad}>
+          {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
+            <button
+              key={num}
+              onClick={() => appendDigit(num.toString())}
+              className={styles.key}
+              type="button"
+            >
+              {num}
+            </button>
+          ))}
+          <button
+            onClick={clearPin}
+            className={`${styles.key} ${styles.keyClr}`}
+            type="button"
           >
-            <Image
-              className={styles.logo}
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className={styles.secondary}
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+            CLR
+          </button>
+          <button
+            onClick={() => appendDigit('0')}
+            className={styles.key}
+            type="button"
           >
-            Documentation
-          </a>
+            0
+          </button>
+          <button
+            onClick={backspace}
+            className={styles.key}
+            type="button"
+          >
+            ⌫
+          </button>
         </div>
-      </main>
+
+        <button
+          onClick={handleLogin}
+          disabled={loading || pin.length < 4}
+          className={styles.submitBtn}
+        >
+          {loading ? 'Verifying...' : 'ENTER'}
+        </button>
+      </div>
+
+      <div className={styles.footer}>
+        <a href="/admin/login" className={styles.link} style={{
+          display: 'inline-block',
+          marginTop: '1rem',
+          padding: '0.75rem 1.5rem',
+          background: '#4b5563',
+          color: 'white',
+          borderRadius: '0.5rem',
+          textDecoration: 'none',
+          fontWeight: 'bold'
+        }}>
+          Admin Access
+        </a>
+      </div>
     </div>
   );
 }
