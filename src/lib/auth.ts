@@ -16,28 +16,30 @@ export interface UserSession {
     permissions: string[];
 }
 
-export async function createSession(user: { id: number; role: UserRole; permissions: string | string[]; firstName: string; last_name: string }) {
+export const COOKIE_OPTIONS = {
+    httpOnly: true,
+    secure: false, // process.env.NODE_ENV === 'production',
+    sameSite: 'lax' as const,
+    path: '/',
+    maxAge: 60 * 60 * 24 * 7 // 7 days
+};
+
+export async function createSessionToken(user: { id: number; role: UserRole; permissions: string | string[]; firstName: string; lastName: string }) {
     const permissions = typeof user.permissions === 'string' ? JSON.parse(user.permissions) : user.permissions;
 
     const token = await new SignJWT({
         id: user.id,
         role: user.role,
         permissions,
-        firstName: user.firstName, // Note: DB field is first_name, we use firstName in session
-        lastName: user.last_name
+        firstName: user.firstName,
+        lastName: user.lastName
     })
         .setProtectedHeader({ alg: ALG })
         .setIssuedAt()
-        .setExpirationTime('7d') // Keep logged in for 7 days
+        .setExpirationTime('7d')
         .sign(SECRET_KEY);
 
-    (await cookies()).set('session', token, {
-        httpOnly: true,
-        secure: false, // process.env.NODE_ENV === 'production', // Disable secure for HTTP support
-        sameSite: 'lax',
-        path: '/',
-        maxAge: 60 * 60 * 24 * 7 // 7 days
-    });
+    return token;
 }
 
 export async function getSession(): Promise<UserSession | null> {
@@ -54,9 +56,7 @@ export async function getSession(): Promise<UserSession | null> {
     }
 }
 
-export async function logout() {
-    (await cookies()).delete('session');
-}
+
 
 export function verifyPin(pin: string, hash: string): boolean {
     return bcrypt.compareSync(pin, hash);

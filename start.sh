@@ -6,10 +6,12 @@ fi
 
 echo "Starting server on port 5400..."
 nohup npm start -- -p 5400 > app.log 2>&1 &
+disown
 echo $! > app.pid
 echo "Server started with PID $(cat app.pid)"
 
 echo "Starting scheduler..."
 nohup node scripts/scheduler.js > scheduler.log 2>&1 &
+disown
 echo $! > scheduler.pid
 echo "Scheduler started with PID $(cat scheduler.pid)"
