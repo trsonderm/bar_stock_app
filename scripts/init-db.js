@@ -87,7 +87,7 @@ const seedAdmin = () => {
   const adminExists = db.prepare('SELECT * FROM users WHERE role = ?').get('admin');
   if (!adminExists) {
     const salt = bcrypt.genSaltSync(10);
-    const hash = bcrypt.hashSync('4365', salt);
+    const hash = bcrypt.hashSync('0420', salt);
     db.prepare(`
       INSERT INTO users (first_name, last_name, pin_hash, role, permissions)
       VALUES (@firstName, @lastName, @pinHash, @role, @permissions)
@@ -98,7 +98,7 @@ const seedAdmin = () => {
       role: 'admin',
       permissions: JSON.stringify(['all'])
     });
-    console.log('Master Admin created with PIN 4365');
+    console.log('Master Admin created with PIN 0420');
   } else {
     console.log('Master Admin already exists');
   }
@@ -106,11 +106,11 @@ const seedAdmin = () => {
 
 // Seed Locations
 const seedLocations = () => {
-    const loc = db.prepare('SELECT * FROM locations').get();
-    if (!loc) {
-        db.prepare('INSERT INTO locations (name, address) VALUES (?, ?)').run('Main Bar', '123 Main St');
-        console.log('Default Location created');
-    }
+  const loc = db.prepare('SELECT * FROM locations').get();
+  if (!loc) {
+    db.prepare('INSERT INTO locations (name, address) VALUES (?, ?)').run('Main Bar', '123 Main St');
+    console.log('Default Location created');
+  }
 }
 
 seedAdmin();
