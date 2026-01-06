@@ -19,8 +19,19 @@ if [ -f app.pid ]; then
 fi
 
 # Initialize Database if missing
-if [ ! -f "inventory.db" ]; then
-    echo "Database not found. Initializing..."
+# Check if DB needs initialization (file missing OR table missing)
+node -e "
+const Database = require('better-sqlite3');
+try {
+  const db = new Database('inventory.db', { fileMustExist: false });
+  const row = db.prepare(\"SELECT count(*) as count FROM sqlite_master WHERE type='table' AND name='users'\").get();
+  if (!row || row.count === 0) process.exit(1);
+} catch (e) {
+  process.exit(1);
+}
+"
+if [ $? -ne 0 ]; then
+    echo "Database missing or uninitialized. Running initialization..."
     node scripts/init-db.js
 fi
 
