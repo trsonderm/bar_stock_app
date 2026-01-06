@@ -47,19 +47,10 @@ export default function AdminDashboardClient() {
 
     if (loading) return <div className={styles.container}>Loading Dashboard...</div>;
 
-    return (
-        <div className={styles.container}>
-            <header className={styles.header}>
-                <h1 className={styles.title}>Admin Dashboard</h1>
-                <nav className={styles.nav}>
-                    <span className={styles.navItemActive}>Overview</span>
-                    <a href="/admin/users" className={styles.navItem}>Users</a>
-                    <a href="/admin/query" className={styles.navItem}>Query</a>
-                    <a href="/admin/settings" className={styles.navItem}>Settings</a>
-                    <a href="/inventory" className={styles.navItem}>Stock View</a>
-                </nav>
-            </header>
+    if (loading) return <div className={styles.container}>Loading Dashboard...</div>;
 
+    return (
+        <>
             <div className={styles.grid}>
                 <div className={styles.card}>
                     <div className={styles.cardTitle}>Activity Today</div>
@@ -114,6 +105,6 @@ export default function AdminDashboardClient() {
                     </table>
                 </div>
             </div>
-        </div>
+        </>
     );
 }

@@ -99,19 +99,7 @@ export default function UsersClient() {
     };
 
     return (
-        <div className={styles.container}>
-            <header className={styles.header}>
-                <h1 className={styles.title}>User Management</h1>
-                <div className={styles.nav}>
-                    <button onClick={() => router.push('/admin/dashboard')}>Dashboard</button>
-                    <button onClick={() => router.push('/admin/query')}>Query</button>
-                    <button onClick={() => router.push('/admin/settings')}>Settings</button>
-                    <button onClick={() => router.push('/admin/prices')}>Prices</button>
-                    <button onClick={() => router.push('/admin/categories')}>Categories</button>
-                    <button onClick={async () => { await fetch('/api/auth/logout', { method: 'POST' }); router.push('/'); }}>Logout</button>
-                </div>
-            </header>
-
+        <>
             <div className={styles.grid}>
                 <div className={styles.card}>
                     <div className={styles.cardTitle}>Create New User</div>
@@ -192,6 +180,6 @@ export default function UsersClient() {
                     </div>
                 </div>
             </div>
-        </div>
+        </>
     );
 }

@@ -146,7 +146,8 @@ export default function InventoryClient({ user }: { user: UserSession }) {
                 setNewItemName('');
                 fetchItems();
             } else {
-                alert('Failed to create item');
+                const data = await res.json();
+                alert(data.error || 'Failed to create item');
             }
         } finally {
             setLoading(false);

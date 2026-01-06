@@ -89,18 +89,10 @@ export default function CategoriesClient() {
 
     if (loading) return <div className={styles.container}>Loading...</div>;
 
+    if (loading) return <div className={styles.container}>Loading...</div>;
+
     return (
-        <div className={styles.container}>
-            <header className={styles.header}>
-                <h1 className={styles.title}>Manage Categories</h1>
-                <div className={styles.nav}>
-                    <button onClick={() => router.push('/admin/dashboard')}>Dashboard</button>
-                    <button onClick={() => router.push('/admin/users')}>Users</button>
-                    <button onClick={() => router.push('/admin/prices')}>Prices</button>
-                    <button onClick={() => router.push('/admin/settings')}>Settings</button>
-                    <button onClick={handleLogout}>Logout</button>
-                </div>
-            </header>
+        <>
 
             <div className={styles.card}>
                 <div style={{ marginBottom: '2rem' }}>
@@ -194,6 +186,6 @@ export default function CategoriesClient() {
                     </table>
                 </div>
             </div>
-        </div>
+        </>
     );
 }

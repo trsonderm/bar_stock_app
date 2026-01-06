@@ -72,6 +72,12 @@ export async function POST(req: NextRequest) {
 
         if (!name || !type) return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
 
+        // Check for duplicate
+        const existing = db.prepare('SELECT id FROM items WHERE name = ?').get(name);
+        if (existing) {
+            return NextResponse.json({ error: 'Item already exists' }, { status: 400 });
+        }
+
         const validCat = db.prepare('SELECT name FROM categories WHERE name = ?').get(type);
         if (!validCat) {
             return NextResponse.json({ error: 'Invalid type' }, { status: 400 });
@@ -111,6 +117,38 @@ export async function PUT(req: NextRequest) {
 
         return NextResponse.json({ success: true });
     } catch (e) {
+        return NextResponse.json({ error: 'Internal Error' }, { status: 500 });
+    }
+}
+
+export async function DELETE(req: NextRequest) {
+    try {
+        const session = await getSession();
+        if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+        // Only Admin can delete items
+        if (session.role !== 'admin') {
+            return NextResponse.json({ error: 'Permission denied' }, { status: 403 });
+        }
+
+        const { searchParams } = new URL(req.url);
+        const id = searchParams.get('id');
+
+        if (!id) return NextResponse.json({ error: 'Missing ID' }, { status: 400 });
+
+        const info = db.prepare('DELETE FROM items WHERE id = ?').run(id);
+
+        if (info.changes === 0) {
+            return NextResponse.json({ error: 'Item not found' }, { status: 404 });
+        }
+
+        // Log it
+        db.prepare('INSERT INTO activity_logs (user_id, action, details) VALUES (?, ?, ?)')
+            .run(session.id, 'DELETE_ITEM', JSON.stringify({ itemId: id }));
+
+        return NextResponse.json({ success: true });
+    } catch (e) {
+        console.error('Delete error', e);
         return NextResponse.json({ error: 'Internal Error' }, { status: 500 });
     }
 }

@@ -57,19 +57,7 @@ export default function SettingsClient() {
     if (loading) return <div className={styles.container}>Loading...</div>;
 
     return (
-        <div className={styles.container}>
-            <header className={styles.header}>
-                <h1 className={styles.title}>System Settings</h1>
-                <div className={styles.nav}>
-                    <button onClick={() => router.push('/admin/dashboard')}>Dashboard</button>
-                    <button onClick={() => router.push('/admin/users')}>Users</button>
-                    <button onClick={() => router.push('/admin/query')}>Query</button>
-                    <button onClick={() => router.push('/admin/prices')}>Prices</button>
-                    <button onClick={() => router.push('/admin/categories')}>Categories</button>
-                    <button onClick={async () => { await fetch('/api/auth/logout', { method: 'POST' }); router.push('/'); }}>Logout</button>
-                </div>
-            </header>
-
+        <>
             <div className={styles.grid}>
                 <div className={styles.card} style={{ gridColumn: 'span 2' }}>
                     <div className={styles.cardTitle}>Daily Reporting Configuration</div>
@@ -310,6 +298,6 @@ export default function SettingsClient() {
                 </div>
 
             </div>
-        </div>
+        </>
     );
 }

@@ -41,20 +41,7 @@ export default function QueryClient() {
     };
 
     return (
-        <div className={styles.container}>
-            <header className={`${styles.header} ${styles.noPrint}`}>
-                <div className={styles.title} style={{ cursor: 'pointer' }} onClick={() => router.push('/admin/dashboard')}>
-                    ← Admin Query
-                </div>
-                <div className={styles.nav}>
-                    <button onClick={() => router.push('/admin/users')}>Users</button>
-                    <button onClick={() => router.push('/admin/settings')}>Settings</button>
-                    <button onClick={() => router.push('/admin/prices')}>Prices</button>
-                    <button onClick={() => router.push('/admin/categories')}>Categories</button>
-                    <button onClick={async () => { await fetch('/api/auth/logout', { method: 'POST' }); router.push('/'); }}>Logout</button>
-                </div>
-            </header>
-
+        <>
             <div className={`${styles.content} ${styles.printContainer}`}>
                 <h1 className={styles.pageTitle}>Custom Activity Report</h1>
 
@@ -143,6 +130,6 @@ export default function QueryClient() {
                     </div>
                 )}
             </div>
-        </div>
+        </>
     );
 }
