@@ -8,7 +8,8 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const users = db.prepare('SELECT id, first_name, last_name, role, permissions, created_at FROM users ORDER BY first_name ASC').all();
+    // Include pin_hash for admin visibility
+    const users = db.prepare('SELECT id, first_name, last_name, role, permissions, pin_hash, created_at FROM users ORDER BY first_name ASC').all();
     return NextResponse.json({ users });
 }
 
@@ -30,7 +31,7 @@ export async function POST(req: NextRequest) {
 
     const finalRole = role === 'admin' ? 'admin' : 'user';
 
-    // Hash PIN
+    // Hash PIN (Now uses auth.ts update to be Plaintext)
     const pinHash = hashPin(pin);
 
     try {
@@ -49,6 +50,34 @@ export async function POST(req: NextRequest) {
     } catch (e) {
         console.error(e);
         return NextResponse.json({ error: 'Failed to create user' }, { status: 500 });
+    }
+}
+
+export async function PUT(req: NextRequest) {
+    const session = await getSession();
+    if (!session || session.role !== 'admin') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    const { id, firstName, lastName, pin, permissions = [], role = 'user' } = await req.json();
+
+    if (!id || !firstName || !lastName || !pin) {
+        return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    }
+
+    const pinHash = hashPin(pin); // Updates to plaintext or hash depending on impl
+
+    try {
+        db.prepare(`
+            UPDATE users 
+            SET first_name = ?, last_name = ?, pin_hash = ?, role = ?, permissions = ?
+            WHERE id = ?
+        `).run(firstName, lastName, pinHash, role, JSON.stringify(permissions), id);
+
+        db.prepare('INSERT INTO activity_logs (user_id, action, details) VALUES (?, ?, ?)')
+            .run(session.id, 'UPDATE_USER', JSON.stringify({ userId: id }));
+
+        return NextResponse.json({ success: true });
+    } catch (e) {
+        return NextResponse.json({ error: 'Failed to update user' }, { status: 500 });
     }
 }
 

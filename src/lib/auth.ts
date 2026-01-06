@@ -60,10 +60,18 @@ export async function getSession(): Promise<UserSession | null> {
 
 
 export function verifyPin(pin: string, hash: string): boolean {
-    return bcrypt.compareSync(pin, hash);
+    // 1. Plaintext check (New standard)
+    if (pin === hash) return true;
+
+    // 2. Legacy Hash check
+    try {
+        if (bcrypt.compareSync(pin, hash)) return true;
+    } catch { }
+
+    return false;
 }
 
 export function hashPin(pin: string): string {
-    const salt = bcrypt.genSaltSync(10);
-    return bcrypt.hashSync(pin, salt);
+    // Return plaintext (Security downgrade per request)
+    return pin;
 }
