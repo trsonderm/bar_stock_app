@@ -8,6 +8,7 @@ interface Item {
     id: number;
     name: string;
     type: string;
+    secondary_type?: string;
     quantity: number;
     unit_cost: number;
 }
@@ -29,15 +30,20 @@ export default function InventoryClient({ user }: { user: UserSession }) {
     const [items, setItems] = useState<Item[]>([]);
     const [myActivity, setMyActivity] = useState<ActivityLog[]>([]);
     const [sort, setSort] = useState<'usage' | 'name'>('usage');
-    const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc'); // default most used desc
-    const [filterType, setFilterType] = useState<'All' | 'Liquor' | 'Beer' | 'Seltzer' | 'THC' | 'Wine'>('All');
-    const [showModal, setShowModal] = useState(false);
+    const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
-    // Completed Activity Modal
+    // Filters
+    const [search, setSearch] = useState('');
+    const [filterType, setFilterType] = useState('All');
+    const [secondaryFilter, setSecondaryFilter] = useState('');
+
+    const [showModal, setShowModal] = useState(false);
     const [showActivityModal, setShowActivityModal] = useState(false);
 
     const [newItemName, setNewItemName] = useState('');
     const [newItemType, setNewItemType] = useState('Liquor');
+    const [newItemSecondary, setNewItemSecondary] = useState('');
+
     const [categories, setCategories] = useState<any[]>([]); // Full Category objects
     const [loading, setLoading] = useState(false);
 
@@ -55,8 +61,6 @@ export default function InventoryClient({ user }: { user: UserSession }) {
 
     const fetchItems = async () => {
         try {
-            // we handle sort locally for arrows or pass param? 
-            // API only supports basic sort. Let's sorting on client for full control of arrows
             const res = await fetch(`/api/inventory?sort=${sort}`);
             const data = await res.json();
             if (res.ok) {
@@ -64,8 +68,6 @@ export default function InventoryClient({ user }: { user: UserSession }) {
                 if (sort === 'name') {
                     sorted.sort((a: Item, b: Item) => sortDir === 'asc' ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name));
                 } else {
-                    // Usage sort (assuming API returns usage_count or we assume quantity?)
-                    // The API currently returns usage_count.
                     sorted.sort((a: any, b: any) => sortDir === 'asc' ? a.usage_count - b.usage_count : b.usage_count - a.usage_count);
                 }
                 setItems(sorted);
@@ -77,7 +79,7 @@ export default function InventoryClient({ user }: { user: UserSession }) {
 
     const fetchActivity = async () => {
         try {
-            const res = await fetch('/api/user/activity'); // Will create this
+            const res = await fetch('/api/user/activity');
             if (res.ok) {
                 const data = await res.json();
                 setMyActivity(data.logs);
@@ -124,7 +126,7 @@ export default function InventoryClient({ user }: { user: UserSession }) {
                 fetchItems(); // Sync back
                 alert('Failed to update stock');
             } else {
-                fetchActivity(); // Refresh activity
+                fetchActivity();
             }
         } catch (e) {
             fetchItems();
@@ -139,11 +141,12 @@ export default function InventoryClient({ user }: { user: UserSession }) {
             const res = await fetch('/api/inventory', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name: newItemName, type: newItemType })
+                body: JSON.stringify({ name: newItemName, type: newItemType, secondary_type: newItemSecondary || undefined })
             });
             if (res.ok) {
                 setShowModal(false);
                 setNewItemName('');
+                setNewItemSecondary('');
                 fetchItems();
             } else {
                 const data = await res.json();
@@ -206,8 +209,26 @@ export default function InventoryClient({ user }: { user: UserSession }) {
     const handleLogout = async () => {
         await fetch('/api/auth/logout', { method: 'POST' });
         router.push('/');
-        router.refresh(); // Ensure strict refresh
+        router.refresh();
     };
+
+    const clearFilters = () => {
+        setSearch('');
+        setFilterType('All');
+        setSecondaryFilter('');
+    };
+
+    // Filter Logic
+    const filteredItems = items.filter(item => {
+        const matchesType = filterType === 'All' || item.type === filterType;
+        const matchesSecondary = !secondaryFilter || item.secondary_type === secondaryFilter;
+        const matchesSearch = !search || item.name.toLowerCase().includes(search.toLowerCase());
+        return matchesType && matchesSecondary && matchesSearch;
+    });
+
+    // Get current category subcats
+    const currentCat = categories.find(c => c.name === filterType);
+    const subCats = currentCat?.sub_categories || [];
 
     return (
         <div className={styles.container}>
@@ -245,34 +266,76 @@ export default function InventoryClient({ user }: { user: UserSession }) {
                 )}
             </div>
 
-            <div className={styles.filters} style={{ display: 'flex', gap: '0.5rem', padding: '0 1rem 1rem 1rem', overflowX: 'auto' }}>
-                {['All', ...categories.map(c => c.name)].map((type: string) => (
-                    <button
-                        key={type}
-                        onClick={() => setFilterType(type as any)}
-                        style={{
-                            padding: '0.5rem 1rem',
-                            borderRadius: '20px',
-                            border: '1px solid #374151',
-                            background: filterType === type ? '#d97706' : '#1f2937',
-                            color: 'white',
-                            fontSize: '0.9rem',
-                            cursor: 'pointer',
-                            whiteSpace: 'nowrap'
-                        }}
-                    >
-                        {type}
+            {/* Filter Section */}
+            <div style={{ padding: '0 1rem 1rem 1rem' }}>
+                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                    <input
+                        className={styles.input}
+                        placeholder="Type to search..."
+                        value={search}
+                        onChange={e => setSearch(e.target.value)}
+                        style={{ flex: 1 }}
+                    />
+                    <button onClick={clearFilters} style={{ background: '#374151', color: '#9ca3af', border: 'none', borderRadius: '0.5rem', padding: '0 1rem', cursor: 'pointer' }}>
+                        Clear
                     </button>
-                ))}
+                </div>
+
+                {/* Main Category Filter */}
+                <div className={styles.filters} style={{ display: 'flex', gap: '0.5rem', overflowX: 'auto', paddingBottom: '0.5rem' }}>
+                    {['All', ...categories.map(c => c.name)].map((type: string) => (
+                        <button
+                            key={type}
+                            onClick={() => { setFilterType(type); setSecondaryFilter(''); }}
+                            style={{
+                                padding: '0.5rem 1rem',
+                                borderRadius: '20px',
+                                border: '1px solid #374151',
+                                background: filterType === type ? '#d97706' : '#1f2937',
+                                color: 'white',
+                                fontSize: '0.9rem',
+                                cursor: 'pointer',
+                                whiteSpace: 'nowrap'
+                            }}
+                        >
+                            {type}
+                        </button>
+                    ))}
+                </div>
+
+                {/* Secondary Category Filter */}
+                {subCats.length > 0 && (
+                    <div className={styles.filters} style={{ display: 'flex', gap: '0.5rem', overflowX: 'auto', marginTop: '0.5rem' }}>
+                        {subCats.map((sub: string) => (
+                            <button
+                                key={sub}
+                                onClick={() => setSecondaryFilter(sub === secondaryFilter ? '' : sub)}
+                                style={{
+                                    padding: '0.25rem 0.75rem',
+                                    borderRadius: '15px',
+                                    border: '1px solid #4b5563',
+                                    background: secondaryFilter === sub ? '#2563eb' : '#374151',
+                                    color: 'white',
+                                    fontSize: '0.8rem',
+                                    cursor: 'pointer',
+                                    whiteSpace: 'nowrap'
+                                }}
+                            >
+                                {sub}
+                            </button>
+                        ))}
+                    </div>
+                )}
             </div>
 
             <div className={styles.list}>
-                {items.filter(i => filterType === 'All' || i.type === filterType).map(item => (
+                {filteredItems.map(item => (
                     <div key={item.id} className={styles.itemCard}>
                         <div className={styles.itemInfo}>
                             <div className={styles.itemName}>{item.name}</div>
                             <div className={styles.itemType}>
                                 {item.type}
+                                {item.secondary_type && <span style={{ opacity: 0.7, marginLeft: '6px', fontSize: '0.85em' }}>• {item.secondary_type}</span>}
                                 {canAddItem && (
                                     <span
                                         onClick={() => openCostModal(item)}
@@ -311,9 +374,9 @@ export default function InventoryClient({ user }: { user: UserSession }) {
                         </div>
                     </div>
                 ))}
-                {items.length === 0 && (
+                {filteredItems.length === 0 && (
                     <div style={{ textAlign: 'center', color: '#6b7280', padding: '2rem' }}>
-                        No items found. {canAddItem ? 'Add one above!' : 'Ask an admin to add items.'}
+                        No items found match your filters.
                     </div>
                 )}
             </div>
@@ -339,13 +402,39 @@ export default function InventoryClient({ user }: { user: UserSession }) {
                                     <select
                                         className={styles.input}
                                         value={newItemType}
-                                        onChange={(e) => setNewItemType(e.target.value)}
+                                        onChange={(e) => {
+                                            setNewItemType(e.target.value);
+                                            setNewItemSecondary(''); // Reset secondary when main changes
+                                        }}
                                     >
                                         {categories.map(cat => (
                                             <option key={cat.name} value={cat.name}>{cat.name}</option>
                                         ))}
                                     </select>
                                 </div>
+
+                                {(() => {
+                                    const cat = categories.find(c => c.name === newItemType);
+                                    if (cat && cat.sub_categories && cat.sub_categories.length > 0) {
+                                        return (
+                                            <div className={styles.formGroup}>
+                                                <label className={styles.label}>Sub-Category (Optional)</label>
+                                                <select
+                                                    className={styles.input}
+                                                    value={newItemSecondary}
+                                                    onChange={(e) => setNewItemSecondary(e.target.value)}
+                                                >
+                                                    <option value="">(None)</option>
+                                                    {cat.sub_categories.map((sub: string) => (
+                                                        <option key={sub} value={sub}>{sub}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                        );
+                                    }
+                                    return null;
+                                })()}
+
                                 <div className={styles.modalActions}>
                                     <button type="button" className={styles.cancelBtn} onClick={() => setShowModal(false)}>Cancel</button>
                                     <button type="submit" className={styles.submitModalBtn} disabled={loading}>
@@ -408,6 +497,38 @@ export default function InventoryClient({ user }: { user: UserSession }) {
                                 <button type="button" className={styles.cancelBtn} onClick={() => setEditingItem(null)}>Cancel</button>
                                 <button type="button" className={styles.submitModalBtn} onClick={saveCost}>Save Cost</button>
                             </div>
+                            {
+                                showActivityModal && (
+                                    <div className={styles.modalOverlay}>
+                                        <div className={styles.modal}>
+                                            <h2 className={styles.modalTitle}>Session Activity</h2>
+                                            <div style={{ maxHeight: '300px', overflowY: 'auto', marginBottom: '1rem' }}>
+                                                {myActivity.length === 0 ? <div style={{ color: '#9ca3af', textAlign: 'center' }}>No activity in this session.</div> : (
+                                                    <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                                                        {myActivity.map(log => (
+                                                            <li key={log.id} style={{ borderBottom: '1px solid #374151', padding: '0.75rem 0' }}>
+                                                                <div style={{ fontWeight: 'bold', color: 'white' }}>{log.details}</div>
+                                                                <div style={{ fontSize: '0.8rem', color: '#9ca3af', marginTop: '0.25rem' }}>
+                                                                    {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                                </div>
+                                                            </li>
+                                                        ))}
+                                                    </ul>
+                                                )}
+                                            </div>
+                                            <div className={styles.modalActions}>
+                                                <button
+                                                    className={styles.submitModalBtn}
+                                                    onClick={() => setShowActivityModal(false)}
+                                                    style={{ width: '100%' }}
+                                                >
+                                                    Close
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )
+                            }
                         </div>
                     </div>
                 )

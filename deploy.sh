@@ -15,6 +15,9 @@ if [ ! -f "inventory.db" ]; then
     node scripts/init-db.js
 fi
 
+echo "Running migrations..."
+node scripts/migrate.js
+
 echo "Building application..."
 npm run build
 

@@ -12,7 +12,8 @@ export async function GET(req: NextRequest) {
 
         const parsed = categories.map(c => ({
             ...c,
-            stock_options: c.stock_options ? JSON.parse(c.stock_options) : [1]
+            stock_options: c.stock_options ? JSON.parse(c.stock_options) : [1],
+            sub_categories: c.sub_categories ? JSON.parse(c.sub_categories) : []
         }));
 
         return NextResponse.json({ categories: parsed });
@@ -29,13 +30,14 @@ export async function POST(req: NextRequest) {
             if (!hasPermission) return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
         }
 
-        const { name, stock_options } = await req.json();
+        const { name, stock_options, sub_categories } = await req.json();
         if (!name) return NextResponse.json({ error: 'Missing name' }, { status: 400 });
 
         const options = stock_options ? JSON.stringify(stock_options) : JSON.stringify([1]);
+        const subCats = sub_categories ? JSON.stringify(sub_categories) : JSON.stringify([]);
 
-        const stmt = db.prepare('INSERT INTO categories (name, stock_options) VALUES (?, ?)');
-        const res = stmt.run(name, options);
+        const stmt = db.prepare('INSERT INTO categories (name, stock_options, sub_categories) VALUES (?, ?, ?)');
+        const res = stmt.run(name, options, subCats);
         return NextResponse.json({ success: true, id: res.lastInsertRowid });
     } catch (e: any) {
         if (e.message.includes('UNIQUE')) {
@@ -50,12 +52,13 @@ export async function PUT(req: NextRequest) {
         const session = await getSession();
         if (!session || session.role !== 'admin') return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
 
-        const { id, name, stock_options } = await req.json();
+        const { id, name, stock_options, sub_categories } = await req.json();
         if (!id || !name) return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
 
         const options = stock_options ? JSON.stringify(stock_options) : JSON.stringify([1]);
+        const subCats = sub_categories ? JSON.stringify(sub_categories) : JSON.stringify([]);
 
-        db.prepare('UPDATE categories SET name = ?, stock_options = ? WHERE id = ?').run(name, options);
+        db.prepare('UPDATE categories SET name = ?, stock_options = ?, sub_categories = ? WHERE id = ?').run(name, options, subCats, id);
 
         return NextResponse.json({ success: true });
     } catch (e: any) {

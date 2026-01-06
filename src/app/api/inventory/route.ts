@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
 
         let query = `
       SELECT 
-        i.id, i.name, i.type, i.unit_cost,
+        i.id, i.name, i.type, i.secondary_type, i.unit_cost,
         COALESCE(inv.quantity, 0) as quantity,
         COALESCE(usage_stats.usage_count, 0) as usage_count
       FROM items i
@@ -68,7 +68,7 @@ export async function POST(req: NextRequest) {
         }
 
         const body = await req.json();
-        const { name, type } = body;
+        const { name, type, secondary_type } = body;
 
         if (!name || !type) return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
 
@@ -83,8 +83,8 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Invalid type' }, { status: 400 });
         }
 
-        const stmt = db.prepare('INSERT INTO items (name, type) VALUES (?, ?)');
-        const res = stmt.run(name, type);
+        const stmt = db.prepare('INSERT INTO items (name, type, secondary_type) VALUES (?, ?, ?)');
+        const res = stmt.run(name, type, secondary_type || null);
 
         // Also init inventory for default location (1)
         db.prepare('INSERT INTO inventory (item_id, location_id, quantity) VALUES (?, ?, 0)').run(res.lastInsertRowid, 1);
@@ -112,7 +112,7 @@ export async function PUT(req: NextRequest) {
 
         if (!canEdit && !canStock) return NextResponse.json({ error: 'Permission denied' }, { status: 403 });
 
-        const { id, unit_cost, name, type, quantity } = await req.json();
+        const { id, unit_cost, name, type, quantity, secondary_type } = await req.json();
 
         if (!id) return NextResponse.json({ error: 'Missing ID' }, { status: 400 });
 
@@ -132,6 +132,10 @@ export async function PUT(req: NextRequest) {
             if (type !== undefined) {
                 updates.push('type = ?');
                 params.push(type);
+            }
+            if (secondary_type !== undefined) {
+                updates.push('secondary_type = ?');
+                params.push(secondary_type);
             }
 
             if (updates.length > 0) {
