@@ -199,6 +199,7 @@ export default function ProductsClient() {
                             <tr>
                                 <th>Name</th>
                                 <th>Type</th>
+                                <th>Sub-Category</th>
                                 <th>Cost ($)</th>
                                 <th>In Stock</th>
                                 <th style={{ textAlign: 'right' }}>Actions</th>
@@ -222,9 +223,24 @@ export default function ProductsClient() {
                                                     <select
                                                         className={styles.input}
                                                         value={editForm.type}
-                                                        onChange={e => setEditForm({ ...editForm, type: e.target.value })}
+                                                        onChange={e => setEditForm({ ...editForm, type: e.target.value, secondary_type: '' })}
                                                     >
                                                         {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                                                    </select>
+                                                </td>
+                                                <td>
+                                                    <select
+                                                        className={styles.input}
+                                                        value={editForm.secondary_type || ''}
+                                                        onChange={e => setEditForm({ ...editForm, secondary_type: e.target.value })}
+                                                    >
+                                                        <option value="">(None)</option>
+                                                        {(() => {
+                                                            const cat = categories.find(c => c.name === editForm.type);
+                                                            return cat?.sub_categories?.map((sub: string) => (
+                                                                <option key={sub} value={sub}>{sub}</option>
+                                                            ));
+                                                        })()}
                                                     </select>
                                                 </td>
                                                 <td>
@@ -254,6 +270,7 @@ export default function ProductsClient() {
                                             <>
                                                 <td>{item.name}</td>
                                                 <td>{item.type}</td>
+                                                <td>{item.secondary_type || '-'}</td>
                                                 <td>${item.unit_cost?.toFixed(2)}</td>
                                                 <td style={{ fontWeight: 'bold', color: item.quantity === 0 ? '#ef4444' : item.quantity < 5 ? '#f59e0b' : 'inherit' }}>
                                                     {item.quantity}

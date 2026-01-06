@@ -235,6 +235,15 @@ export default function InventoryClient({ user }: { user: UserSession }) {
             <header className={styles.header}>
                 <div className={styles.title}>Foster's Stock</div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    {user.role === 'admin' && (
+                        <button
+                            onClick={() => router.push('/admin/dashboard')}
+                            className={styles.completedBtn}
+                            style={{ background: '#7c3aed' }} // Purple to distinguish
+                        >
+                            Admin Dashboard
+                        </button>
+                    )}
                     <button
                         onClick={() => { fetchActivity(); setShowActivityModal(true); }}
                         className={styles.completedBtn}

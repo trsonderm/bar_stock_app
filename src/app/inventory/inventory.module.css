@@ -97,9 +97,20 @@
 }
 
 .list {
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: 1fr;
     gap: 1rem;
+}
+
+@media (min-width: 768px) {
+    .container {
+        max-width: 100%;
+        padding: 2rem;
+    }
+
+    .list {
+        grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+    }
 }
 
 .itemCard {
@@ -200,6 +211,8 @@
     border-radius: var(--radius);
     width: 100%;
     max-width: 400px;
+    max-height: 90vh;
+    overflow-y: auto;
 }
 
 .modalTitle {

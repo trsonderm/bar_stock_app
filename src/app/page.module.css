@@ -29,6 +29,19 @@
   padding: 120px 60px;
 }
 
+@media (max-height: 600px) and (orientation: landscape) {
+  .main {
+    padding: 20px 40px;
+    justify-content: center;
+    gap: 20px;
+  }
+
+  .intro {
+    flex-direction: row;
+    align-items: center;
+  }
+}
+
 .intro {
   display: flex;
   flex-direction: column;

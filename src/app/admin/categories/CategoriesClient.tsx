@@ -113,6 +113,7 @@ export default function CategoriesClient() {
         setName(cat.name);
         setSelectedOptions(cat.stock_options || [1]);
         setSubCats(cat.sub_categories || []);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
     const resetForm = () => {
