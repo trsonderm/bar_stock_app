@@ -24,6 +24,7 @@ interface UserSession {
     firstName: string;
     role: string;
     permissions: string[];
+    iat?: number;
 }
 
 export default function InventoryClient({ user }: { user: UserSession }) {
@@ -239,6 +240,15 @@ export default function InventoryClient({ user }: { user: UserSession }) {
                     <div className={styles.title} style={{ fontSize: '1rem', opacity: 0.7, margin: 0 }}>Foster's Stock</div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    {canAddItem && (
+                        <button
+                            onClick={() => setShowModal(true)}
+                            className={styles.newItemBtn}
+                            style={{ height: 'auto', padding: '0.5rem 1rem', fontSize: '0.9rem', margin: 0 }}
+                        >
+                            + Add Item
+                        </button>
+                    )}
                     <button
                         onClick={() => { fetchActivity(); setShowActivityModal(true); }}
                         className={styles.completedBtn}
@@ -249,42 +259,7 @@ export default function InventoryClient({ user }: { user: UserSession }) {
                 </div>
             </header>
 
-            {/* Inline New Item Form */}
-            {canAddItem && (
-                <div style={{ background: '#1f2937', padding: '1rem', borderRadius: '0.5rem', marginBottom: '1rem' }}>
-                    <h3 style={{ marginTop: 0, color: 'white', fontSize: '1rem' }}>Add New Item</h3>
-                    <form onSubmit={handleCreateItem} style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-                        <div style={{ flex: 1, minWidth: '200px' }}>
-                            <label className={styles.label}>Name</label>
-                            <input className={styles.input} value={newItemName} onChange={e => setNewItemName(e.target.value)} placeholder="Item Name" required />
-                        </div>
-                        <div style={{ minWidth: '150px' }}>
-                            <label className={styles.label}>Type</label>
-                            <select className={styles.input} value={newItemType} onChange={e => setNewItemType(e.target.value)}>
-                                {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
-                            </select>
-                        </div>
-                        {(() => {
-                            const cat = categories.find(c => c.name === newItemType);
-                            if (cat && cat.sub_categories && cat.sub_categories.length > 0) {
-                                return (
-                                    <div style={{ minWidth: '150px' }}>
-                                        <label className={styles.label}>Sub-Category</label>
-                                        <select className={styles.input} value={newItemSecondary} onChange={e => setNewItemSecondary(e.target.value)}>
-                                            <option value="">(None)</option>
-                                            {cat.sub_categories.map((sub: string) => <option key={sub} value={sub}>{sub}</option>)}
-                                        </select>
-                                    </div>
-                                );
-                            }
-                            return null;
-                        })()}
-                        <button type="submit" className={styles.newItemBtn} disabled={loading} style={{ height: '45px', marginLeft: 0 }}>
-                            {loading ? '...' : '+ Add Item'}
-                        </button>
-                    </form>
-                </div>
-            )}
+
 
             <div className={styles.controls}>
                 <button
@@ -471,31 +446,101 @@ export default function InventoryClient({ user }: { user: UserSession }) {
                 </div>
             )}
 
+
+            {showModal && (
+                <div className={styles.modalOverlay}>
+                    <div className={styles.modal}>
+                        <h2 className={styles.modalTitle}>Add New Item</h2>
+                        <form onSubmit={handleCreateItem}>
+                            <div className={styles.formGroup}>
+                                <label className={styles.label}>Name</label>
+                                <input
+                                    className={styles.input}
+                                    value={newItemName}
+                                    onChange={e => setNewItemName(e.target.value)}
+                                    placeholder="Item Name"
+                                    required
+                                    autoFocus
+                                />
+                            </div>
+                            <div className={styles.formGroup}>
+                                <label className={styles.label}>Type</label>
+                                <select className={styles.input} value={newItemType} onChange={e => setNewItemType(e.target.value)}>
+                                    {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                                </select>
+                            </div>
+                            {(() => {
+                                const cat = categories.find(c => c.name === newItemType);
+                                if (cat && cat.sub_categories && cat.sub_categories.length > 0) {
+                                    return (
+                                        <div className={styles.formGroup}>
+                                            <label className={styles.label}>Sub-Category</label>
+                                            <select className={styles.input} value={newItemSecondary} onChange={e => setNewItemSecondary(e.target.value)}>
+                                                <option value="">(None)</option>
+                                                {cat.sub_categories.map((sub: string) => <option key={sub} value={sub}>{sub}</option>)}
+                                            </select>
+                                        </div>
+                                    );
+                                }
+                                return null;
+                            })()}
+                            <div className={styles.modalActions}>
+                                <button type="button" className={styles.cancelBtn} onClick={() => setShowModal(false)}>Cancel</button>
+                                <button type="submit" className={styles.submitModalBtn} disabled={loading}>
+                                    {loading ? '...' : 'Create Item'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
             {showActivityModal && (
                 <div className={styles.modalOverlay}>
                     <div className={styles.modal}>
                         <h2 className={styles.modalTitle}>Session Activity</h2>
                         <div style={{ maxHeight: '300px', overflowY: 'auto', marginBottom: '1rem' }}>
-                            {myActivity.length === 0 ? <div style={{ color: '#9ca3af', textAlign: 'center' }}>No activity in this session.</div> : (
+                            {myActivity
+                                .filter(log => !user.iat || new Date(log.timestamp).getTime() > user.iat * 1000)
+                                .length === 0 ? <div style={{ color: '#9ca3af', textAlign: 'center' }}>No activity in this session.</div> : (
                                 <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-                                    {myActivity.map(log => (
-                                        <li key={log.id} style={{ borderBottom: '1px solid #374151', padding: '0.75rem 0' }}>
-                                            <div style={{ fontWeight: 'bold', color: 'white' }}>{log.details}</div>
-                                            <div style={{ fontSize: '0.8rem', color: '#9ca3af', marginTop: '0.25rem' }}>
-                                                {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                            </div>
-                                        </li>
-                                    ))}
+                                    {myActivity
+                                        .filter(log => !user.iat || new Date(log.timestamp).getTime() > user.iat * 1000)
+                                        .map(log => {
+                                            let displayText = log.details;
+                                            try {
+                                                const json = JSON.parse(log.details);
+                                                if (log.action === 'ADD_STOCK') {
+                                                    displayText = `Added ${json.quantity} to ${json.itemName}`;
+                                                } else if (log.action === 'SUBTRACT_STOCK') {
+                                                    displayText = `Removed ${json.quantity} from ${json.itemName}`;
+                                                }
+                                            } catch { }
+
+                                            return (
+                                                <li key={log.id} style={{ borderBottom: '1px solid #374151', padding: '0.75rem 0' }}>
+                                                    <div style={{ fontWeight: 'bold', color: 'white' }}>{displayText}</div>
+                                                    <div style={{ fontSize: '0.8rem', color: '#9ca3af', marginTop: '0.25rem' }}>
+                                                        {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                    </div>
+                                                </li>
+                                            );
+                                        })}
                                 </ul>
                             )}
                         </div>
                         <div className={styles.modalActions}>
                             <button
                                 className={styles.submitModalBtn}
-                                onClick={() => router.push(user.role === 'admin' ? '/admin/dashboard' : '/')}
+                                onClick={() => {
+                                    if (user.role === 'admin') {
+                                        router.push('/admin/dashboard');
+                                    } else {
+                                        setShowActivityModal(false);
+                                    }
+                                }}
                                 style={{ width: '100%' }}
                             >
-                                Return to Dashboard
+                                {user.role === 'admin' ? 'Return to Dashboard' : 'Close'}
                             </button>
                         </div>
                     </div>

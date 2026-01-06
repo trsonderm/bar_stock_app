@@ -14,6 +14,7 @@ export interface UserSession {
     lastName: string;
     role: UserRole;
     permissions: string[];
+    iat?: number;
 }
 
 export const COOKIE_OPTIONS = {

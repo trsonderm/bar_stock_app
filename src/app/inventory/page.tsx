@@ -13,7 +13,8 @@ export default async function InventoryPage() {
     const user = {
         firstName: session.firstName,
         role: session.role,
-        permissions: session.permissions as string[]
+        permissions: session.permissions as string[],
+        iat: session.iat
     };
 
     return <InventoryClient user={user} />;
