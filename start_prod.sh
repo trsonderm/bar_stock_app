@@ -27,13 +27,22 @@ try {
   // Check for essential tables: users AND categories
   const row = db.prepare(\"SELECT count(*) as count FROM sqlite_master WHERE type='table' AND name IN ('users', 'categories')\").get();
   if (!row || row.count < 2) process.exit(1);
+
+  // Check for unit_cost column in items
+  const col = db.prepare(\"SELECT count(*) as count FROM pragma_table_info('items') WHERE name='unit_cost'\").get();
+  if (!col || col.count === 0) process.exit(2); 
+
 } catch (e) {
   process.exit(1);
 }
 "
-if [ $? -ne 0 ]; then
+EXIT_CODE=$?
+if [ $EXIT_CODE -eq 1 ]; then
     echo "Database missing or uninitialized. Running initialization..."
     node scripts/init-db.js
+elif [ $EXIT_CODE -eq 2 ]; then
+    echo "Missing unit_cost column. Running migration..."
+    node scripts/add-cost-column.js
 fi
 
 # Handle Scheduler Process

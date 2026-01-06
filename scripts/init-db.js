@@ -73,6 +73,7 @@ db.prepare(`
     name TEXT NOT NULL,
     type TEXT NOT NULL,
     description TEXT,
+    unit_cost REAL DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (type) REFERENCES categories(name) ON UPDATE CASCADE
   )
