@@ -3,8 +3,8 @@ set -e
 
 echo "Starting deployment..."
 
-# echo "Pulling from git..."
-# git pull
+echo "Pulling from git..."
+git pull
 
 echo "Installing dependencies..."
 npm install
