@@ -5,9 +5,4 @@
    ▲ Next.js 14.1.0
    - Local:        http://localhost:5400
 
-[Error: ENOENT: no such file or directory, open '/Users/thomassonderman/Documents/Git/bar_stock_app/.next/BUILD_ID'] {
-  errno: -2,
-  code: 'ENOENT',
-  syscall: 'open',
-  path: '/Users/thomassonderman/Documents/Git/bar_stock_app/.next/BUILD_ID'
-}
+ ✓ Ready in 515ms

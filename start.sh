@@ -1,8 +1,13 @@
 #!/bin/bash
-if [ -f app.pid ]; then
-  echo "Server is already running with PID $(cat app.pid)"
-  exit 1
+# Check for port 5400 conflict
+PID_ON_PORT=$(lsof -t -i:5400)
+if [ -n "$PID_ON_PORT" ]; then
+  echo "Port 5400 is in use by PID $PID_ON_PORT. Killing it..."
+  kill -9 $PID_ON_PORT
+  # Wait a moment for it to die
+  sleep 1
 fi
+
 
 echo "Starting server on port 5400..."
 nohup npm start -- -p 5400 > app.log 2>&1 &
