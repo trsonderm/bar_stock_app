@@ -95,8 +95,9 @@ export async function POST(req: NextRequest) {
 
         return NextResponse.json({ success: true, id: res.lastInsertRowid });
 
-    } catch (error) {
-        return NextResponse.json({ error: 'Internal Error' }, { status: 500 });
+    } catch (error: any) {
+        console.error('Create Item Error:', error);
+        return NextResponse.json({ error: error.message || 'Internal Error' }, { status: 500 });
     }
 }
 
