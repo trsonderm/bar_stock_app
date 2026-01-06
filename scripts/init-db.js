@@ -40,13 +40,41 @@ db.prepare(`
 // Let's do: Items (global definitions) -> Inventory (stock at location).
 // But user said "separate table for liquor inventory currently, a separate table for location id".
 // So `inventory` table linking item and location.
+// Create Categories Table
+db.prepare(`
+  CREATE TABLE IF NOT EXISTS categories (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT UNIQUE NOT NULL,
+    stock_options TEXT -- JSON array of stock options
+  )
+`).run();
+
+// Seed Categories
+const seedCategories = () => {
+  const defaults = {
+    'Liquor': JSON.stringify([1]),
+    'Beer': JSON.stringify([1, 6, 24]),
+    'Seltzer': JSON.stringify([1, 4, 8]),
+    'Wine': JSON.stringify([1]),
+    'THC': JSON.stringify([1]),
+  };
+  const insert = db.prepare('INSERT OR IGNORE INTO categories (name, stock_options) VALUES (?, ?)');
+  for (const [name, options] of Object.entries(defaults)) {
+    insert.run(name, options);
+  }
+  console.log('Categories seeded.');
+};
+seedCategories();
+
+// Create Inventory Items Table
 db.prepare(`
   CREATE TABLE IF NOT EXISTS items (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
-    type TEXT CHECK(type IN ('Liquor', 'Beer')) NOT NULL,
+    type TEXT NOT NULL,
     description TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (type) REFERENCES categories(name) ON UPDATE CASCADE
   )
 `).run();
 

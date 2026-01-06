@@ -24,8 +24,9 @@ node -e "
 const Database = require('better-sqlite3');
 try {
   const db = new Database('inventory.db', { fileMustExist: false });
-  const row = db.prepare(\"SELECT count(*) as count FROM sqlite_master WHERE type='table' AND name='users'\").get();
-  if (!row || row.count === 0) process.exit(1);
+  // Check for essential tables: users AND categories
+  const row = db.prepare(\"SELECT count(*) as count FROM sqlite_master WHERE type='table' AND name IN ('users', 'categories')\").get();
+  if (!row || row.count < 2) process.exit(1);
 } catch (e) {
   process.exit(1);
 }
