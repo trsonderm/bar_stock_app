@@ -18,6 +18,12 @@ if [ -f app.pid ]; then
   fi
 fi
 
+# Initialize Database if missing
+if [ ! -f "inventory.db" ]; then
+    echo "Database not found. Initializing..."
+    node scripts/init-db.js
+fi
+
 # Handle Scheduler Process
 if [ -f scheduler.pid ]; then
   spid=$(cat scheduler.pid)
