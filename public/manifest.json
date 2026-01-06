@@ -1,0 +1,15 @@
+{
+    "name": "Foster's Bar Stock",
+    "short_name": "Foster's",
+    "start_url": "/inventory",
+    "display": "standalone",
+    "background_color": "#111827",
+    "theme_color": "#111827",
+    "icons": [
+        {
+            "src": "/icon.png",
+            "sizes": "512x512",
+            "type": "image/png"
+        }
+    ]
+}

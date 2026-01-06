@@ -45,6 +45,27 @@ export async function POST(req: NextRequest) {
     }
 }
 
+export async function PUT(req: NextRequest) {
+    try {
+        const session = await getSession();
+        if (!session || session.role !== 'admin') return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+
+        const { id, name, stock_options } = await req.json();
+        if (!id || !name) return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
+
+        const options = stock_options ? JSON.stringify(stock_options) : JSON.stringify([1]);
+
+        db.prepare('UPDATE categories SET name = ?, stock_options = ? WHERE id = ?').run(name, options);
+
+        return NextResponse.json({ success: true });
+    } catch (e: any) {
+        if (e.message.includes('UNIQUE')) {
+            return NextResponse.json({ error: 'Category name already exists' }, { status: 400 });
+        }
+        return NextResponse.json({ error: 'Internal Error' }, { status: 500 });
+    }
+}
+
 export async function DELETE(req: NextRequest) {
     try {
         const session = await getSession();

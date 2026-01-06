@@ -7,6 +7,7 @@ import styles from '../admin.module.css';
 interface Category {
     id: number;
     name: string;
+    stock_options: number[];
 }
 
 export default function CategoriesClient() {
@@ -15,6 +16,9 @@ export default function CategoriesClient() {
     const [loading, setLoading] = useState(true);
     const [newCatName, setNewCatName] = useState('');
     const [selectedOptions, setSelectedOptions] = useState<number[]>([1]);
+
+    // Editing State
+    const [editingId, setEditingId] = useState<number | null>(null);
 
     const PRESETS = [1, 4, 5, 6, 8, 10, 12, 18, 24, 30];
 
@@ -59,6 +63,43 @@ export default function CategoriesClient() {
         }
     };
 
+    const handleEditClick = (cat: any) => {
+        setEditingId(cat.id);
+        setNewCatName(cat.name);
+        setSelectedOptions(cat.stock_options || [1]);
+    };
+
+    const handleCancelEdit = () => {
+        setEditingId(null);
+        setNewCatName('');
+        setSelectedOptions([1]);
+    };
+
+    const handleUpdate = async () => {
+        if (!editingId || !newCatName.trim()) return;
+
+        try {
+            const res = await fetch('/api/admin/categories', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    id: editingId,
+                    name: newCatName.trim(),
+                    stock_options: selectedOptions.sort((a, b) => a - b)
+                })
+            });
+            if (res.ok) {
+                handleCancelEdit();
+                fetchCategories();
+            } else {
+                const err = await res.json();
+                alert(err.error || 'Failed to update');
+            }
+        } catch (e) {
+            alert('Error updating category');
+        }
+    };
+
     const handleDelete = async (id: number) => {
         if (!confirm('Are you sure? Only unused categories can be deleted.')) return;
         try {
@@ -74,11 +115,6 @@ export default function CategoriesClient() {
         }
     };
 
-    const handleLogout = async () => {
-        await fetch('/api/auth/logout', { method: 'POST' });
-        router.push('/');
-    };
-
     const toggleOption = (opt: number) => {
         setSelectedOptions(prev =>
             prev.includes(opt)
@@ -89,14 +125,14 @@ export default function CategoriesClient() {
 
     if (loading) return <div className={styles.container}>Loading...</div>;
 
-    if (loading) return <div className={styles.container}>Loading...</div>;
-
     return (
         <>
-
             <div className={styles.card}>
                 <div style={{ marginBottom: '2rem' }}>
-                    <h3 style={{ borderBottom: '1px solid #374151', paddingBottom: '0.5rem', marginBottom: '1rem' }}>Add New Category</h3>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #374151', paddingBottom: '0.5rem', marginBottom: '1rem' }}>
+                        <h3 style={{ margin: 0 }}>{editingId ? 'Edit Category' : 'Add New Category'}</h3>
+                        {editingId && <button onClick={handleCancelEdit} style={{ background: 'transparent', border: '1px solid #ef4444', color: '#ef4444', borderRadius: '4px', cursor: 'pointer', padding: '4px 8px' }}>Cancel Edit</button>}
+                    </div>
 
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
                         <div>
@@ -138,10 +174,10 @@ export default function CategoriesClient() {
 
                     <button
                         className={styles.submitBtn}
-                        onClick={handleCreate}
-                        style={{ marginTop: '1rem', width: 'auto', padding: '0.5rem 2rem' }}
+                        onClick={editingId ? handleUpdate : handleCreate}
+                        style={{ marginTop: '1rem', width: 'auto', padding: '0.5rem 2rem', background: editingId ? '#3b82f6' : '#d97706' }}
                     >
-                        Create Category
+                        {editingId ? 'Update Category' : 'Create Category'}
                     </button>
                 </div>
 
@@ -151,7 +187,7 @@ export default function CategoriesClient() {
                             <tr>
                                 <th>Category Name</th>
                                 <th>Stock Buttons</th>
-                                <th style={{ width: '100px', textAlign: 'right' }}>Actions</th>
+                                <th style={{ width: '150px', textAlign: 'right' }}>Actions</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -166,6 +202,20 @@ export default function CategoriesClient() {
                                         </div>
                                     </td>
                                     <td style={{ textAlign: 'right' }}>
+                                        <button
+                                            onClick={() => handleEditClick(cat)}
+                                            style={{
+                                                background: '#3b82f6',
+                                                color: 'white',
+                                                border: 'none',
+                                                padding: '4px 8px',
+                                                borderRadius: '4px',
+                                                cursor: 'pointer',
+                                                marginRight: '0.5rem'
+                                            }}
+                                        >
+                                            Edit
+                                        </button>
                                         <button
                                             onClick={() => handleDelete(cat.id)}
                                             style={{

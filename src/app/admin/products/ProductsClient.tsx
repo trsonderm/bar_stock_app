@@ -259,8 +259,33 @@ export default function ProductsClient() {
                                                     {item.quantity}
                                                 </td>
                                                 <td style={{ textAlign: 'right' }}>
-                                                    <button onClick={() => handleEditClick(item)} style={{ color: '#60a5fa', marginRight: '10px' }}>Edit</button>
-                                                    <button onClick={() => handleDelete(item.id)} style={{ color: '#ef4444' }}>Delete</button>
+                                                    <button
+                                                        onClick={() => handleEditClick(item)}
+                                                        style={{
+                                                            background: '#3b82f6',
+                                                            color: 'white',
+                                                            border: 'none',
+                                                            padding: '4px 8px',
+                                                            borderRadius: '4px',
+                                                            cursor: 'pointer',
+                                                            marginRight: '8px'
+                                                        }}
+                                                    >
+                                                        Edit
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleDelete(item.id)}
+                                                        style={{
+                                                            background: '#ef4444',
+                                                            color: 'white',
+                                                            border: 'none',
+                                                            padding: '4px 8px',
+                                                            borderRadius: '4px',
+                                                            cursor: 'pointer'
+                                                        }}
+                                                    >
+                                                        Delete
+                                                    </button>
                                                 </td>
                                             </>
                                         )}

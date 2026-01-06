@@ -412,6 +412,38 @@ export default function InventoryClient({ user }: { user: UserSession }) {
                     </div>
                 )
             }
+            {
+                showActivityModal && (
+                    <div className={styles.modalOverlay}>
+                        <div className={styles.modal}>
+                            <h2 className={styles.modalTitle}>Session Activity</h2>
+                            <div style={{ maxHeight: '300px', overflowY: 'auto', marginBottom: '1rem' }}>
+                                {myActivity.length === 0 ? <div style={{ color: '#9ca3af', textAlign: 'center' }}>No activity in this session.</div> : (
+                                    <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                                        {myActivity.map(log => (
+                                            <li key={log.id} style={{ borderBottom: '1px solid #374151', padding: '0.75rem 0' }}>
+                                                <div style={{ fontWeight: 'bold', color: 'white' }}>{log.details}</div>
+                                                <div style={{ fontSize: '0.8rem', color: '#9ca3af', marginTop: '0.25rem' }}>
+                                                    {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                </div>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
+                            </div>
+                            <div className={styles.modalActions}>
+                                <button
+                                    className={styles.submitModalBtn}
+                                    onClick={() => setShowActivityModal(false)}
+                                    style={{ width: '100%' }}
+                                >
+                                    Close
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )
+            }
         </div >
     );
 }
