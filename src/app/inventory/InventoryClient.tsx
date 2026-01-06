@@ -40,6 +40,7 @@ export default function InventoryClient({ user }: { user: UserSession }) {
     const [showModal, setShowModal] = useState(false);
     const [showActivityModal, setShowActivityModal] = useState(false);
 
+    // New Item Inline State
     const [newItemName, setNewItemName] = useState('');
     const [newItemType, setNewItemType] = useState('Liquor');
     const [newItemSecondary, setNewItemSecondary] = useState('');
@@ -235,24 +236,52 @@ export default function InventoryClient({ user }: { user: UserSession }) {
             <header className={styles.header}>
                 <div className={styles.title}>Foster's Stock</div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    {user.role === 'admin' && (
-                        <button
-                            onClick={() => router.push('/admin/dashboard')}
-                            className={styles.completedBtn}
-                            style={{ background: '#7c3aed' }} // Purple to distinguish
-                        >
-                            Admin Dashboard
-                        </button>
-                    )}
                     <button
                         onClick={() => { fetchActivity(); setShowActivityModal(true); }}
                         className={styles.completedBtn}
                     >
-                        Completed
+                        Completed / Return to Dashboard
                     </button>
                     <button onClick={handleLogout} className={styles.logoutBtn}>Logout</button>
                 </div>
             </header>
+
+            {/* Inline New Item Form */}
+            {canAddItem && (
+                <div style={{ background: '#1f2937', padding: '1rem', borderRadius: '0.5rem', marginBottom: '1rem' }}>
+                    <h3 style={{ marginTop: 0, color: 'white', fontSize: '1rem' }}>Add New Item</h3>
+                    <form onSubmit={handleCreateItem} style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                        <div style={{ flex: 1, minWidth: '200px' }}>
+                            <label className={styles.label}>Name</label>
+                            <input className={styles.input} value={newItemName} onChange={e => setNewItemName(e.target.value)} placeholder="Item Name" required />
+                        </div>
+                        <div style={{ minWidth: '150px' }}>
+                            <label className={styles.label}>Type</label>
+                            <select className={styles.input} value={newItemType} onChange={e => setNewItemType(e.target.value)}>
+                                {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                            </select>
+                        </div>
+                        {(() => {
+                            const cat = categories.find(c => c.name === newItemType);
+                            if (cat && cat.sub_categories && cat.sub_categories.length > 0) {
+                                return (
+                                    <div style={{ minWidth: '150px' }}>
+                                        <label className={styles.label}>Sub-Category</label>
+                                        <select className={styles.input} value={newItemSecondary} onChange={e => setNewItemSecondary(e.target.value)}>
+                                            <option value="">(None)</option>
+                                            {cat.sub_categories.map((sub: string) => <option key={sub} value={sub}>{sub}</option>)}
+                                        </select>
+                                    </div>
+                                );
+                            }
+                            return null;
+                        })()}
+                        <button type="submit" className={styles.newItemBtn} disabled={loading} style={{ height: '45px', marginLeft: 0 }}>
+                            {loading ? '...' : '+ Add Item'}
+                        </button>
+                    </form>
+                </div>
+            )}
 
             <div className={styles.controls}>
                 <button
@@ -267,12 +296,6 @@ export default function InventoryClient({ user }: { user: UserSession }) {
                 >
                     A-Z {sort === 'name' && (sortDir === 'asc' ? '▲' : '▼')}
                 </button>
-
-                {canAddItem && (
-                    <button className={styles.newItemBtn} onClick={() => setShowModal(true)}>
-                        + New Item
-                    </button>
-                )}
             </div>
 
             {/* Filter Section */}
@@ -369,14 +392,15 @@ export default function InventoryClient({ user }: { user: UserSession }) {
                                     const options = (cat && cat.stock_options && cat.stock_options.length > 0) ? cat.stock_options : [1];
 
                                     return (
-                                        <>
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', justifyContent: 'flex-end', width: '100%' }}>
                                             {options.sort((a: number, b: number) => a - b).map((amt: number) => (
-                                                <div key={amt} style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                                                    <button className={`${styles.stockBtn} ${styles.plusBtn}`} disabled={!canAddStock} onClick={() => handleAdjust(item.id, amt)} style={!canAddStock ? { opacity: 0.2, fontSize: '0.7rem', padding: '0.25rem' } : { fontSize: '0.7rem', padding: '0.25rem' }}>+{amt}</button>
-                                                    <button className={`${styles.stockBtn} ${styles.minusBtn}`} onClick={() => handleAdjust(item.id, -amt)} style={{ fontSize: '0.7rem', padding: '0.25rem' }}>-{amt}</button>
+                                                <div key={amt} className={styles.stockGroup}>
+                                                    <span style={{ color: '#9ca3af', fontSize: '0.8rem', marginRight: '0.25rem' }}>{amt}:</span>
+                                                    <button className={`${styles.stockBtn} ${styles.minusBtn}`} onClick={() => handleAdjust(item.id, -amt)}>-</button>
+                                                    <button className={`${styles.stockBtn} ${styles.plusBtn}`} disabled={!canAddStock} onClick={() => handleAdjust(item.id, amt)}>+</button>
                                                 </div>
                                             ))}
-                                        </>
+                                        </div>
                                     );
                                 })()}
                             </div>
@@ -390,190 +414,90 @@ export default function InventoryClient({ user }: { user: UserSession }) {
                 )}
             </div>
 
-            {
-                showModal && (
-                    <div className={styles.modalOverlay}>
-                        <div className={styles.modal}>
-                            <h2 className={styles.modalTitle}>Add New Item</h2>
-                            <form onSubmit={handleCreateItem}>
-                                <div className={styles.formGroup}>
-                                    <label className={styles.label}>Item Name</label>
-                                    <input
-                                        className={styles.input}
-                                        value={newItemName}
-                                        onChange={(e) => setNewItemName(e.target.value)}
-                                        placeholder="e.g. Jack Daniels"
-                                        autoFocus
-                                    />
-                                </div>
-                                <div className={styles.formGroup}>
-                                    <label className={styles.label}>Type</label>
-                                    <select
-                                        className={styles.input}
-                                        value={newItemType}
-                                        onChange={(e) => {
-                                            setNewItemType(e.target.value);
-                                            setNewItemSecondary(''); // Reset secondary when main changes
-                                        }}
-                                    >
-                                        {categories.map(cat => (
-                                            <option key={cat.name} value={cat.name}>{cat.name}</option>
-                                        ))}
-                                    </select>
-                                </div>
-
-                                {(() => {
-                                    const cat = categories.find(c => c.name === newItemType);
-                                    if (cat && cat.sub_categories && cat.sub_categories.length > 0) {
-                                        return (
-                                            <div className={styles.formGroup}>
-                                                <label className={styles.label}>Sub-Category (Optional)</label>
-                                                <select
-                                                    className={styles.input}
-                                                    value={newItemSecondary}
-                                                    onChange={(e) => setNewItemSecondary(e.target.value)}
-                                                >
-                                                    <option value="">(None)</option>
-                                                    {cat.sub_categories.map((sub: string) => (
-                                                        <option key={sub} value={sub}>{sub}</option>
-                                                    ))}
-                                                </select>
-                                            </div>
-                                        );
-                                    }
-                                    return null;
-                                })()}
-
-                                <div className={styles.modalActions}>
-                                    <button type="button" className={styles.cancelBtn} onClick={() => setShowModal(false)}>Cancel</button>
-                                    <button type="submit" className={styles.submitModalBtn} disabled={loading}>
-                                        {loading ? 'Saving...' : 'Create Item'}
-                                    </button>
-                                </div>
-                            </form>
-                        </div>
-                    </div>
-                )
-            }
-            {
-                editingItem && (
-                    <div className={styles.modalOverlay}>
-                        <div className={styles.modal}>
-                            <h2 className={styles.modalTitle}>Set Cost: {editingItem.name}</h2>
-                            <div className={styles.modalActions} style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '0.5rem', marginBottom: '1rem', width: '100%' }}>
-                                <label style={{ color: '#aaa', fontSize: '0.9rem' }}>Pricing Basis (Click to select input mode):</label>
-                                <div style={{ display: 'flex', gap: '1rem' }}>
-                                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: lastBasis === 'unit' ? '#fbbf24' : 'white' }}>
-                                        <input type="radio" checked={lastBasis === 'unit'} onChange={() => setLastBasis('unit')} /> Unit (Bottle/Can)
-                                    </label>
-                                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: lastBasis === '6' ? '#fbbf24' : 'white' }}>
-                                        <input type="radio" checked={lastBasis === '6'} onChange={() => setLastBasis('6')} /> 6-Pack
-                                    </label>
-                                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: lastBasis === '24' ? '#fbbf24' : 'white' }}>
-                                        <input type="radio" checked={lastBasis === '24'} onChange={() => setLastBasis('24')} /> 24-Pack
-                                    </label>
-                                </div>
-                            </div>
-
-                            <div className={styles.formGroup} style={lastBasis !== 'unit' ? { opacity: 0.6 } : {}}>
-                                <label className={styles.label}>Unit Cost ($)</label>
-                                <input
-                                    className={styles.input}
-                                    type="number"
-                                    step="0.01"
-                                    value={editCost}
-                                    onChange={(e) => { setLastBasis('unit'); handleCostChange(e.target.value, 'unit'); }}
-                                />
-                            </div>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                                <div className={styles.formGroup} style={lastBasis !== '6' ? { opacity: 0.6 } : {}}>
-                                    <label className={styles.label}>6-Pack Price</label>
-                                    <input className={styles.input} type="number" step="0.01" value={pack6Cost} onChange={(e) => { setLastBasis('6'); handleCostChange(e.target.value, '6'); }} />
-                                </div>
-                                <div className={styles.formGroup} style={lastBasis !== '24' ? { opacity: 0.6 } : {}}>
-                                    <label className={styles.label}>24-Pack Price</label>
-                                    <input className={styles.input} type="number" step="0.01" value={pack24Cost} onChange={(e) => { setLastBasis('24'); handleCostChange(e.target.value, '24'); }} />
-                                </div>
-                            </div>
-
-                            <div style={{ marginTop: '0.5rem', marginBottom: '1rem', color: '#fbbf24', fontSize: '0.9rem' }}>
-                                {lastBasis === 'unit' && `Saving Unit Cost: $${editCost}`}
-                                {lastBasis === '6' && `Saving Unit Cost: $${editCost} (Derived from 6-Pack: $${pack6Cost})`}
-                                {lastBasis === '24' && `Saving Unit Cost: $${editCost} (Derived from 24-Pack: $${pack24Cost})`}
-                            </div>
-
-                            <div className={styles.modalActions}>
-                                <button type="button" className={styles.cancelBtn} onClick={() => setEditingItem(null)}>Cancel</button>
-                                <button type="button" className={styles.submitModalBtn} onClick={saveCost}>Save Cost</button>
-                            </div>
-                            {
-                                showActivityModal && (
-                                    <div className={styles.modalOverlay}>
-                                        <div className={styles.modal}>
-                                            <h2 className={styles.modalTitle}>Session Activity</h2>
-                                            <div style={{ maxHeight: '300px', overflowY: 'auto', marginBottom: '1rem' }}>
-                                                {myActivity.length === 0 ? <div style={{ color: '#9ca3af', textAlign: 'center' }}>No activity in this session.</div> : (
-                                                    <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-                                                        {myActivity.map(log => (
-                                                            <li key={log.id} style={{ borderBottom: '1px solid #374151', padding: '0.75rem 0' }}>
-                                                                <div style={{ fontWeight: 'bold', color: 'white' }}>{log.details}</div>
-                                                                <div style={{ fontSize: '0.8rem', color: '#9ca3af', marginTop: '0.25rem' }}>
-                                                                    {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                                                </div>
-                                                            </li>
-                                                        ))}
-                                                    </ul>
-                                                )}
-                                            </div>
-                                            <div className={styles.modalActions}>
-                                                <button
-                                                    className={styles.submitModalBtn}
-                                                    onClick={() => setShowActivityModal(false)}
-                                                    style={{ width: '100%' }}
-                                                >
-                                                    Close
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </div>
-                                )
-                            }
-                        </div>
-                    </div>
-                )
-            }
-            {
-                showActivityModal && (
-                    <div className={styles.modalOverlay}>
-                        <div className={styles.modal}>
-                            <h2 className={styles.modalTitle}>Session Activity</h2>
-                            <div style={{ maxHeight: '300px', overflowY: 'auto', marginBottom: '1rem' }}>
-                                {myActivity.length === 0 ? <div style={{ color: '#9ca3af', textAlign: 'center' }}>No activity in this session.</div> : (
-                                    <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-                                        {myActivity.map(log => (
-                                            <li key={log.id} style={{ borderBottom: '1px solid #374151', padding: '0.75rem 0' }}>
-                                                <div style={{ fontWeight: 'bold', color: 'white' }}>{log.details}</div>
-                                                <div style={{ fontSize: '0.8rem', color: '#9ca3af', marginTop: '0.25rem' }}>
-                                                    {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                                </div>
-                                            </li>
-                                        ))}
-                                    </ul>
-                                )}
-                            </div>
-                            <div className={styles.modalActions}>
-                                <button
-                                    className={styles.submitModalBtn}
-                                    onClick={() => setShowActivityModal(false)}
-                                    style={{ width: '100%' }}
-                                >
-                                    Close
-                                </button>
+            {editingItem && (
+                <div className={styles.modalOverlay}>
+                    <div className={styles.modal}>
+                        <h2 className={styles.modalTitle}>Set Cost: {editingItem.name}</h2>
+                        <div className={styles.modalActions} style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '0.5rem', marginBottom: '1rem', width: '100%' }}>
+                            <label style={{ color: '#aaa', fontSize: '0.9rem' }}>Pricing Basis (Click to select input mode):</label>
+                            <div style={{ display: 'flex', gap: '1rem' }}>
+                                <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: lastBasis === 'unit' ? '#fbbf24' : 'white' }}>
+                                    <input type="radio" checked={lastBasis === 'unit'} onChange={() => setLastBasis('unit')} /> Unit (Bottle/Can)
+                                </label>
+                                <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: lastBasis === '6' ? '#fbbf24' : 'white' }}>
+                                    <input type="radio" checked={lastBasis === '6'} onChange={() => setLastBasis('6')} /> 6-Pack
+                                </label>
+                                <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: lastBasis === '24' ? '#fbbf24' : 'white' }}>
+                                    <input type="radio" checked={lastBasis === '24'} onChange={() => setLastBasis('24')} /> 24-Pack
+                                </label>
                             </div>
                         </div>
+
+                        <div className={styles.formGroup} style={lastBasis !== 'unit' ? { opacity: 0.6 } : {}}>
+                            <label className={styles.label}>Unit Cost ($)</label>
+                            <input
+                                className={styles.input}
+                                type="number"
+                                step="0.01"
+                                value={editCost}
+                                onChange={(e) => { setLastBasis('unit'); handleCostChange(e.target.value, 'unit'); }}
+                            />
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                            <div className={styles.formGroup} style={lastBasis !== '6' ? { opacity: 0.6 } : {}}>
+                                <label className={styles.label}>6-Pack Price</label>
+                                <input className={styles.input} type="number" step="0.01" value={pack6Cost} onChange={(e) => { setLastBasis('6'); handleCostChange(e.target.value, '6'); }} />
+                            </div>
+                            <div className={styles.formGroup} style={lastBasis !== '24' ? { opacity: 0.6 } : {}}>
+                                <label className={styles.label}>24-Pack Price</label>
+                                <input className={styles.input} type="number" step="0.01" value={pack24Cost} onChange={(e) => { setLastBasis('24'); handleCostChange(e.target.value, '24'); }} />
+                            </div>
+                        </div>
+
+                        <div style={{ marginTop: '0.5rem', marginBottom: '1rem', color: '#fbbf24', fontSize: '0.9rem' }}>
+                            {lastBasis === 'unit' && `Saving Unit Cost: $${editCost}`}
+                            {lastBasis === '6' && `Saving Unit Cost: $${editCost} (Derived from 6-Pack: $${pack6Cost})`}
+                            {lastBasis === '24' && `Saving Unit Cost: $${editCost} (Derived from 24-Pack: $${pack24Cost})`}
+                        </div>
+
+                        <div className={styles.modalActions}>
+                            <button type="button" className={styles.cancelBtn} onClick={() => setEditingItem(null)}>Cancel</button>
+                            <button type="button" className={styles.submitModalBtn} onClick={saveCost}>Save Cost</button>
+                        </div>
                     </div>
-                )
-            }
-        </div >
+                </div>
+            )}
+
+            {showActivityModal && (
+                <div className={styles.modalOverlay}>
+                    <div className={styles.modal}>
+                        <h2 className={styles.modalTitle}>Session Activity</h2>
+                        <div style={{ maxHeight: '300px', overflowY: 'auto', marginBottom: '1rem' }}>
+                            {myActivity.length === 0 ? <div style={{ color: '#9ca3af', textAlign: 'center' }}>No activity in this session.</div> : (
+                                <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                                    {myActivity.map(log => (
+                                        <li key={log.id} style={{ borderBottom: '1px solid #374151', padding: '0.75rem 0' }}>
+                                            <div style={{ fontWeight: 'bold', color: 'white' }}>{log.details}</div>
+                                            <div style={{ fontSize: '0.8rem', color: '#9ca3af', marginTop: '0.25rem' }}>
+                                                {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                            </div>
+                                        </li>
+                                    ))}
+                                </ul>
+                            )}
+                        </div>
+                        <div className={styles.modalActions}>
+                            <button
+                                className={styles.submitModalBtn}
+                                onClick={() => router.push(user.role === 'admin' ? '/admin/dashboard' : '/')}
+                                style={{ width: '100%' }}
+                            >
+                                Return to Dashboard
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
     );
 }

@@ -148,37 +148,29 @@
 }
 
 .stockBtn {
-    width: 2.5rem;
-    height: 2.5rem;
+    width: 3.5rem;
+    height: 3.5rem;
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 1.5rem;
+    font-size: 1.75rem;
     font-weight: bold;
     transition: all 0.2s;
 }
 
 .minusBtn {
     background-color: #374151;
-    /* gray-700 */
     color: #f87171;
-    /* red-400 */
+    margin-right: 0.5rem;
 }
 
-.minusBtn:hover {
-    background-color: #4b5563;
-    /* gray-600 */
-}
-
-.plusBtn {
-    background-color: #374151;
-    color: #34d399;
-    /* emerald-400 */
-}
-
-.plusBtn:hover {
-    background-color: #4b5563;
+/* ... */
+.stockGroup {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 0.5rem;
 }
 
 .plusBtn:disabled {

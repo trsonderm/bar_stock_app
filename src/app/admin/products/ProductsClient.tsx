@@ -7,6 +7,7 @@ interface Item {
     id: number;
     name: string;
     type: string;
+    secondary_type?: string;
     unit_cost: number;
     quantity: number;
 }
@@ -14,6 +15,7 @@ interface Item {
 interface Category {
     id: number;
     name: string;
+    sub_categories?: string[];
 }
 
 export default function ProductsClient() {
@@ -79,6 +81,7 @@ export default function ProductsClient() {
                     id: editingId,
                     name: editForm.name,
                     type: editForm.type,
+                    secondary_type: editForm.secondary_type,
                     unit_cost: editForm.unit_cost,
                     quantity: editForm.quantity
                 })
