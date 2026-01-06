@@ -22,6 +22,7 @@ export default function AdminNav() {
             {isActive('/admin/categories') ? <span className={styles.navItemActive}>Categories</span> : <a href="/admin/categories" className={styles.navItem}>Categories</a>}
             {isActive('/admin/query') ? <span className={styles.navItemActive}>Query</span> : <a href="/admin/query" className={styles.navItem}>Query</a>}
             {isActive('/admin/settings') ? <span className={styles.navItemActive}>Settings</span> : <a href="/admin/settings" className={styles.navItem}>Settings</a>}
+            {isActive('/admin/products') ? <span className={styles.navItemActive}>Product List</span> : <a href="/admin/products" className={styles.navItem}>Product List</a>}
             <a href="/inventory" className={styles.navItem} target="_blank">Stock View</a>
             <button
                 onClick={handleLogout}

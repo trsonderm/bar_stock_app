@@ -105,18 +105,66 @@ export async function PUT(req: NextRequest) {
         const session = await getSession();
         if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-        // Permission: Admin or add_item_name (treating cost editing same as item editing)
+        // Permission check
         const canEdit = session.role === 'admin' || session.permissions.includes('add_item_name') || session.permissions.includes('all');
-        if (!canEdit) return NextResponse.json({ error: 'Permission denied' }, { status: 403 });
+        const canStock = session.role === 'admin' || session.permissions.includes('add_stock') || session.permissions.includes('all');
 
-        const { id, unit_cost } = await req.json();
+        if (!canEdit && !canStock) return NextResponse.json({ error: 'Permission denied' }, { status: 403 });
 
-        if (!id || unit_cost === undefined) return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
+        const { id, unit_cost, name, type, quantity } = await req.json();
 
-        db.prepare('UPDATE items SET unit_cost = ? WHERE id = ?').run(unit_cost, id);
+        if (!id) return NextResponse.json({ error: 'Missing ID' }, { status: 400 });
+
+        // Update Item Details (Name, Type, Cost)
+        if (canEdit) {
+            const updates = [];
+            const params = [];
+
+            if (unit_cost !== undefined) {
+                updates.push('unit_cost = ?');
+                params.push(unit_cost);
+            }
+            if (name !== undefined) {
+                updates.push('name = ?');
+                params.push(name);
+            }
+            if (type !== undefined) {
+                updates.push('type = ?');
+                params.push(type);
+            }
+
+            if (updates.length > 0) {
+                params.push(id);
+                db.prepare(`UPDATE items SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+            }
+        }
+
+        // update Quantity (Set Stock)
+        if (quantity !== undefined && canStock) {
+            // Get current quantity to calc difference for logs
+            const current = db.prepare('SELECT quantity FROM inventory WHERE item_id = ? AND location_id = 1').get(id) as { quantity: number };
+            const oldQty = current ? current.quantity : 0;
+            const diff = quantity - oldQty;
+
+            if (diff !== 0) {
+                db.prepare('UPDATE inventory SET quantity = ? WHERE item_id = ? AND location_id = 1').run(quantity, id);
+
+                const action = diff > 0 ? 'ADD_STOCK' : 'SUBTRACT_STOCK';
+                // Log the set action
+                db.prepare('INSERT INTO activity_logs (user_id, action, details) VALUES (?, ?, ?)')
+                    .run(session.id, action, JSON.stringify({
+                        itemId: id,
+                        quantity: Math.abs(diff),
+                        method: 'SET_ADMIN',
+                        oldQty,
+                        newQty: quantity
+                    }));
+            }
+        }
 
         return NextResponse.json({ success: true });
     } catch (e) {
+        console.error(e);
         return NextResponse.json({ error: 'Internal Error' }, { status: 500 });
     }
 }
