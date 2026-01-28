@@ -9,16 +9,17 @@ export async function GET(req: NextRequest) {
     try {
         // Try to get itemName from items table if possible, or fallback to details
         // We use json_extract to join.
-        const logs = db.prepare(`
+        // Postgres: (l.details->>'itemId')::int
+        const logs = await db.query(`
             SELECT 
                 l.id, l.action, l.details, l.timestamp,
                 i.name as db_item_name
             FROM activity_logs l
-            LEFT JOIN items i ON i.id = json_extract(l.details, '$.itemId')
-            WHERE l.user_id = ? 
+            LEFT JOIN items i ON i.id = (l.details->>'itemId')::int
+            WHERE l.user_id = $1 
             ORDER BY l.timestamp DESC 
             LIMIT 50
-        `).all(session.id);
+        `, [session.id]);
 
         // Enhance logs with correct name
         const enhancedLogs = logs.map((log: any) => {

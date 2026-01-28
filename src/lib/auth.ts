@@ -1,9 +1,8 @@
-import { db } from './db';
 import bcrypt from 'bcryptjs';
 import { SignJWT, jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
 
-const SECRET_KEY = new TextEncoder().encode(process.env.JWT_SECRET || 'fosters-secret-key-change-in-prod');
+const SECRET_KEY = new TextEncoder().encode(process.env.JWT_SECRET || 'topshelf-secret-key-change-in-prod');
 const ALG = 'HS256';
 
 export type UserRole = 'admin' | 'user';
@@ -12,6 +11,10 @@ export interface UserSession {
     id: number;
     firstName: string;
     lastName: string;
+    email?: string; // New
+    organizationId: number; // New
+    isSuperAdmin: boolean; // New
+    isImpersonating?: boolean; // New
     role: UserRole;
     permissions: string[];
     iat?: number;
@@ -25,7 +28,7 @@ export const COOKIE_OPTIONS = {
     maxAge: 60 * 60 * 24 * 7 // 7 days
 };
 
-export async function createSessionToken(user: { id: number; role: UserRole; permissions: string | string[]; firstName: string; lastName: string }) {
+export async function createSessionToken(user: { id: number; role: UserRole; permissions: string | string[]; firstName: string; lastName: string; email?: string; organizationId: number; isSuperAdmin?: boolean; isImpersonating?: boolean }) {
     const permissions = typeof user.permissions === 'string' ? JSON.parse(user.permissions) : user.permissions;
 
     const token = await new SignJWT({
@@ -33,7 +36,11 @@ export async function createSessionToken(user: { id: number; role: UserRole; per
         role: user.role,
         permissions,
         firstName: user.firstName,
-        lastName: user.lastName
+        lastName: user.lastName,
+        email: user.email,
+        organizationId: user.organizationId,
+        isSuperAdmin: user.isSuperAdmin || false,
+        isImpersonating: user.isImpersonating || false
     })
         .setProtectedHeader({ alg: ALG })
         .setIssuedAt()
@@ -58,6 +65,15 @@ export async function getSession(): Promise<UserSession | null> {
 }
 
 
+
+export function verifyPassword(password: string, hash: string): boolean {
+    return bcrypt.compareSync(password, hash);
+}
+
+export function hashPassword(password: string): string {
+    const salt = bcrypt.genSaltSync(10);
+    return bcrypt.hashSync(password, salt);
+}
 
 export function verifyPin(pin: string, hash: string): boolean {
     // 1. Plaintext check (New standard)

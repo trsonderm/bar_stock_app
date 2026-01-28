@@ -1,6 +1,6 @@
 {
-    "name": "Foster's Bar Stock",
-    "short_name": "Foster's",
+    "name": "Topshelf Stock",
+    "short_name": "Topshelf",
     "start_url": "/inventory",
     "display": "standalone",
     "background_color": "#111827",

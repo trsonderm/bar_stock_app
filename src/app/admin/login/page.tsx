@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-import styles from '../../login.module.css';
+import styles from '../../login/login.module.css';
 
 export default function AdminLoginPage() {
     const [pin, setPin] = useState('');
@@ -27,7 +27,9 @@ export default function AdminLoginPage() {
 
             if (res.ok) {
                 if (data.role === 'admin') {
-                    router.push('/admin/dashboard');
+                    router.refresh();
+                    // Force full reload so AdminLayout picks up the session cookie immediately
+                    window.location.href = '/admin/dashboard';
                 } else {
                     setError('Access Denied: Not an admin');
                 }

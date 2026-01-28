@@ -1,4 +1,3 @@
-
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
@@ -8,7 +7,10 @@ export async function GET(req: NextRequest) {
         const session = await getSession();
         if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-        const categories = db.prepare('SELECT * FROM categories ORDER BY name ASC').all() as any[];
+        const categories = await db.query(
+            'SELECT * FROM categories WHERE organization_id = $1 ORDER BY name ASC',
+            [session.organizationId]
+        );
 
         const parsed = categories.map(c => ({
             ...c,
@@ -36,11 +38,13 @@ export async function POST(req: NextRequest) {
         const options = stock_options ? JSON.stringify(stock_options) : JSON.stringify([1]);
         const subCats = sub_categories ? JSON.stringify(sub_categories) : JSON.stringify([]);
 
-        const stmt = db.prepare('INSERT INTO categories (name, stock_options, sub_categories) VALUES (?, ?, ?)');
-        const res = stmt.run(name, options, subCats);
-        return NextResponse.json({ success: true, id: res.lastInsertRowid });
+        const res = await db.one(
+            'INSERT INTO categories (name, stock_options, sub_categories, organization_id) VALUES ($1, $2, $3, $4) RETURNING id',
+            [name, options, subCats, session.organizationId]
+        );
+        return NextResponse.json({ success: true, id: res.id });
     } catch (e: any) {
-        if (e.message.includes('UNIQUE')) {
+        if (e.message.includes('unique constraint') || e.message.includes('UNIQUE')) {
             return NextResponse.json({ error: 'Category already exists' }, { status: 400 });
         }
         return NextResponse.json({ error: 'Internal Error' }, { status: 500 });
@@ -58,11 +62,14 @@ export async function PUT(req: NextRequest) {
         const options = stock_options ? JSON.stringify(stock_options) : JSON.stringify([1]);
         const subCats = sub_categories ? JSON.stringify(sub_categories) : JSON.stringify([]);
 
-        db.prepare('UPDATE categories SET name = ?, stock_options = ?, sub_categories = ? WHERE id = ?').run(name, options, subCats, id);
+        await db.execute(
+            'UPDATE categories SET name = $1, stock_options = $2, sub_categories = $3 WHERE id = $4 AND organization_id = $5',
+            [name, options, subCats, id, session.organizationId]
+        );
 
         return NextResponse.json({ success: true });
     } catch (e: any) {
-        if (e.message.includes('UNIQUE')) {
+        if (e.message.includes('unique constraint') || e.message.includes('UNIQUE')) {
             return NextResponse.json({ error: 'Category name already exists' }, { status: 400 });
         }
         return NextResponse.json({ error: 'Internal Error' }, { status: 500 });
@@ -79,15 +86,15 @@ export async function DELETE(req: NextRequest) {
         if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 });
 
         // Check if used
-        const cat = db.prepare('SELECT name FROM categories WHERE id = ?').get(id) as { name: string } | undefined;
+        const cat = await db.one('SELECT name FROM categories WHERE id = $1 AND organization_id = $2', [id, session.organizationId]);
         if (!cat) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-        const used = db.prepare('SELECT COUNT(*) as count FROM items WHERE type = ?').get(cat.name) as { count: number };
-        if (used.count > 0) {
+        const used = await db.one('SELECT COUNT(*) as count FROM items WHERE type = $1', [cat.name]);
+        if (parseInt(used.count) > 0) {
             return NextResponse.json({ error: `Cannot delete: ${used.count} items are using this category.` }, { status: 400 });
         }
 
-        db.prepare('DELETE FROM categories WHERE id = ?').run(id);
+        await db.execute('DELETE FROM categories WHERE id = $1 AND organization_id = $2', [id, session.organizationId]);
         return NextResponse.json({ success: true });
     } catch (e) {
         return NextResponse.json({ error: 'Internal Error' }, { status: 500 });

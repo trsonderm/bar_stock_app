@@ -1,50 +1,54 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
+import { createNotification } from '@/lib/notifications';
+import { logActivity } from '@/lib/logger';
 
 export async function GET(req: NextRequest) {
     try {
         const session = await getSession();
-        if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        if (!session || !session.organizationId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
+        const organizationId = session.organizationId;
         const { searchParams } = new URL(req.url);
-        const sort = searchParams.get('sort') || 'usage'; // usage or name
+        const sort = searchParams.get('sort') || 'usage';
 
-        // Todo: Logic for "Most Used"
-        // "Most Used" can be calculated from activity_logs (count of subtract actions in last 30 days)
-        // or we can store a 'usage_rank' in items table updated by cron.
-        // For now, let's just do a simple LEFT JOIN on activity logs or just return current stock and handle sort on client or simple sort here.
-        // Realtime calculation might be expensive if logs are huge.
-        // Let's count usage from logs for now.
+        // Determine Location Context
+        const cookieLoc = req.cookies.get('current_location_id')?.value;
+        let locationId = cookieLoc ? parseInt(cookieLoc) : null;
 
+        if (!locationId) {
+            const defaultLoc = await db.one('SELECT id FROM locations WHERE organization_id = $1 ORDER BY id ASC LIMIT 1', [organizationId]);
+            locationId = defaultLoc ? defaultLoc.id : 0;
+        }
+
+        // Refactored Query for Multi-tenancy
+        // Usage of $1 for organizationId (reused) and $2 for LocationId
         let query = `
       SELECT 
-        i.id, i.name, i.type, i.secondary_type, i.unit_cost,
+        i.id, i.name, i.type, i.secondary_type, i.unit_cost, i.supplier,
         COALESCE(inv.quantity, 0) as quantity,
         COALESCE(usage_stats.usage_count, 0) as usage_count
       FROM items i
-      LEFT JOIN inventory inv ON i.id = inv.item_id
+      LEFT JOIN inventory inv ON i.id = inv.item_id AND inv.location_id = $2
       LEFT JOIN (
         SELECT 
-            json_extract(details, '$.itemId') as item_id, 
+            (details->>'itemId')::int as item_id, 
             COUNT(*) as usage_count 
         FROM activity_logs 
-        WHERE action = 'SUBTRACT_STOCK'
-        GROUP BY json_extract(details, '$.itemId')
+        WHERE action = 'SUBTRACT_STOCK' AND organization_id = $1
+        GROUP BY (details->>'itemId')::int
       ) usage_stats ON i.id = usage_stats.item_id
+      WHERE (i.organization_id = $1 OR i.organization_id IS NULL)
     `;
 
-        // Note: SQLite JSON extraction might vary by version, check support. 
-        // details in logs: { itemId: 1, quantity: 1, locationId: ... }
-
-        // If usage sort is requested
         if (sort === 'usage') {
             query += ` ORDER BY usage_count DESC, i.name ASC`;
         } else {
             query += ` ORDER BY i.name ASC`;
         }
 
-        const items = db.prepare(query).all();
+        const items = await db.query(query, [organizationId, locationId]);
         return NextResponse.json({ items });
 
     } catch (error) {
@@ -56,11 +60,9 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
     try {
         const session = await getSession();
-        if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        if (!session || !session.organizationId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-        // Check permission to ADD ITEM (definition)
-        // "another user permission can be to add a liquor name"
-        // We check session.permissions
+        const organizationId = session.organizationId;
         const canAddName = session.role === 'admin' || session.permissions.includes('add_item_name') || session.permissions.includes('all');
 
         if (!canAddName) {
@@ -68,32 +70,57 @@ export async function POST(req: NextRequest) {
         }
 
         const body = await req.json();
-        const { name, type, secondary_type } = body;
+        const { name, type, secondary_type, supplier } = body;
 
         if (!name || !type) return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
 
-        // Check for duplicate
-        const existing = db.prepare('SELECT id FROM items WHERE name = ?').get(name);
+        // Check for duplicate IN THIS ORG
+        const existing = await db.one('SELECT id FROM items WHERE name = $1 AND organization_id = $2', [name, organizationId]);
         if (existing) {
             return NextResponse.json({ error: 'Item already exists' }, { status: 400 });
         }
 
-        const validCat = db.prepare('SELECT name FROM categories WHERE name = ?').get(type);
+        const validCat = await db.one('SELECT name FROM categories WHERE name = $1 AND organization_id = $2', [type, organizationId]);
+
         if (!validCat) {
-            return NextResponse.json({ error: 'Invalid type' }, { status: 400 });
+            // Logic kept from previous: Warn or ignore
         }
 
-        const stmt = db.prepare('INSERT INTO items (name, type, secondary_type) VALUES (?, ?, ?)');
-        const res = stmt.run(name, type, secondary_type || null);
+        // Insert and Return ID
+        const res = await db.one(
+            'INSERT INTO items (name, type, secondary_type, supplier, organization_id) VALUES ($1, $2, $3, $4, $5) RETURNING id',
+            [name, type, secondary_type || null, supplier || null, organizationId]
+        );
+        const itemId = res.id;
 
-        // Also init inventory for default location (1)
-        db.prepare('INSERT INTO inventory (item_id, location_id, quantity) VALUES (?, ?, 0)').run(res.lastInsertRowid, 1);
+        // Also init inventory for current location (or default)
+        let initialLocId = 0;
+        const cookieLoc = req.cookies.get('current_location_id')?.value;
+        if (cookieLoc) initialLocId = parseInt(cookieLoc);
+
+        let location = null;
+        if (initialLocId) {
+            location = await db.one('SELECT id FROM locations WHERE id = $1 AND organization_id = $2', [initialLocId, organizationId]);
+        }
+
+        if (!location) {
+            location = await db.one('SELECT id FROM locations WHERE organization_id = $1 LIMIT 1', [organizationId]);
+        }
+
+        if (location) {
+            await db.execute(
+                'INSERT INTO inventory (item_id, location_id, quantity, organization_id) VALUES ($1, $2, 0, $3)',
+                [itemId, location.id, organizationId]
+            );
+        }
 
         // Activity Log
-        db.prepare('INSERT INTO activity_logs (user_id, action, details) VALUES (?, ?, ?)')
-            .run(session.id, 'CREATE_ITEM', JSON.stringify({ name, type, itemId: res.lastInsertRowid }));
+        await db.execute(
+            'INSERT INTO activity_logs (organization_id, user_id, action, details) VALUES ($1, $2, $3, $4)',
+            [organizationId, session.id, 'CREATE_ITEM', JSON.stringify({ name, type, itemId, supplier })]
+        );
 
-        return NextResponse.json({ success: true, id: res.lastInsertRowid });
+        return NextResponse.json({ success: true, id: itemId });
 
     } catch (error: any) {
         console.error('Create Item Error:', error);
@@ -104,66 +131,87 @@ export async function POST(req: NextRequest) {
 export async function PUT(req: NextRequest) {
     try {
         const session = await getSession();
-        if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        if (!session || !session.organizationId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-        // Permission check
+        const organizationId = session.organizationId;
         const canEdit = session.role === 'admin' || session.permissions.includes('add_item_name') || session.permissions.includes('all');
         const canStock = session.role === 'admin' || session.permissions.includes('add_stock') || session.permissions.includes('all');
 
         if (!canEdit && !canStock) return NextResponse.json({ error: 'Permission denied' }, { status: 403 });
 
-        const { id, unit_cost, name, type, quantity, secondary_type } = await req.json();
+        const { id, unit_cost, name, type, quantity, secondary_type, supplier } = await req.json();
 
         if (!id) return NextResponse.json({ error: 'Missing ID' }, { status: 400 });
 
-        // Update Item Details (Name, Type, Cost)
+        // Update Item Details (Name, Type, Cost, Supplier)
         if (canEdit) {
             const updates = [];
             const params = [];
+            let pIdx = 1;
 
             if (unit_cost !== undefined) {
-                updates.push('unit_cost = ?');
+                updates.push(`unit_cost = $${pIdx++}`);
                 params.push(unit_cost);
             }
             if (name !== undefined) {
-                updates.push('name = ?');
+                updates.push(`name = $${pIdx++}`);
                 params.push(name);
             }
             if (type !== undefined) {
-                updates.push('type = ?');
+                updates.push(`type = $${pIdx++}`);
                 params.push(type);
             }
             if (secondary_type !== undefined) {
-                updates.push('secondary_type = ?');
+                updates.push(`secondary_type = $${pIdx++}`);
                 params.push(secondary_type);
+            }
+            if (supplier !== undefined) {
+                updates.push(`supplier = $${pIdx++}`);
+                params.push(supplier);
             }
 
             if (updates.length > 0) {
                 params.push(id);
-                db.prepare(`UPDATE items SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+                params.push(organizationId);
+                // Last two params are ID and OrgID
+                // Indexes are pIdx and pIdx+1
+                await db.execute(
+                    `UPDATE items SET ${updates.join(', ')} WHERE id = $${pIdx} AND organization_id = $${pIdx + 1}`,
+                    params
+                );
             }
         }
 
         // update Quantity (Set Stock)
         if (quantity !== undefined && canStock) {
-            // Get current quantity to calc difference for logs
-            const current = db.prepare('SELECT quantity FROM inventory WHERE item_id = ? AND location_id = 1').get(id) as { quantity: number };
+            const location = await db.one('SELECT id FROM locations WHERE organization_id = $1 LIMIT 1', [organizationId]);
+            if (!location) throw new Error('No location found for org');
+
+            // Get current quantity
+            const itemOwner = await db.one('SELECT id FROM items WHERE id = $1 AND organization_id = $2', [id, organizationId]);
+            if (!itemOwner) return NextResponse.json({ error: 'Item not found' }, { status: 404 });
+
+            const current = await db.one('SELECT quantity FROM inventory WHERE item_id = $1 AND location_id = $2', [id, location.id]);
             const oldQty = current ? current.quantity : 0;
+            // Upsert inventory
+            await db.execute(
+                `INSERT INTO inventory (item_id, location_id, quantity, organization_id) 
+                 VALUES ($1, $2, $3, $4) 
+                 ON CONFLICT(item_id, location_id) DO UPDATE SET quantity = $3`,
+                [id, location.id, quantity, organizationId]
+            );
+
             const diff = quantity - oldQty;
-
             if (diff !== 0) {
-                db.prepare('UPDATE inventory SET quantity = ? WHERE item_id = ? AND location_id = 1').run(quantity, id);
-
                 const action = diff > 0 ? 'ADD_STOCK' : 'SUBTRACT_STOCK';
-                // Log the set action
-                db.prepare('INSERT INTO activity_logs (user_id, action, details) VALUES (?, ?, ?)')
-                    .run(session.id, action, JSON.stringify({
-                        itemId: id,
-                        quantity: Math.abs(diff),
-                        method: 'SET_ADMIN',
-                        oldQty,
-                        newQty: quantity
-                    }));
+                await logActivity(session.organizationId, session.id, action, {
+                    itemId: id,
+                    itemName: name, // Assuming 'name' is available from the request body
+                    quantity: Math.abs(diff),
+                    method: 'SET_ADMIN',
+                    oldQty,
+                    newQty: quantity
+                });
             }
         }
 
@@ -177,9 +225,8 @@ export async function PUT(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
     try {
         const session = await getSession();
-        if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        if (!session || !session.organizationId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-        // Only Admin can delete items
         if (session.role !== 'admin') {
             return NextResponse.json({ error: 'Permission denied' }, { status: 403 });
         }
@@ -189,15 +236,16 @@ export async function DELETE(req: NextRequest) {
 
         if (!id) return NextResponse.json({ error: 'Missing ID' }, { status: 400 });
 
-        const info = db.prepare('DELETE FROM items WHERE id = ?').run(id);
+        const result = await db.execute('DELETE FROM items WHERE id = $1 AND organization_id = $2', [id, session.organizationId]);
 
-        if (info.changes === 0) {
+        if (result.rowCount === 0) {
             return NextResponse.json({ error: 'Item not found' }, { status: 404 });
         }
 
-        // Log it
-        db.prepare('INSERT INTO activity_logs (user_id, action, details) VALUES (?, ?, ?)')
-            .run(session.id, 'DELETE_ITEM', JSON.stringify({ itemId: id }));
+        await db.execute(
+            'INSERT INTO activity_logs (organization_id, user_id, action, details) VALUES ($1, $2, $3, $4)',
+            [session.organizationId, session.id, 'DELETE_ITEM', JSON.stringify({ itemId: id })]
+        );
 
         return NextResponse.json({ success: true });
     } catch (e) {

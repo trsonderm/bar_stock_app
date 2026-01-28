@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import styles from '../admin.module.css';
+import { Smartphone } from 'lucide-react';
+import NotificationSettings from '@/components/NotificationSettings';
 
 export default function SettingsClient() {
     const router = useRouter();
@@ -19,10 +21,15 @@ export default function SettingsClient() {
         low_stock_alert_enabled: 'false',
         low_stock_alert_emails: '',
         low_stock_alert_time: '14:00',
-        low_stock_alert_title: 'URGENT: Low Stock Alert'
+        low_stock_alert_title: 'URGENT: Low Stock Alert',
+        track_bottle_levels: 'true',
+        subdomain: ''
     });
+    const [options, setOptions] = useState<any[]>([]);
+    const [newOption, setNewOption] = useState('');
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const [registeringDevice, setRegisteringDevice] = useState(false);
 
     useEffect(() => {
         fetch('/api/admin/settings')
@@ -31,7 +38,56 @@ export default function SettingsClient() {
                 setSettings(prev => ({ ...prev, ...data.settings }));
                 setLoading(false);
             });
+        fetchOptions();
     }, []);
+
+    const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+
+    useEffect(() => {
+        const handler = (e: any) => {
+            e.preventDefault();
+            setDeferredPrompt(e);
+        };
+        window.addEventListener('beforeinstallprompt', handler);
+        return () => window.removeEventListener('beforeinstallprompt', handler);
+    }, []);
+
+    const handleInstallClick = async () => {
+        if (!deferredPrompt) return;
+        deferredPrompt.prompt();
+        const { outcome } = await deferredPrompt.userChoice;
+        if (outcome === 'accepted') {
+            setDeferredPrompt(null);
+        }
+    };
+
+    const fetchOptions = () => {
+        fetch('/api/admin/settings/options')
+            .then(res => res.json())
+            .then(data => setOptions(data.options || []));
+    };
+
+    const handleAddOption = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!newOption) return;
+        await fetch('/api/admin/settings/options', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ label: newOption })
+        });
+        setNewOption('');
+        fetchOptions();
+    };
+
+    const handleDeleteOption = async (id: number) => {
+        if (!confirm('Delete this option?')) return;
+        await fetch('/api/admin/settings/options', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id })
+        });
+        fetchOptions();
+    };
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
@@ -54,247 +110,181 @@ export default function SettingsClient() {
         }
     };
 
+    const handleRegisterDevice = async () => {
+        if (!confirm('Register this device for 90 days of PIN-only access?')) return;
+        setRegisteringDevice(true);
+        try {
+            // In a real app we'd get orgId from context. For now, we assume server handles it from session.
+            const res = await fetch('/api/auth/station-token', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ deviceName: navigator.userAgent })
+            });
+            if (res.ok) {
+                alert('Device Registered Successfully for 90 Days.');
+            } else {
+                alert('Failed to register device.');
+            }
+        } catch (e) {
+            console.error(e);
+            alert('Error registering device.');
+        } finally {
+            setRegisteringDevice(false);
+        }
+    };
+
     if (loading) return <div className={styles.container}>Loading...</div>;
 
     return (
         <>
             <div className={styles.grid}>
+
+                {/* Organization & App Section */}
                 <div className={styles.card} style={{ gridColumn: 'span 2' }}>
-                    <div className={styles.cardTitle}>Daily Reporting Configuration</div>
-                    <form onSubmit={handleSubmit}>
-                        <div style={{ marginBottom: '1rem' }}>
-                            <label className={styles.statLabel}>Recipients (comma separated)</label>
-                            <input
-                                name="report_emails"
-                                value={settings.report_emails}
-                                onChange={handleChange}
-                                className={styles.table}
-                                style={{ background: '#1f2937', color: 'white', padding: '0.5rem', border: '1px solid #374151', borderRadius: '0.25rem', width: '100%' }}
-                                placeholder="boss@bar.com, manager@bar.com"
-                            />
-                        </div>
-                        <div style={{ marginBottom: '1rem' }}>
-                            <label className={styles.statLabel}>Report Time (HH:MM 24h)</label>
-                            <input
-                                name="report_time"
-                                type="time"
-                                value={settings.report_time}
-                                onChange={handleChange}
-                                className={styles.table}
-                                style={{ background: '#1f2937', color: 'white', padding: '0.5rem', border: '1px solid #374151', borderRadius: '0.25rem', width: '100%' }}
-                            />
-                        </div>
+                    <div className={styles.cardTitle}>Organization & App</div>
 
+                    <div style={{ marginBottom: '2rem' }}>
                         <div style={{ marginBottom: '1rem' }}>
-                            <label className={styles.statLabel}>Low Stock Threshold</label>
-                            <input
-                                name="low_stock_threshold"
-                                type="number"
-                                value={settings.low_stock_threshold}
-                                onChange={handleChange}
-                                className={styles.table}
-                                style={{ background: '#1f2937', color: 'white', padding: '0.5rem', border: '1px solid #374151', borderRadius: '0.25rem', width: '100%' }}
-                            />
-                        </div>
-
-                        <div className={styles.cardTitle} style={{ marginTop: '2rem' }}>Configuration Options</div>
-
-                        <div style={{ marginBottom: '1rem' }}>
-                            <label className={styles.statLabel}>Report Title</label>
-                            <input
-                                name="report_title"
-                                value={settings.report_title}
-                                onChange={handleChange}
-                                className={styles.table}
-                                style={{ background: '#1f2937', color: 'white', padding: '0.5rem', border: '1px solid #374151', borderRadius: '0.25rem', width: '100%' }}
-                            />
-                        </div>
-
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                            <div style={{ marginBottom: '1rem' }}>
-                                <label className={styles.statLabel}>Backup Time (Daily)</label>
+                            <label className={styles.statLabel}>Organization URL ID (Subdomain)</label>
+                            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                                <span style={{ color: '#9ca3af' }}>https://fosters.com/</span>
                                 <input
-                                    name="backup_time"
-                                    type="time"
-                                    value={settings.backup_time}
-                                    onChange={handleChange}
+                                    value={settings.subdomain || ''}
+                                    onChange={(e) => setSettings(prev => ({ ...prev, subdomain: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '') }))}
+                                    placeholder="downtown-bar"
                                     className={styles.table}
-                                    style={{ background: '#1f2937', color: 'white', padding: '0.5rem', border: '1px solid #374151', borderRadius: '0.25rem', width: '100%' }}
+                                    style={{ background: '#1f2937', color: 'white', padding: '0.5rem', border: '1px solid #374151', borderRadius: '0.25rem', flex: 1 }}
                                 />
                             </div>
+                            <p style={{ fontSize: '0.8rem', color: '#6b7280', marginTop: '0.25rem' }}>
+                                Use this ID for custom login URLs. Must be unique.
+                            </p>
+                            <button
+                                onClick={handleSubmit}
+                                disabled={saving}
+                                style={{ marginTop: '0.5rem', padding: '0.5rem 1rem', background: '#3b82f6', color: 'white', borderRadius: '0.25rem', border: 'none', cursor: 'pointer' }}
+                            >
+                                Update URL ID
+                            </button>
                         </div>
+                    </div>
 
-                        <div className={styles.cardTitle} style={{ marginTop: '2rem' }}>Low Stock Alert Email</div>
-
-                        <div style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            <input
-                                type="checkbox"
-                                name="low_stock_alert_enabled"
-                                checked={settings.low_stock_alert_enabled === 'true'}
-                                onChange={(e) => setSettings(prev => ({ ...prev, low_stock_alert_enabled: e.target.checked ? 'true' : 'false' }))}
-                                style={{ width: '20px', height: '20px' }}
-                            />
-                            <label className={styles.statLabel} style={{ marginBottom: 0 }}>Enable Separate Alert Email</label>
+                    <div style={{ borderTop: '1px solid #374151', paddingTop: '1.5rem' }}>
+                        <div className={styles.cardTitle} style={{ fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <Smartphone size={20} className="text-green-500" /> Mobile App Shortcut
                         </div>
+                        <p style={{ color: '#9ca3af', marginBottom: '1rem' }}>
+                            Install this app to your Android home screen for quick fullscreen access.
+                        </p>
 
-                        <div style={{ marginBottom: '1rem' }}>
-                            <label className={styles.statLabel}>Email Subject Title</label>
-                            <input
-                                name="low_stock_alert_title"
-                                value={settings.low_stock_alert_title}
-                                onChange={handleChange}
-                                className={styles.table}
-                                style={{ background: '#1f2937', color: 'white', padding: '0.5rem', border: '1px solid #374151', borderRadius: '0.25rem', width: '100%' }}
-                                placeholder="URGENT: Low Stock Alert"
-                            />
-                        </div>
-
-                        {settings.low_stock_alert_enabled === 'true' && (
-                            <>
-                                <div style={{ marginBottom: '1rem' }}>
-                                    <label className={styles.statLabel}>Alert Emails (comma separated)</label>
-                                    <input
-                                        name="low_stock_alert_emails"
-                                        value={settings.low_stock_alert_emails}
-                                        onChange={handleChange}
-                                        className={styles.table}
-                                        style={{ background: '#1f2937', color: 'white', padding: '0.5rem', border: '1px solid #374151', borderRadius: '0.25rem', width: '100%' }}
-                                        placeholder="manager@bar.com"
-                                    />
-                                </div>
-                                <div style={{ marginBottom: '1rem' }}>
-                                    <label className={styles.statLabel}>Alert Time (HH:MM 24h)</label>
-                                    <input
-                                        name="low_stock_alert_time"
-                                        type="time"
-                                        value={settings.low_stock_alert_time}
-                                        onChange={handleChange}
-                                        className={styles.table}
-                                        style={{ background: '#1f2937', color: 'white', padding: '0.5rem', border: '1px solid #374151', borderRadius: '0.25rem', width: '100%' }}
-                                    />
-                                </div>
-                            </>
+                        {deferredPrompt ? (
+                            <button
+                                onClick={handleInstallClick}
+                                style={{
+                                    padding: '0.75rem 1.5rem',
+                                    background: '#059669',
+                                    color: 'white',
+                                    borderRadius: '0.5rem',
+                                    border: 'none',
+                                    cursor: 'pointer',
+                                    fontWeight: 'bold',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.5rem'
+                                }}
+                            >
+                                <Smartphone size={18} /> Add to Home Screen
+                            </button>
+                        ) : (
+                            <div style={{ background: '#1f2937', padding: '1rem', borderRadius: '0.5rem', border: '1px solid #374151' }}>
+                                <p style={{ color: '#e5e7eb', margin: '0 0 0.5rem 0', fontWeight: 'bold' }}>To install manually on Android (Chrome):</p>
+                                <ol style={{ margin: 0, paddingLeft: '1.2rem', color: '#d1d5db', fontSize: '0.9rem' }}>
+                                    <li>Tap the browser menu (⋮) at the top right.</li>
+                                    <li>Select <strong>"Add to Home screen"</strong> or <strong>"Install App"</strong>.</li>
+                                </ol>
+                            </div>
                         )}
+                    </div>
+                </div>
 
-                        <div className={styles.cardTitle} style={{ marginTop: '2rem' }}>Email Server (SMTP)</div>
-
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                            <div style={{ marginBottom: '1rem' }}>
-                                <label className={styles.statLabel}>Host</label>
-                                <input name="smtp_host" value={settings.smtp_host} onChange={handleChange} className={styles.table} style={{ background: '#1f2937', color: 'white', padding: '0.5rem', border: '1px solid #374151', borderRadius: '0.25rem', width: '100%' }} />
+                <div className={styles.card} style={{ gridColumn: 'span 2' }}>
+                    <div className={styles.cardTitle} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <Smartphone size={20} className="text-amber-500" /> Station Mode (Kiosk)
+                    </div>
+                    <p style={{ color: '#9ca3af', marginBottom: '1rem' }}>
+                        Register this current device to allow 90-day persistent access via PIN code only.
+                        Useful for bar terminals (iPads, POS).
+                    </p>
+                    <div style={{ background: '#1f2937', padding: '1rem', borderRadius: '0.5rem', border: '1px solid #374151' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div>
+                                <h4 style={{ color: 'white', margin: '0 0 0.25rem 0' }}>Enable Persistent Access</h4>
+                                <p style={{ color: '#9ca3af', fontSize: '0.85rem', margin: 0 }}>
+                                    Bypasses email/password login for 90 days on this browser.
+                                </p>
                             </div>
-                            <div style={{ marginBottom: '1rem' }}>
-                                <label className={styles.statLabel}>Port</label>
-                                <input name="smtp_port" value={settings.smtp_port} onChange={handleChange} className={styles.table} style={{ background: '#1f2937', color: 'white', padding: '0.5rem', border: '1px solid #374151', borderRadius: '0.25rem', width: '100%' }} />
-                            </div>
-                            <div style={{ marginBottom: '1rem' }}>
-                                <label className={styles.statLabel}>User</label>
-                                <input name="smtp_user" value={settings.smtp_user} onChange={handleChange} className={styles.table} style={{ background: '#1f2937', color: 'white', padding: '0.5rem', border: '1px solid #374151', borderRadius: '0.25rem', width: '100%' }} />
-                            </div>
-                            <div style={{ marginBottom: '1rem' }}>
-                                <label className={styles.statLabel}>Password</label>
-                                <input name="smtp_pass" type="password" value={settings.smtp_pass} onChange={handleChange} className={styles.table} style={{ background: '#1f2937', color: 'white', padding: '0.5rem', border: '1px solid #374151', borderRadius: '0.25rem', width: '100%' }} />
-                            </div>
+                            <button
+                                onClick={handleRegisterDevice}
+                                disabled={registeringDevice}
+                                style={{
+                                    padding: '0.5rem 1.5rem',
+                                    background: registeringDevice ? '#4b5563' : '#059669',
+                                    color: 'white',
+                                    borderRadius: '0.25rem',
+                                    border: 'none',
+                                    cursor: registeringDevice ? 'not-allowed' : 'pointer',
+                                    fontWeight: 'bold'
+                                }}
+                            >
+                                {registeringDevice ? 'Registering...' : 'Register Device'}
+                            </button>
                         </div>
+                    </div>
+                </div>
 
-                        <button
-                            type="submit"
-                            disabled={saving}
-                            style={{ marginTop: '1rem', padding: '0.75rem 2rem', background: '#d97706', color: 'white', borderRadius: '0.5rem', fontWeight: 'bold', cursor: 'pointer' }}
-                        >
-                            {saving ? 'Saving...' : 'Save Configuration'}
-                        </button>
+                <div className={styles.card} style={{ gridColumn: 'span 2' }}>
+                    <NotificationSettings />
+                </div>
+
+                <div className={styles.card} style={{ gridColumn: 'span 2' }}>
+                    <div className={styles.cardTitle}>Bottle Level Tracking</div>
+                    <p style={{ color: '#9ca3af', fontSize: '0.9rem', marginBottom: '1rem' }}>
+                        If enabled, staff will be asked to record the "Existing Bottle Level" when they replace a bottle (Subtract Stock) for Wine/Liquor.
+                    </p>
+
+                    <div style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <input
+                            type="checkbox"
+                            checked={settings.track_bottle_levels === 'true'}
+                            onChange={(e) => setSettings(prev => ({ ...prev, track_bottle_levels: e.target.checked ? 'true' : 'false' }))}
+                            style={{ width: '20px', height: '20px' }}
+                        />
+                        <label className={styles.statLabel} style={{ marginBottom: 0, color: 'white' }}>Enable Tracking</label>
+                    </div>
+                    {/* Save button again for convenience if they just toggled this */}
+                    <button onClick={handleSubmit} style={{ marginBottom: '2rem', padding: '0.5rem 1rem', background: '#374151', color: 'white', borderRadius: '0.25rem', cursor: 'pointer', border: 'none' }}>
+                        Save Setting
+                    </button>
+
+                    <div className={styles.cardTitle} style={{ fontSize: '1rem' }}>Previous Shift Options</div>
+                    <ul style={{ listStyle: 'none', padding: 0 }}>
+                        {options.map(o => (
+                            <li key={o.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem', background: '#1f2937', marginBottom: '0.5rem', borderRadius: '0.25rem' }}>
+                                <span>{o.label}</span>
+                                <button onClick={() => handleDeleteOption(o.id)} style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer' }}>Delete</button>
+                            </li>
+                        ))}
+                    </ul>
+                    <form onSubmit={handleAddOption} style={{ display: 'flex', gap: '0.5rem' }}>
+                        <input
+                            value={newOption}
+                            onChange={e => setNewOption(e.target.value)}
+                            placeholder="New Option (e.g. Less than 3 shots)"
+                            className={styles.table}
+                            style={{ background: '#1f2937', color: 'white', padding: '0.5rem', border: '1px solid #374151', borderRadius: '0.25rem', flex: 1 }}
+                        />
+                        <button type="submit" style={{ padding: '0.5rem 1rem', background: '#10b981', color: 'white', border: 'none', borderRadius: '0.25rem', cursor: 'pointer' }}>Add</button>
                     </form>
-                </div>
-
-                <div className={styles.card} style={{ gridColumn: 'span 2', marginTop: '2rem' }}>
-                    <div className={styles.cardTitle}>Report Preview (Mockup)</div>
-                    <p style={{ color: '#9ca3af', marginBottom: '1rem' }}>
-                        The report covers the <strong>Business Day</strong> and now includes <strong>No Stock</strong> and <strong>Low Stock</strong> alerts based on your threshold.
-                    </p>
-
-                    <div style={{ background: 'white', border: '1px solid #ccc', borderRadius: '0.5rem', overflow: 'hidden', fontFamily: 'sans-serif', color: '#1f2937' }}>
-                        <div style={{ background: '#111827', color: 'white', padding: '1rem' }}>
-                            <h2 style={{ margin: 0, fontSize: '1.25rem' }}>Daily Stock Report</h2>
-                            <p style={{ margin: '0.25rem 0 0 0', opacity: 0.8, fontSize: '0.875rem' }}>Jan 3, 7:00 AM — Jan 4, 5:00 AM</p>
-                        </div>
-
-                        <div style={{ background: '#f8fafc', padding: '15px', margin: '20px 0 0 0', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-around' }}>
-                            <div style={{ textAlign: 'center' }}>
-                                <div style={{ fontSize: '0.85em', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Total Usage Cost</div>
-                                <div style={{ fontSize: '1.5em', fontWeight: 'bold', color: '#ef4444' }}>$52.00</div>
-                            </div>
-                            <div style={{ textAlign: 'center' }}>
-                                <div style={{ fontSize: '0.85em', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Total Stock Added</div>
-                                <div style={{ fontSize: '1.5em', fontWeight: 'bold', color: '#10b981' }}>$350.00</div>
-                            </div>
-                        </div>
-
-                        <div style={{ padding: '1rem 1rem 0 1rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                            <div style={{ background: '#fff', padding: '1rem', borderRadius: '0.5rem', border: '1px solid #e5e7eb' }}>
-                                <h3 style={{ margin: '0 0 0.5rem 0', color: '#1f2937', fontSize: '1rem' }}>Liquor Cost by Bartender</h3>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #eee', padding: '0.25rem 0' }}><span>Alice</span><strong>$24.00</strong></div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #eee', padding: '0.25rem 0' }}><span>Bob</span><strong>$28.00</strong></div>
-                            </div>
-                        </div>
-
-                        <div style={{ padding: '1rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                            <div style={{ background: '#f3f4f6', padding: '1rem', borderRadius: '0.5rem' }}>
-                                <h3 style={{ margin: '0 0 0.5rem 0', color: '#ef4444', fontSize: '1rem' }}>🔻 Usage</h3>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #ddd', padding: '0.25rem 0' }}><span>Bud Light</span><strong>24</strong></div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #ddd', padding: '0.25rem 0' }}><span>Vodka</span><strong>2</strong></div>
-                            </div>
-                            <div style={{ background: '#ecfdf5', padding: '1rem', borderRadius: '0.5rem' }}>
-                                <h3 style={{ margin: '0 0 0.5rem 0', color: '#10b981', fontSize: '1rem' }}>✅ Restock</h3>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #ddd', padding: '0.25rem 0' }}><span>Jack Daniels</span><strong>12</strong></div>
-                            </div>
-                        </div>
-
-                        {/* New Reports Section */}
-                        <div style={{ padding: '0 1rem 1rem 1rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                            <div style={{ background: '#fee2e2', padding: '1rem', borderRadius: '0.5rem', border: '1px solid #fca5a5' }}>
-                                <h3 style={{ margin: '0 0 0.5rem 0', color: '#dc2626', fontSize: '1rem' }}>❌ No Stock (0 Qty)</h3>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #fca5a5', padding: '0.25rem 0' }}><span>Tequila Silver</span><strong>0</strong></div>
-                            </div>
-                            <div style={{ background: '#ffedd5', padding: '1rem', borderRadius: '0.5rem', border: '1px solid #fdba74' }}>
-                                <h3 style={{ margin: '0 0 0.5rem 0', color: '#ea580c', fontSize: '1rem' }}>⚠️ Low Stock (&le; {settings.low_stock_threshold})</h3>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #fdba74', padding: '0.25rem 0' }}><span>Rum</span><strong>3</strong></div>
-                            </div>
-                        </div>
-
-                        <div style={{ padding: '1rem' }}>
-                            <h3 style={{ borderBottom: '2px solid #eee', paddingBottom: '0.5rem' }}>Detailed Activity</h3>
-                            <table style={{ width: '100%', fontSize: '0.875rem' }}>
-                                <tr style={{ color: '#666', textAlign: 'left' }}><th>Time</th><th>User</th><th>Item</th><th>Action</th></tr>
-                                <tr><td>14:02</td><td>Alice</td><td>Bud Light</td><td style={{ color: '#ef4444' }}>-24 (Stk: 48)</td></tr>
-                                <tr><td>16:45</td><td>Bob</td><td>Jack Daniels</td><td style={{ color: '#10b981' }}>+12 (Stk: 20)</td></tr>
-                            </table>
-                        </div>
-                    </div>
-
-                </div>
-
-                <div className={styles.card} style={{ gridColumn: 'span 2', marginTop: '2rem' }}>
-                    <div className={styles.cardTitle}>Low Stock Alert Preview (Mockup)</div>
-                    <p style={{ color: '#9ca3af', marginBottom: '1rem' }}>
-                        This is how the alert email will look. It uses your custom title and threshold.
-                    </p>
-
-                    <div style={{ background: 'white', border: '1px solid #ccc', borderRadius: '0.5rem', overflow: 'hidden', fontFamily: 'sans-serif', color: '#1f2937', maxWidth: '600px', margin: '0 auto' }}>
-                        <div style={{ background: '#7f1d1d', color: 'white', padding: '1rem' }}>
-                            <h2 style={{ margin: 0, fontSize: '1.25rem', color: 'white' }}>⚠️ {settings.low_stock_alert_title || 'URGENT: Low Stock Alert'}</h2>
-                        </div>
-                        <div style={{ padding: '1.5rem' }}>
-                            <p style={{ marginTop: 0 }}>The following items are at or below the threshold ({settings.low_stock_threshold}):</p>
-                            <ul style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: '0.5rem', padding: '1rem 2rem' }}>
-                                <li style={{ marginBottom: '0.5rem' }}>Rum: <b>3</b></li>
-                                <li style={{ marginBottom: '0.5rem' }}>Tequila Silver: <b>0</b></li>
-                            </ul>
-                            <div style={{ marginTop: '1.5rem' }}>
-                                <a href="#" style={{ background: '#c2410c', color: 'white', textDecoration: 'none', padding: '0.5rem 1rem', borderRadius: '0.25rem', fontSize: '0.9rem' }}>Go to Dashboard</a>
-                            </div>
-                        </div>
-                    </div>
                 </div>
 
             </div>

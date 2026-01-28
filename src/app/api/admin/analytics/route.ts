@@ -9,38 +9,40 @@ export async function GET(req: NextRequest) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        // Analytics:
-        // 1. Total Activity Today
-        // 2. Most Active User
-        // 3. Recent Logs
-
+        const orgId = session.organizationId;
         const today = new Date().toISOString().split('T')[0];
 
-        const totalActivity = db.prepare('SELECT COUNT(*) as count FROM activity_logs WHERE DATE(timestamp) = ?').get(today) as { count: number };
+        // 1. Total Activity Today
+        const totalActivity = await db.one(`
+            SELECT COUNT(*) as count 
+            FROM activity_logs 
+            WHERE organization_id = $1 AND DATE(timestamp) = $2
+        `, [orgId, today]);
 
-        // Most active user today
-        const topUser = db.prepare(`
-        SELECT u.first_name, COUNT(*) as count 
-        FROM activity_logs l 
-        JOIN users u ON l.user_id = u.id 
-        WHERE DATE(l.timestamp) = ? 
-        GROUP BY l.user_id 
-        ORDER BY count DESC 
-        LIMIT 1
-    `).get(today) as { first_name: string, count: number } | undefined;
+        // 2. Most active user today
+        const topUser = await db.one(`
+            SELECT u.first_name, COUNT(*) as count 
+            FROM activity_logs l 
+            JOIN users u ON l.user_id = u.id 
+            WHERE l.organization_id = $1 AND DATE(l.timestamp) = $2 
+            GROUP BY l.user_id, u.first_name
+            ORDER BY count DESC 
+            LIMIT 1
+        `, [orgId, today]);
 
-        // Recent Logs (Limit 20)
-        const recentLogs = db.prepare(`
-        SELECT l.id, u.first_name, l.action, l.details, l.timestamp 
-        FROM activity_logs l
-        LEFT JOIN users u ON l.user_id = u.id
-        ORDER BY l.timestamp DESC
-        LIMIT 20
-    `).all();
+        // 3. Recent Logs (Limit 20)
+        const recentLogs = await db.query(`
+            SELECT l.id, u.first_name, l.action, l.details, l.timestamp 
+            FROM activity_logs l
+            LEFT JOIN users u ON l.user_id = u.id
+            WHERE l.organization_id = $1
+            ORDER BY l.timestamp DESC
+            LIMIT 20
+        `, [orgId]);
 
         return NextResponse.json({
             stats: {
-                todayCount: totalActivity.count,
+                todayCount: totalActivity ? parseInt(totalActivity.count) : 0,
                 topUser: topUser ? `${topUser.first_name} (${topUser.count})` : 'N/A'
             },
             logs: recentLogs

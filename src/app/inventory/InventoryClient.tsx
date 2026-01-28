@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import styles from './inventory.module.css';
+import NotificationBell from '@/components/NotificationBell';
 
 interface Item {
     id: number;
@@ -27,7 +28,14 @@ interface UserSession {
     iat?: number;
 }
 
-export default function InventoryClient({ user }: { user: UserSession }) {
+// ... imports
+interface InventoryClientProps {
+    user: UserSession;
+    trackBottleLevels: boolean;
+    bottleOptions: any[];
+}
+
+export default function InventoryClient({ user, trackBottleLevels: initialTrack, bottleOptions: initialOptions }: InventoryClientProps) {
     const [items, setItems] = useState<Item[]>([]);
     const [myActivity, setMyActivity] = useState<ActivityLog[]>([]);
     const [sort, setSort] = useState<'usage' | 'name'>('usage');
@@ -41,12 +49,22 @@ export default function InventoryClient({ user }: { user: UserSession }) {
     const [showModal, setShowModal] = useState(false);
     const [showActivityModal, setShowActivityModal] = useState(false);
 
+    // Bottle Level Logic
+    const [trackBottleLevels, setTrackBottleLevels] = useState(initialTrack);
+    const [bottleOptions, setBottleOptions] = useState<any[]>(initialOptions);
+    const [bottleModal, setBottleModal] = useState<{ show: boolean, itemId: number, amount: number, item?: Item } | null>(null);
+
     // New Item Inline State
     const [newItemName, setNewItemName] = useState('');
     const [newItemType, setNewItemType] = useState('Liquor');
     const [newItemSecondary, setNewItemSecondary] = useState('');
+    const [newItemSupplier, setNewItemSupplier] = useState('');
+    const [newItemCost, setNewItemCost] = useState('');
+    const [newItemQty, setNewItemQty] = useState('');
+    const [newItemTrackQty, setNewItemTrackQty] = useState(true);
 
     const [categories, setCategories] = useState<any[]>([]); // Full Category objects
+    const [suppliers, setSuppliers] = useState<{ id: number, name: string }[]>([]);
     const [loading, setLoading] = useState(false);
 
     // Cost Edit State
@@ -89,21 +107,28 @@ export default function InventoryClient({ user }: { user: UserSession }) {
         } catch { }
     };
 
-    const fetchCategories = async () => {
-        try {
-            const res = await fetch('/api/admin/categories');
-            const data = await res.json();
-            if (data.categories) {
-                setCategories(data.categories);
-            }
-        } catch { }
-    };
+
 
     useEffect(() => {
         fetchItems();
         fetchActivity();
-        fetchCategories();
+        fetchCat();
     }, [sort, sortDir]);
+
+    const fetchCat = async () => {
+        try {
+            const [catRes, suppRes] = await Promise.all([
+                fetch('/api/categories'),
+                fetch('/api/admin/suppliers')
+            ]);
+
+            const catData = await catRes.json();
+            const suppData = await suppRes.json();
+
+            if (catData.categories) setCategories(catData.categories);
+            if (suppData.suppliers) setSuppliers(suppData.suppliers);
+        } catch { }
+    };
 
     const toggleSort = (field: 'usage' | 'name') => {
         if (sort === field) {
@@ -114,7 +139,16 @@ export default function InventoryClient({ user }: { user: UserSession }) {
         }
     };
 
-    const handleAdjust = async (itemId: number, change: number) => {
+    const handleAdjust = async (itemId: number, change: number, bottleLevel?: string) => {
+
+        // Intercept for Bottle Level Tracking
+        if (change < 0 && trackBottleLevels && !bottleLevel) {
+            const item = items.find(i => i.id === itemId);
+            if (item && (item.type === 'Liquor' || item.type === 'Wine')) {
+                setBottleModal({ show: true, itemId, amount: change, item });
+                return;
+            }
+        }
         // Optimistic update
         setItems(prev => prev.map(i => i.id === itemId ? { ...i, quantity: Math.max(0, i.quantity + change) } : i));
 
@@ -122,7 +156,7 @@ export default function InventoryClient({ user }: { user: UserSession }) {
             const res = await fetch('/api/inventory/adjust', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ itemId, change })
+                body: JSON.stringify({ itemId, change, bottleLevel })
             });
             if (!res.ok) {
                 fetchItems(); // Sync back
@@ -140,20 +174,52 @@ export default function InventoryClient({ user }: { user: UserSession }) {
         if (!newItemName) return;
         setLoading(true);
         try {
+            // 1. Create the item
             const res = await fetch('/api/inventory', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name: newItemName, type: newItemType, secondary_type: newItemSecondary || undefined })
+                body: JSON.stringify({
+                    name: newItemName,
+                    type: newItemType,
+                    secondary_type: newItemSecondary || undefined,
+                    supplier: newItemSupplier || undefined,
+                    track_quantity: newItemTrackQty ? 1 : 0
+                })
             });
+
             if (res.ok) {
+                const data = await res.json();
+
+                // 2. If Cost or Qty provided, update immediately
+                if (newItemCost || newItemQty) {
+                    await fetch('/api/inventory', {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            id: data.id,
+                            unit_cost: newItemCost ? parseFloat(newItemCost) : 0,
+                            quantity: newItemQty ? parseInt(newItemQty) : 0
+                        })
+                    });
+                }
+
                 setShowModal(false);
+                // Reset form
                 setNewItemName('');
                 setNewItemSecondary('');
+                setNewItemSupplier('');
+                setNewItemCost('');
+                setNewItemQty('');
+                setNewItemTrackQty(true);
+
                 fetchItems();
             } else {
                 const data = await res.json();
                 alert(data.error || 'Failed to create item');
             }
+        } catch (e) {
+            console.error(e);
+            alert('Error creating item');
         } finally {
             setLoading(false);
         }
@@ -240,6 +306,9 @@ export default function InventoryClient({ user }: { user: UserSession }) {
                     <div className={styles.title} style={{ fontSize: '1rem', opacity: 0.7, margin: 0 }}>Foster's Stock</div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <div style={{ marginRight: '0.5rem', display: 'flex', alignItems: 'center' }}>
+                        <NotificationBell />
+                    </div>
                     {canAddItem && (
                         <button
                             onClick={() => setShowModal(true)}
@@ -366,8 +435,20 @@ export default function InventoryClient({ user }: { user: UserSession }) {
                                 {(() => {
                                     // Find category options
                                     const cat = categories.find(c => c.name === item.type);
-                                    // Default to [1] if not found or no options, or if fetching logic hasn't populated fully. 
-                                    const options = (cat && cat.stock_options && cat.stock_options.length > 0) ? cat.stock_options : [1];
+                                    let options = [1];
+
+                                    if (cat && cat.stock_options) {
+                                        // Ensure we handle both string JSON and parsed array
+                                        let parsed = cat.stock_options;
+                                        if (typeof parsed === 'string') {
+                                            try { parsed = JSON.parse(parsed); } catch { }
+                                        }
+                                        if (Array.isArray(parsed) && parsed.length > 0) {
+                                            // Ensure all are numbers
+                                            options = parsed.map((p: any) => parseInt(p)).filter((n: number) => !isNaN(n));
+                                            if (options.length === 0) options = [1];
+                                        }
+                                    }
 
                                     return (
                                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', justifyContent: 'flex-end', width: '100%' }}>
@@ -484,6 +565,77 @@ export default function InventoryClient({ user }: { user: UserSession }) {
                                 }
                                 return null;
                             })()}
+
+                            {/* New Fields: Supplier, Cost, Qty */}
+                            <div className={styles.formGroup}>
+                                <label className={styles.label}>Supplier (Optional)</label>
+                                {suppliers.length > 0 ? (
+                                    <select
+                                        className={styles.input}
+                                        value={newItemSupplier}
+                                        onChange={e => setNewItemSupplier(e.target.value)}
+                                    >
+                                        <option value="">Select a Supplier</option>
+                                        {suppliers.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                                    </select>
+                                ) : (
+                                    <input
+                                        className={styles.input}
+                                        value={newItemSupplier}
+                                        onChange={e => setNewItemSupplier(e.target.value)}
+                                        placeholder="e.g. Acme Distributors"
+                                    />
+                                )}
+                            </div>
+
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                                <div className={styles.formGroup}>
+                                    <label className={styles.label}>Cost ($)</label>
+                                    <input
+                                        className={styles.input}
+                                        type="number" step="0.01"
+                                        value={newItemCost}
+                                        onChange={e => setNewItemCost(e.target.value)}
+                                        placeholder="0.00"
+                                    />
+                                </div>
+                                <div className={styles.formGroup}>
+                                    <label className={styles.label}>Initial Qty</label>
+                                    {(() => {
+                                        // Dynamic qty selector based on category options
+                                        const cat = categories.find(c => c.name === newItemType);
+                                        let options = [1];
+                                        if (cat && cat.stock_options) {
+                                            let parsed = cat.stock_options;
+                                            if (typeof parsed === 'string') { try { parsed = JSON.parse(parsed); } catch { } }
+                                            if (Array.isArray(parsed) && parsed.length > 0) {
+                                                options = parsed.map((p: any) => parseInt(p)).filter((n: number) => !isNaN(n));
+                                            }
+                                        }
+                                        // Add 0 as a default option? User probably wants to pick a pack size. 
+                                        // Or allow typing custom number? User asked for "option to select more than 1, 2... based on settings"
+                                        // Let's offer a select with the configured options + a custom input fallback? 
+                                        // Or just a select if options exist.
+
+                                        return (
+                                            <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                                <select
+                                                    className={styles.input}
+                                                    value={newItemQty}
+                                                    onChange={e => setNewItemQty(e.target.value)}
+                                                    style={{ flex: 1 }}
+                                                >
+                                                    <option value="">0</option>
+                                                    {options.sort((a, b) => a - b).map(opt => (
+                                                        <option key={opt} value={opt}>{opt}</option>
+                                                    ))}
+                                                    {/* Add some standard multiples just in case if limited options? User said "based on category setting" */}
+                                                </select>
+                                            </div>
+                                        );
+                                    })()}
+                                </div>
+                            </div>
                             <div className={styles.modalActions}>
                                 <button type="button" className={styles.cancelBtn} onClick={() => setShowModal(false)}>Cancel</button>
                                 <button type="submit" className={styles.submitModalBtn} disabled={loading}>
@@ -528,7 +680,7 @@ export default function InventoryClient({ user }: { user: UserSession }) {
                                 </ul>
                             )}
                         </div>
-                        <div className={styles.modalActions}>
+                        <div className={styles.modalActions} style={{ display: 'flex', gap: '0.5rem', width: '100%' }}>
                             <button
                                 className={styles.submitModalBtn}
                                 onClick={() => {
@@ -538,10 +690,56 @@ export default function InventoryClient({ user }: { user: UserSession }) {
                                         setShowActivityModal(false);
                                     }
                                 }}
-                                style={{ width: '100%' }}
+                                style={{ flex: 1 }}
                             >
-                                {user.role === 'admin' ? 'Return to Dashboard' : 'Close'}
+                                {user.role === 'admin' ? 'Return to Dashboard' : 'Keep Working'}
                             </button>
+                            <button
+                                className={styles.cancelBtn}
+                                onClick={handleLogout}
+                                style={{ flex: 1, backgroundColor: '#7f1d1d', border: '1px solid #991b1b' }}
+                            >
+                                Logout
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {bottleModal && bottleModal.show && (
+                <div className={styles.modalOverlay}>
+                    <div className={styles.modal}>
+                        <h2 className={styles.modalTitle}>Existing Bottle Level?</h2>
+                        <p style={{ color: '#ccc', marginBottom: '1rem' }}>
+                            Replacing <strong>{bottleModal.item?.name}</strong>. How much was left?
+                        </p>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                            <button
+                                className={styles.submitModalBtn}
+                                style={{ background: '#10b981' }}
+                                onClick={() => {
+                                    handleAdjust(bottleModal.itemId, bottleModal.amount, 'Standard Replacement');
+                                    setBottleModal(null);
+                                }}
+                            >
+                                Standard Replacement
+                            </button>
+                            <div style={{ fontSize: '0.9rem', color: '#9ca3af', marginTop: '0.5rem', marginBottom: '0.25rem' }}>Previous Shift / Partial:</div>
+                            {bottleOptions.map(opt => (
+                                <button
+                                    key={opt.id}
+                                    className={styles.submitModalBtn}
+                                    style={{ background: '#374151', textAlign: 'left', paddingLeft: '1rem' }}
+                                    onClick={() => {
+                                        handleAdjust(bottleModal.itemId, bottleModal.amount, opt.label);
+                                        setBottleModal(null);
+                                    }}
+                                >
+                                    {opt.label}
+                                </button>
+                            ))}
+                        </div>
+                        <div className={styles.modalActions} style={{ marginTop: '1rem' }}>
+                            <button className={styles.cancelBtn} onClick={() => setBottleModal(null)}>Cancel</button>
                         </div>
                     </div>
                 </div>

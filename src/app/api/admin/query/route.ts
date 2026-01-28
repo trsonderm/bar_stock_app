@@ -28,17 +28,17 @@ export async function GET(req: NextRequest) {
             endDate.setHours(23, 59, 59, 999);
         }
 
-        const logs = db.prepare(`
+        const logs = await db.query(`
             SELECT 
                 l.action, l.details, l.timestamp,
                 u.id as user_id, u.first_name, u.last_name,
                 i.name as db_item_name
             FROM activity_logs l
             LEFT JOIN users u ON l.user_id = u.id
-            LEFT JOIN items i ON i.id = json_extract(l.details, '$.itemId')
-            WHERE l.timestamp >= ? AND l.timestamp <= ?
+            LEFT JOIN items i ON i.id = (l.details->>'itemId')::int
+            WHERE l.timestamp >= $1 AND l.timestamp <= $2
             ORDER BY u.last_name ASC, l.timestamp ASC
-        `).all(startDate.toISOString(), endDate.toISOString());
+        `, [startDate.toISOString(), endDate.toISOString()]);
 
         // Aggregate by User -> Item
         const report: Record<string, any> = {};

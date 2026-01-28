@@ -5,79 +5,113 @@ import { getSession } from '@/lib/auth';
 export async function POST(req: NextRequest) {
     try {
         const session = await getSession();
-        if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        if (!session || !session.organizationId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-        const { itemId, change, locationId = 1 } = await req.json(); // Default location 1
+        const organizationId = session.organizationId;
+        const { itemId, change, locationId = 1, bottleLevel } = await req.json();
 
         if (!itemId || !change) return NextResponse.json({ error: 'Invalid data' }, { status: 400 });
 
         // Check permissions
-        // "add icon button... will require a user permission"
-        // "subtract icon button available to all user"
-
         if (change > 0) {
             const canAddStock = session.role === 'admin' || session.permissions.includes('add_stock') || session.permissions.includes('all');
             if (!canAddStock) return NextResponse.json({ error: 'Permission denied: Add Stock' }, { status: 403 });
         }
-        // Subtract is available to all (session exists)
 
         const action = change > 0 ? 'ADD_STOCK' : 'SUBTRACT_STOCK';
-        const cleanChange = Math.abs(change);
 
-        const transaction = db.transaction(() => {
+        // Begin Transaction
+        await db.execute('BEGIN');
+
+        try {
+            // 0. Verify Item/Location ownership
+            const item = await db.one('SELECT name FROM items WHERE id = $1 AND organization_id = $2', [itemId, organizationId]);
+            if (!item) throw new Error('Item not found in this organization');
+
+            // Determine Location Context
+            // Priority: Payload > Cookie > Default
+            let targetLocationId = locationId;
+
+            // If payload is default "1" (legacy) or undefined, try cookie
+            if (!targetLocationId || targetLocationId === 1) {
+                const cookieLoc = req.cookies.get('current_location_id')?.value;
+                if (cookieLoc) {
+                    targetLocationId = parseInt(cookieLoc);
+                }
+            }
+
+            const location = await db.one('SELECT id FROM locations WHERE id = $1 AND organization_id = $2', [targetLocationId, organizationId]);
+
+            if (!location) {
+                // Try fallback to any location
+                const anyLoc = await db.one('SELECT id FROM locations WHERE organization_id = $1 LIMIT 1', [organizationId]);
+                if (anyLoc) targetLocationId = anyLoc.id;
+                else throw new Error('No location found for this organization');
+            }
+
             // Update Inventory
-            // Update Inventory
-            // Check if row exists
-            const invExists = db.prepare('SELECT * FROM inventory WHERE item_id = ? AND location_id = ?').get(itemId, locationId);
+            // First check if row exists
+            const invExists = await db.one('SELECT id FROM inventory WHERE item_id = $1 AND location_id = $2', [itemId, targetLocationId]);
+
             if (!invExists) {
-                db.prepare('INSERT INTO inventory (item_id, location_id, quantity) VALUES (?, ?, ?)').run(itemId, locationId, 0);
-            }
-            // 1. Update stock
-            // We need to know current stock first to clamp properly if needed, but the simple UPDATE MAX(0,...) works for values.
-            // But we need the RESULTING quantity.
-            // First, ensure the inventory row exists for the item and location
-            const exists = db.prepare('SELECT * FROM inventory WHERE item_id = ? AND location_id = ?').get(itemId, locationId);
-            if (!exists) {
-                db.prepare('INSERT INTO inventory (item_id, location_id, quantity) VALUES (?, ?, ?)').run(itemId, locationId, 0);
+                await db.execute(
+                    'INSERT INTO inventory (item_id, location_id, quantity, organization_id) VALUES ($1, $2, 0, $3)',
+                    [itemId, targetLocationId, organizationId]
+                );
             }
 
-            const update = db.prepare(`
+            // Perform Update
+            // Postgres has RETURNING.
+            const updateRes = await db.one(`
                 UPDATE inventory 
-                SET quantity = MAX(0, quantity + ?) 
-                WHERE item_id = ? AND location_id = ?
+                SET quantity = GREATEST(0, quantity + $1) 
+                WHERE item_id = $2 AND location_id = $3 AND organization_id = $4
                 RETURNING quantity
-             `).get(change, itemId, locationId) as any;
+             `, [change, itemId, targetLocationId, organizationId]);
 
-            if (!update) {
-                // This case should ideally not be hit if the INSERT above works, or if the item always exists.
-                // If it does, it means the item_id/location_id combination didn't exist and wasn't created.
-                throw new Error('Failed to update inventory: Item not found or could not be created in inventory for this location.');
+            if (!updateRes) {
+                throw new Error('Failed to update inventory.');
             }
 
-            const newQuantity = update.quantity;
-
-            // 2. Fetch Item Name for Log
-            const item = db.prepare('SELECT name FROM items WHERE id = ?').get(itemId) as any;
+            const newQuantity = updateRes.quantity;
 
             // 3. Log
-            const action = change > 0 ? 'ADD_STOCK' : 'SUBTRACT_STOCK';
-            db.prepare('INSERT INTO activity_logs (user_id, action, details) VALUES (?, ?, ?)')
-                .run(session.id, action, JSON.stringify({
-                    itemId,
-                    itemName: item.name,
-                    change: Math.abs(change),
-                    quantity: Math.abs(change), // Keeping 'quantity' for backward compat in some views
-                    quantityAfter: newQuantity,
-                    locationId
-                }));
-        });
+            const logRes = await db.one(`
+                INSERT INTO activity_logs (organization_id, user_id, action, details) 
+                VALUES ($1, $2, $3, $4) 
+                RETURNING id
+            `, [organizationId, session.id, action, JSON.stringify({
+                itemId,
+                itemName: item.name,
+                change: Math.abs(change),
+                quantity: Math.abs(change), // historic field naming
+                quantityAfter: newQuantity,
+                locationId: targetLocationId,
+                bottleLevel
+            })]);
 
-        transaction();
+            // 4. Bottle Level Log (if provided)
+            if (bottleLevel) {
+                try {
+                    await db.execute(
+                        'INSERT INTO bottle_level_logs (activity_log_id, option_label, user_id) VALUES ($1, $2, $3)',
+                        [logRes.id, bottleLevel, session.id]
+                    );
+                } catch (e) {
+                    console.warn('Could not insert bottle level log', e);
+                }
+            }
 
-        return NextResponse.json({ success: true });
+            await db.execute('COMMIT');
+            return NextResponse.json({ success: true });
 
-    } catch (error) {
+        } catch (err) {
+            await db.execute('ROLLBACK');
+            throw err;
+        }
+
+    } catch (error: any) {
         console.error('Inventory Adjust Error', error);
-        return NextResponse.json({ error: 'Internal Error' }, { status: 500 });
+        return NextResponse.json({ error: error.message || 'Internal Error' }, { status: 500 });
     }
 }

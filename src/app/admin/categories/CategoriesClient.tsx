@@ -145,13 +145,13 @@ export default function CategoriesClient() {
         <div className={styles.card}>
             <div style={{ marginBottom: '2rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #374151', paddingBottom: '0.5rem', marginBottom: '1rem' }}>
-                    <h3 style={{ margin: 0 }}>{editingId ? 'Edit Category' : 'Add New Category'}</h3>
+                    <h3 style={{ margin: 0 }}>{editingId ? 'Edit Variance' : 'Add New Variance'}</h3>
                     {editingId && <button onClick={resetForm} style={{ background: 'transparent', border: '1px solid #ef4444', color: '#ef4444', borderRadius: '4px', cursor: 'pointer', padding: '4px 8px' }}>Cancel Edit</button>}
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
                     <div>
-                        <label className={styles.label}>Category Name</label>
+                        <label className={styles.label}>Variance Name</label>
                         <input
                             className={styles.input}
                             value={name}
@@ -161,38 +161,78 @@ export default function CategoriesClient() {
                     </div>
 
                     <div>
-                        <label className={styles.label}>Stock Buttons (Quantity Types)</label>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.5rem' }}>
-                            {PRESETS.map(opt => (
-                                <button
+                        <label className={styles.label}>Variance Amounts (Stock Buttons)</label>
+                        <p style={{ color: '#9ca3af', fontSize: '0.85rem', marginBottom: '0.5rem' }}>
+                            Define the +/- buttons available for products in this group.
+                        </p>
+
+                        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                            <input
+                                type="number"
+                                placeholder="Amount (e.g. 1, 0.5, 24)"
+                                className={styles.input}
+                                id="newOptionInput"
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                        e.preventDefault();
+                                        const val = parseFloat((e.target as HTMLInputElement).value);
+                                        if (!isNaN(val) && !selectedOptions.includes(val)) {
+                                            setSelectedOptions([...selectedOptions, val].sort((a, b) => a - b));
+                                            (e.target as HTMLInputElement).value = '';
+                                        }
+                                    }
+                                }}
+                            />
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const input = document.getElementById('newOptionInput') as HTMLInputElement;
+                                    const val = parseFloat(input.value);
+                                    if (!isNaN(val) && !selectedOptions.includes(val)) {
+                                        setSelectedOptions([...selectedOptions, val].sort((a, b) => a - b));
+                                        input.value = '';
+                                    }
+                                }}
+                                style={{ background: '#374151', color: 'white', border: 'none', borderRadius: '4px', padding: '0 1rem', cursor: 'pointer' }}
+                            >
+                                Add
+                            </button>
+                        </div>
+
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                            {selectedOptions.map(opt => (
+                                <span
                                     key={opt}
-                                    onClick={() => toggleOption(opt)}
                                     style={{
-                                        padding: '0.5rem',
-                                        borderRadius: '0.25rem',
+                                        background: '#1f2937',
+                                        color: '#e5e7eb',
+                                        padding: '4px 8px',
+                                        borderRadius: '4px',
                                         border: '1px solid #4b5563',
-                                        background: selectedOptions.includes(opt) ? '#d97706' : '#1f2937',
-                                        color: 'white',
-                                        cursor: 'pointer',
-                                        minWidth: '40px'
+                                        fontSize: '0.9rem',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '6px'
                                     }}
                                 >
-                                    +{opt}
-                                </button>
+                                    {opt > 0 ? `+${opt}` : opt}
+                                    <span
+                                        onClick={() => setSelectedOptions(selectedOptions.filter(o => o !== opt))}
+                                        style={{ cursor: 'pointer', color: '#9ca3af', fontWeight: 'bold' }}
+                                    >×</span>
+                                </span>
                             ))}
+                            {selectedOptions.length === 0 && <span style={{ color: '#6b7280', fontStyle: 'italic' }}>No buttons defined.</span>}
                         </div>
-                        <small style={{ color: '#9ca3af', marginTop: '0.5rem', display: 'block' }}>
-                            These buttons will appear in the inventory list.
-                        </small>
                     </div>
 
                     <div style={{ gridColumn: '1 / -1', borderTop: '1px solid #374151', paddingTop: '1rem' }}>
-                        <label className={styles.label}>Sub-Categories (Optional)</label>
+                        <label className={styles.label}>Sub-Variances (Optional)</label>
                         <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
                             <input
                                 className={styles.input}
                                 style={{ maxWidth: '300px' }}
-                                placeholder="e.g. IPA, Stout, Red, White..."
+                                placeholder="e.g. IPA, Stout..."
                                 value={newSubCat}
                                 onChange={(e) => setNewSubCat(e.target.value)}
                                 onKeyDown={(e) => {
@@ -229,7 +269,7 @@ export default function CategoriesClient() {
                     onClick={editingId ? handleUpdate : handleCreate}
                     style={{ marginTop: '1rem', width: 'auto', padding: '0.5rem 2rem', background: editingId ? '#3b82f6' : '#d97706' }}
                 >
-                    {editingId ? 'Update Category' : 'Create Category'}
+                    {editingId ? 'Update Variance' : 'Create Variance'}
                 </button>
             </div>
 
@@ -237,7 +277,7 @@ export default function CategoriesClient() {
                 <table className={styles.table}>
                     <thead>
                         <tr>
-                            <th>Category Name</th>
+                            <th>Variance Name</th>
                             <th>Stock Buttons</th>
                             <th>Sub-Categories</th>
                             <th style={{ width: '150px', textAlign: 'right' }}>Actions</th>

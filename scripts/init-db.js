@@ -146,3 +146,4 @@ seedAdmin();
 seedLocations();
 
 console.log('Database initialization complete.');
+db.close();

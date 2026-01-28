@@ -8,12 +8,13 @@ interface User {
     id: number;
     first_name: string;
     last_name: string;
+    email?: string;
     role: string;
-    permissions: string; // JSON string from DB, we parse it
-    pin_hash: string; // Now "Plaintext PIN" effectively
+    permissions: string; // JSON string from DB
+    pin_hash: string;
 }
 
-export default function UsersClient() {
+export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number }) {
     const router = useRouter();
     const [users, setUsers] = useState<User[]>([]);
     const [loading, setLoading] = useState(true);
@@ -22,33 +23,58 @@ export default function UsersClient() {
     const [firstName, setFirstName] = useState('');
     const [lastName, setLastName] = useState('');
     const [pin, setPin] = useState('');
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [phone, setPhone] = useState('');
+    const [bio, setBio] = useState('');
+    const [notes, setNotes] = useState('');
+
     const [canAddStock, setCanAddStock] = useState(false);
     const [canAddItem, setCanAddItem] = useState(false);
     const [isAdmin, setIsAdmin] = useState(false);
     const [submitting, setSubmitting] = useState(false);
 
+    // Locations
+    const [locations, setLocations] = useState<{ id: number, name: string }[]>([]);
+    const [assignedLocations, setAssignedLocations] = useState<number[]>([]);
+
     // Edit Mode
     const [editingId, setEditingId] = useState<number | null>(null);
 
     const fetchUsers = () => {
-        fetch('/api/admin/users')
+        const url = overrideOrgId ? `/api/admin/users?orgId=${overrideOrgId}` : '/api/admin/users';
+        fetch(url)
             .then(res => res.json())
             .then(data => {
-                setUsers(data.users);
+                setUsers(data.users || []);
                 setLoading(false);
             });
+
+        // Fetch locations too
+        const locUrl = overrideOrgId ? `/api/admin/locations?orgId=${overrideOrgId}` : '/api/admin/locations';
+        fetch(locUrl).then(r => r.json()).then(d => {
+            if (d.locations) setLocations(d.locations);
+        });
     };
 
     useEffect(() => {
         fetchUsers();
-    }, []);
+    }, [overrideOrgId]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (pin.length !== 4) {
+
+        // Validation
+        if (!pin && (!email || !password) && !editingId) {
+            alert('Must provide PIN or Email/Password');
+            return;
+        }
+
+        if (pin && pin.length !== 4) {
             alert('PIN must be 4 digits');
             return;
         }
+
         setSubmitting(true);
 
         const permissions = [];
@@ -58,15 +84,23 @@ export default function UsersClient() {
         const role = isAdmin ? 'admin' : 'user';
 
         try {
-            const url = editingId ? '/api/admin/users' : '/api/admin/users';
+            const baseUrl = editingId ? '/api/admin/users' : '/api/admin/users';
+            const url = overrideOrgId ? `${baseUrl}?orgId=${overrideOrgId}` : baseUrl;
             const method = editingId ? 'PUT' : 'POST';
             const body = {
                 id: editingId, // Ignored on POST
                 firstName,
                 lastName,
                 pin,
+                email,
+                password, // Only send if set
                 permissions,
-                role
+                role,
+                phone,
+                bio,
+                notes,
+                organizationId: overrideOrgId, // Pass explicit org if override
+                assignedLocations
             };
 
             const res = await fetch(url, {
@@ -76,13 +110,7 @@ export default function UsersClient() {
             });
 
             if (res.ok) {
-                setFirstName('');
-                setLastName('');
-                setPin('');
-                setCanAddStock(false);
-                setCanAddItem(false);
-                setIsAdmin(false);
-                setEditingId(null);
+                resetForm();
                 fetchUsers();
                 alert(editingId ? 'User Updated' : 'User Created');
             } else {
@@ -96,9 +124,26 @@ export default function UsersClient() {
         }
     };
 
+    const resetForm = () => {
+        setFirstName('');
+        setLastName('');
+        setPin('');
+        setEmail('');
+        setPassword('');
+        setPhone('');
+        setBio('');
+        setNotes('');
+        setCanAddStock(false);
+        setCanAddItem(false);
+        setIsAdmin(false);
+        setEditingId(null);
+        setAssignedLocations([]);
+    };
+
     const handleDelete = async (id: number) => {
         if (!confirm('Are you sure?')) return;
-        await fetch('/api/admin/users', {
+        const url = overrideOrgId ? `/api/admin/users?orgId=${overrideOrgId}` : '/api/admin/users';
+        await fetch(url, {
             method: 'DELETE',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ id })
@@ -114,11 +159,16 @@ export default function UsersClient() {
         } catch { return ''; }
     };
 
-    const handleEdit = (u: User) => {
+    const handleEdit = (u: any) => {
         setEditingId(u.id);
         setFirstName(u.first_name);
         setLastName(u.last_name);
-        setPin(u.pin_hash); // Assuming pin_hash is now plaintext PIN from API
+        setPin(u.pin_hash || '');
+        setEmail(u.email || '');
+        setPassword('');
+        setPhone(u.phone || '');
+        setBio(u.bio || '');
+        setNotes(u.notes || '');
 
         const perms = [];
         try { perms.push(...JSON.parse(u.permissions)); } catch { }
@@ -126,16 +176,7 @@ export default function UsersClient() {
         setCanAddStock(perms.includes('add_stock') || perms.includes('all'));
         setCanAddItem(perms.includes('add_item_name') || perms.includes('all'));
         setIsAdmin(u.role === 'admin');
-    };
-
-    const handleCancelEdit = () => {
-        setEditingId(null);
-        setFirstName('');
-        setLastName('');
-        setPin('');
-        setCanAddStock(false);
-        setCanAddItem(false);
-        setIsAdmin(false);
+        setAssignedLocations(u.assigned_locations || []);
     };
 
     return (
@@ -144,18 +185,68 @@ export default function UsersClient() {
                 <div className={styles.card}>
                     <div className={styles.cardTitle}>{editingId ? 'Edit User' : 'Create New User'}</div>
                     <form onSubmit={handleSubmit}>
-                        <div style={{ marginBottom: '1rem' }}>
-                            <label className={styles.statLabel}>First Name</label>
-                            <input className={styles.table} style={{ background: '#1f2937', color: 'white', padding: '0.5rem', border: '1px solid #374151', borderRadius: '0.25rem', width: '100%' }} value={firstName} onChange={e => setFirstName(e.target.value)} required />
+                        <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
+                            <div style={{ flex: 1 }}>
+                                <label className={styles.statLabel}>First Name</label>
+                                <input className={styles.table} style={{ background: '#1f2937', color: 'white', padding: '0.5rem', border: '1px solid #374151', borderRadius: '0.25rem', width: '100%' }} value={firstName} onChange={e => setFirstName(e.target.value)} required />
+                            </div>
+                            <div style={{ flex: 1 }}>
+                                <label className={styles.statLabel}>Last Name</label>
+                                <input className={styles.table} style={{ background: '#1f2937', color: 'white', padding: '0.5rem', border: '1px solid #374151', borderRadius: '0.25rem', width: '100%' }} value={lastName} onChange={e => setLastName(e.target.value)} required />
+                            </div>
                         </div>
+
                         <div style={{ marginBottom: '1rem' }}>
-                            <label className={styles.statLabel}>Last Name</label>
-                            <input className={styles.table} style={{ background: '#1f2937', color: 'white', padding: '0.5rem', border: '1px solid #374151', borderRadius: '0.25rem', width: '100%' }} value={lastName} onChange={e => setLastName(e.target.value)} required />
+                            <label className={styles.statLabel}>Email (Optional - For Admin Login)</label>
+                            <input className={styles.table} type="email" style={{ background: '#1f2937', color: 'white', padding: '0.5rem', border: '1px solid #374151', borderRadius: '0.25rem', width: '100%' }} value={email} onChange={e => setEmail(e.target.value)} />
                         </div>
+
                         <div style={{ marginBottom: '1rem' }}>
-                            <label className={styles.statLabel}>PIN (4 digits)</label>
-                            <input className={styles.table} type="text" maxLength={4} style={{ background: '#1f2937', color: 'white', padding: '0.5rem', border: '1px solid #374151', borderRadius: '0.25rem', width: '100%' }} value={pin} onChange={e => setPin(e.target.value)} required />
+                            <label className={styles.statLabel}>Password {editingId && '(Leave blank to keep current)'}</label>
+                            <input className={styles.table} type="password" style={{ background: '#1f2937', color: 'white', padding: '0.5rem', border: '1px solid #374151', borderRadius: '0.25rem', width: '100%' }} value={password} onChange={e => setPassword(e.target.value)} />
                         </div>
+
+                        <div style={{ marginBottom: '1rem' }}>
+                            <label className={styles.statLabel}>PIN (4 digits - Optional if Email set)</label>
+                            <input className={styles.table} type="text" maxLength={4} style={{ background: '#1f2937', color: 'white', padding: '0.5rem', border: '1px solid #374151', borderRadius: '0.25rem', width: '100%' }} value={pin} onChange={e => setPin(e.target.value)} />
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
+                            <div style={{ flex: 1 }}>
+                                <label className={styles.statLabel}>Phone</label>
+                                <input className={styles.table} style={{ background: '#1f2937', color: 'white', padding: '0.5rem', border: '1px solid #374151', borderRadius: '0.25rem', width: '100%' }} value={phone} onChange={e => setPhone(e.target.value)} />
+                            </div>
+                            <div style={{ flex: 1 }}>
+                                <label className={styles.statLabel}>Notes</label>
+                                <input className={styles.table} style={{ background: '#1f2937', color: 'white', padding: '0.5rem', border: '1px solid #374151', borderRadius: '0.25rem', width: '100%' }} value={notes} onChange={e => setNotes(e.target.value)} />
+                            </div>
+                        </div>
+
+                        <div style={{ marginBottom: '1rem' }}>
+                            <label className={styles.statLabel}>Bio</label>
+                            <textarea className={styles.table} style={{ background: '#1f2937', color: 'white', padding: '0.5rem', border: '1px solid #374151', borderRadius: '0.25rem', width: '100%' }} rows={2} value={bio} onChange={e => setBio(e.target.value)} />
+                        </div>
+
+                        {locations.length > 0 && (
+                            <div style={{ marginBottom: '1rem' }}>
+                                <div className={styles.statLabel}>Assigned Locations</div>
+                                <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem', flexWrap: 'wrap' }}>
+                                    {locations.map(loc => (
+                                        <label key={loc.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'white' }}>
+                                            <input
+                                                type="checkbox"
+                                                checked={assignedLocations.includes(loc.id)}
+                                                onChange={e => {
+                                                    if (e.target.checked) setAssignedLocations([...assignedLocations, loc.id]);
+                                                    else setAssignedLocations(assignedLocations.filter(id => id !== loc.id));
+                                                }}
+                                            />
+                                            {loc.name}
+                                        </label>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
 
                         <div style={{ marginBottom: '1rem' }}>
                             <div className={styles.statLabel}>Permissions</div>
@@ -179,7 +270,7 @@ export default function UsersClient() {
                             {editingId && (
                                 <button
                                     type="button"
-                                    onClick={handleCancelEdit}
+                                    onClick={resetForm}
                                     style={{ flex: 1, padding: '0.75rem', background: '#374151', color: '#d1d5db', borderRadius: '0.5rem', fontWeight: 'bold' }}
                                 >
                                     Cancel
@@ -203,6 +294,7 @@ export default function UsersClient() {
                             <thead>
                                 <tr>
                                     <th>Name</th>
+                                    <th>Email</th>
                                     <th>PIN</th>
                                     <th>Role</th>
                                     <th>Permissions</th>
@@ -213,6 +305,7 @@ export default function UsersClient() {
                                 {users.map(u => (
                                     <tr key={u.id}>
                                         <td>{u.first_name} {u.last_name}</td>
+                                        <td>{u.email || '-'}</td>
                                         <td style={{ fontFamily: 'monospace', color: '#fbbf24' }}>{u.pin_hash}</td>
                                         <td>{u.role}</td>
                                         <td>{parsePerms(u.permissions)}</td>
@@ -225,9 +318,11 @@ export default function UsersClient() {
                                                     Delete
                                                 </button>
                                             )}
+
+
                                             <button
                                                 onClick={() => handleEdit(u)}
-                                                style={{ color: '#3b82f6', fontWeight: 'bold', marginLeft: '1rem' }}
+                                                className="bg-blue-600/10 text-blue-500 px-3 py-1 rounded hover:bg-blue-600/20 font-medium"
                                             >
                                                 Edit
                                             </button>

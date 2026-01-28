@@ -10,6 +10,7 @@ interface Item {
     secondary_type?: string;
     unit_cost: number;
     quantity: number;
+    supplier?: string;
 }
 
 interface Category {
@@ -18,9 +19,10 @@ interface Category {
     sub_categories?: string[];
 }
 
-export default function ProductsClient() {
+export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: number }) {
     const [items, setItems] = useState<Item[]>([]);
     const [categories, setCategories] = useState<Category[]>([]);
+    const [suppliers, setSuppliers] = useState<{ id: number, name: string }[]>([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
     const [filterType, setFilterType] = useState('All');
@@ -35,26 +37,36 @@ export default function ProductsClient() {
     const [newItemType, setNewItemType] = useState('Liquor');
     const [newItemCost, setNewItemCost] = useState('');
     const [newItemQty, setNewItemQty] = useState('');
+    const [newItemSupplier, setNewItemSupplier] = useState('');
+    const [newItemTrackQty, setNewItemTrackQty] = useState(true);
 
     useEffect(() => {
         fetchData();
-    }, []);
+    }, [overrideOrgId]);
 
     const fetchData = async () => {
         setLoading(true);
         try {
-            const [itemsRes, catsRes] = await Promise.all([
-                fetch('/api/inventory?sort=name'),
-                fetch('/api/admin/categories')
+            const inventoryUrl = overrideOrgId ? `/api/inventory?sort=name&orgId=${overrideOrgId}` : '/api/inventory?sort=name';
+            const catsUrl = overrideOrgId ? `/api/admin/categories?orgId=${overrideOrgId}` : '/api/admin/categories';
+            const suppliersUrl = overrideOrgId ? `/api/admin/suppliers?orgId=${overrideOrgId}` : '/api/admin/suppliers';
+
+            const [itemsRes, catsRes, suppRes] = await Promise.all([
+                fetch(inventoryUrl),
+                fetch(catsUrl),
+                fetch(suppliersUrl)
             ]);
 
             const itemsData = await itemsRes.json();
             const catsData = await catsRes.json();
+            const suppData = await suppRes.json();
 
             if (itemsData.items) setItems(itemsData.items);
             if (catsData.categories) setCategories(catsData.categories);
-        } catch (e) {
+            if (suppData.suppliers) setSuppliers(suppData.suppliers);
+        } catch (e: any) {
             console.error(e);
+            alert('Error loading inventory: ' + (e.message || 'Unknown error'));
         } finally {
             setLoading(false);
         }
@@ -74,7 +86,8 @@ export default function ProductsClient() {
         if (!editingId) return;
 
         try {
-            const res = await fetch('/api/inventory', {
+            const url = overrideOrgId ? `/api/inventory?orgId=${overrideOrgId}` : '/api/inventory';
+            const res = await fetch(url, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -83,7 +96,8 @@ export default function ProductsClient() {
                     type: editForm.type,
                     secondary_type: editForm.secondary_type,
                     unit_cost: editForm.unit_cost,
-                    quantity: editForm.quantity
+                    quantity: editForm.quantity,
+                    supplier: editForm.supplier
                 })
             });
 
@@ -102,7 +116,8 @@ export default function ProductsClient() {
     const handleDelete = async (id: number) => {
         if (!confirm('Are you sure you want to delete this item?')) return;
         try {
-            const res = await fetch(`/api/inventory?id=${id}`, { method: 'DELETE' });
+            const url = overrideOrgId ? `/api/inventory?id=${id}&orgId=${overrideOrgId}` : `/api/inventory?id=${id}`;
+            const res = await fetch(url, { method: 'DELETE' });
             if (res.ok) {
                 fetchData();
             } else {
@@ -116,11 +131,17 @@ export default function ProductsClient() {
     const handleCreate = async (e: React.FormEvent) => {
         e.preventDefault();
         try {
+            console.log('Creating item:', { name: newItemName, type: newItemType, supplier: newItemSupplier });
             // First create item
             const res = await fetch('/api/inventory', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name: newItemName, type: newItemType })
+                body: JSON.stringify({
+                    name: newItemName,
+                    type: newItemType,
+                    supplier: newItemSupplier,
+                    track_quantity: newItemTrackQty ? 1 : 0
+                })
             });
 
             if (res.ok) {
@@ -146,13 +167,61 @@ export default function ProductsClient() {
                 setNewItemName('');
                 setNewItemCost('');
                 setNewItemQty('');
+                setNewItemSupplier('');
                 fetchData();
             } else {
                 const d = await res.json();
                 alert(d.error || 'Failed to create');
             }
         } catch (e) {
+            console.error(e);
             alert('Error creating item');
+        }
+    };
+
+    const handleDeleteAll = async () => {
+        if (!confirm('WARNING: This will DELETE ALL PRODUCTS and INVENTORY LEVELS. This action cannot be undone. Are you sure?')) return;
+        if (!confirm('Double Check: Are you absolutely sure you want to wipe the entire database of products?')) return;
+
+        try {
+            const res = await fetch('/api/admin/products/delete-all', { method: 'DELETE' });
+            if (res.ok) {
+                alert('All products deleted.');
+                fetchData();
+            } else {
+                alert('Failed to delete products');
+            }
+        } catch (e) {
+            alert('Error deleting products');
+        }
+    };
+
+    const handleImportCSV = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        try {
+            setLoading(true);
+            const res = await fetch('/api/admin/products/import', {
+                method: 'POST',
+                body: formData
+            });
+
+            const data = await res.json();
+            if (res.ok) {
+                alert(`Import Successful! Added: ${data.count}, Skipped (Duplicates): ${data.skipped}`);
+                fetchData();
+            } else {
+                alert('Import Failed: ' + (data.error || 'Unknown error'));
+            }
+        } catch (e) {
+            alert('Error importing CSV');
+        } finally {
+            setLoading(false);
+            e.target.value = ''; // Reset input
         }
     };
 
@@ -169,12 +238,33 @@ export default function ProductsClient() {
             <div className={styles.card}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
                     <h2 className={styles.cardTitle}>Product Catalog</h2>
-                    <button
-                        onClick={() => setShowCreate(true)}
-                        style={{ background: '#d97706', color: 'white', padding: '0.5rem 1rem', borderRadius: '0.5rem', fontWeight: 'bold', border: 'none', cursor: 'pointer' }}
-                    >
-                        + Add New Product
-                    </button>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <button
+                            onClick={handleDeleteAll}
+                            style={{ background: '#ef4444', color: 'white', padding: '0.5rem 1rem', borderRadius: '0.5rem', fontWeight: 'bold', border: 'none', cursor: 'pointer' }}
+                        >
+                            Delete All
+                        </button>
+                        <button
+                            onClick={() => document.getElementById('csvInput')?.click()}
+                            style={{ background: '#10b981', color: 'white', padding: '0.5rem 1rem', borderRadius: '0.5rem', fontWeight: 'bold', border: 'none', cursor: 'pointer' }}
+                        >
+                            Import CSV
+                        </button>
+                        <input
+                            id="csvInput"
+                            type="file"
+                            accept=".csv"
+                            style={{ display: 'none' }}
+                            onChange={handleImportCSV}
+                        />
+                        <button
+                            onClick={() => setShowCreate(true)}
+                            style={{ background: '#d97706', color: 'white', padding: '0.5rem 1rem', borderRadius: '0.5rem', fontWeight: 'bold', border: 'none', cursor: 'pointer' }}
+                        >
+                            + Add New Product
+                        </button>
+                    </div>
                 </div>
 
                 <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
@@ -203,6 +293,7 @@ export default function ProductsClient() {
                                 <th>Name</th>
                                 <th>Type</th>
                                 <th>Sub-Category</th>
+                                <th>Supplier</th>
                                 <th>Cost ($)</th>
                                 <th>In Stock</th>
                                 <th style={{ textAlign: 'right' }}>Actions</th>
@@ -247,6 +338,25 @@ export default function ProductsClient() {
                                                     </select>
                                                 </td>
                                                 <td>
+                                                    {suppliers.length > 0 ? (
+                                                        <select
+                                                            className={styles.input}
+                                                            value={editForm.supplier || ''}
+                                                            onChange={e => setEditForm({ ...editForm, supplier: e.target.value })}
+                                                        >
+                                                            <option value="">(None)</option>
+                                                            {suppliers.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                                                        </select>
+                                                    ) : (
+                                                        <input
+                                                            className={styles.input}
+                                                            value={editForm.supplier || ''}
+                                                            onChange={e => setEditForm({ ...editForm, supplier: e.target.value })}
+                                                            placeholder="Supplier"
+                                                        />
+                                                    )}
+                                                </td>
+                                                <td>
                                                     <input
                                                         className={styles.input}
                                                         type="number" step="0.01"
@@ -274,6 +384,7 @@ export default function ProductsClient() {
                                                 <td>{item.name}</td>
                                                 <td>{item.type}</td>
                                                 <td>{item.secondary_type || '-'}</td>
+                                                <td>{item.supplier || '-'}</td>
                                                 <td>${item.unit_cost?.toFixed(2)}</td>
                                                 <td style={{ fontWeight: 'bold', color: item.quantity === 0 ? '#ef4444' : item.quantity < 5 ? '#f59e0b' : 'inherit' }}>
                                                     {item.quantity}
@@ -332,6 +443,28 @@ export default function ProductsClient() {
                                     {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
                                 </select>
                             </div>
+                            <div style={{ marginBottom: '1rem' }}>
+                                <label className={styles.statLabel}>Supplier (Optional)</label>
+                                {suppliers.length > 0 ? (
+                                    <select
+                                        style={{ width: '100%' }}
+                                        className={styles.input}
+                                        value={newItemSupplier}
+                                        onChange={e => setNewItemSupplier(e.target.value)}
+                                    >
+                                        <option value="">Select a Supplier</option>
+                                        {suppliers.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                                    </select>
+                                ) : (
+                                    <input
+                                        style={{ width: '100%' }}
+                                        className={styles.input}
+                                        value={newItemSupplier}
+                                        onChange={e => setNewItemSupplier(e.target.value)}
+                                        placeholder="e.g. Acme Distributors"
+                                    />
+                                )}
+                            </div>
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
                                 <div>
                                     <label className={styles.statLabel}>Cost ($)</label>
@@ -342,6 +475,17 @@ export default function ProductsClient() {
                                     <input style={{ width: '100%' }} className={styles.input} type="number" value={newItemQty} onChange={e => setNewItemQty(e.target.value)} placeholder="0" />
                                 </div>
                             </div>
+
+                            <div style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <input
+                                    type="checkbox"
+                                    checked={newItemTrackQty}
+                                    onChange={e => setNewItemTrackQty(e.target.checked)}
+                                    style={{ width: '20px', height: '20px' }}
+                                />
+                                <label className={styles.statLabel} style={{ marginBottom: 0 }}>Track Quantity (Inventory)</label>
+                            </div>
+
                             <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end', marginTop: '1rem' }}>
                                 <button type="button" onClick={() => setShowCreate(false)} style={{ padding: '0.5rem 1rem', background: 'transparent', color: '#9ca3af', border: '1px solid #374151', borderRadius: '0.5rem', cursor: 'pointer' }}>Cancel</button>
                                 <button type="submit" style={{ padding: '0.5rem 1rem', background: '#d97706', color: 'white', border: 'none', borderRadius: '0.5rem', cursor: 'pointer', fontWeight: 'bold' }}>Create Product</button>
@@ -352,4 +496,5 @@ export default function ProductsClient() {
             )}
         </>
     );
+
 }
