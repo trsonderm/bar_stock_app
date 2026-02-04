@@ -28,6 +28,7 @@ export async function GET(req: NextRequest) {
         let query = `
       SELECT 
         i.id, i.name, i.type, i.secondary_type, i.unit_cost, i.supplier,
+        i.order_size, i.low_stock_threshold,
         COALESCE(inv.quantity, 0) as quantity,
         COALESCE(usage_stats.usage_count, 0) as usage_count
       FROM items i

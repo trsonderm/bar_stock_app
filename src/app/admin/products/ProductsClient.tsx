@@ -339,7 +339,7 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                                                         value={editForm.type}
                                                         onChange={e => setEditForm({ ...editForm, type: e.target.value, secondary_type: '' })}
                                                     >
-                                                        {categories.map((c, i) => <option key={c.id || i} value={c.name}>{c.name}</option>)}
+                                                        {categories.map((c, i) => <option key={`cat-${c.id}-${i}`} value={c.name}>{c.name}</option>)}
                                                     </select>
                                                 </td>
                                                 <td>
@@ -507,7 +507,7 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                                 <label className={styles.statLabel}>Category</label>
                                 <select style={{ width: '100%' }} className={styles.input} value={newItemType} onChange={e => setNewItemType(e.target.value)}>
                                     {categories.length > 0 ? (
-                                        categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)
+                                        categories.map((c, i) => <option key={`new-cat-${c.id}-${i}`} value={c.name}>{c.name}</option>)
                                     ) : (
                                         <option value="">No categories found</option>
                                     )}
