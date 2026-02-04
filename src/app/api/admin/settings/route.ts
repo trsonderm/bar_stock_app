@@ -58,12 +58,18 @@ export async function POST(req: NextRequest) {
 
         for (const k of keys) {
             if (body[k] !== undefined) {
+                let val = body[k];
+                if (typeof val === 'object' && val !== null) {
+                    val = JSON.stringify(val);
+                } else {
+                    val = String(val);
+                }
                 await db.execute(`
                     INSERT INTO settings (organization_id, key, value) 
                     VALUES ($1, $2, $3)
                     ON CONFLICT (key, organization_id) 
                     DO UPDATE SET value = EXCLUDED.value
-                `, [organizationId, k, String(body[k])]);
+                `, [organizationId, k, val]);
             }
         }
 

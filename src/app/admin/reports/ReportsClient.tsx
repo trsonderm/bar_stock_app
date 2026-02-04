@@ -4,13 +4,24 @@ import { useState, useEffect } from 'react';
 import { downloadCSV } from '@/lib/export';
 import ReportingClient from '../reporting/ReportingClient';
 import Link from 'next/link';
+import ReportPreview from '@/components/ReportPreviews';
 
 export default function ReportsClient() {
     const [reportType, setReportType] = useState('stock');
     const [data, setData] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);
+    const [activeTab, setActiveTab] = useState<'view' | 'builder' | 'preview_daily' | 'preview_lowstock'>('view');
+    const [settings, setSettings] = useState<any>({});
 
-    const [activeTab, setActiveTab] = useState<'view' | 'builder'>('view');
+    // Sample Toggle State
+    const [showSample, setShowSample] = useState(false);
+
+    // Fetch settings for threshold info
+    useEffect(() => {
+        fetch('/api/admin/settings').then(r => r.json()).then(d => {
+            if (d.settings) setSettings(d.settings);
+        });
+    }, []);
 
     useEffect(() => {
         if (activeTab === 'view') {
@@ -22,6 +33,40 @@ export default function ReportsClient() {
                     setLoading(false);
                 });
         }
+        // If preview tabs, we might want to fetch real data too to see if it exists
+        if (activeTab === 'preview_daily') {
+            // Try to fetch daily data... reused logic or new endpoint?
+            // For now we simulate.
+            setLoading(true);
+            fetch('/api/admin/reports/daily-stock') // Assuming exists or consistent with 'view'
+                .then(r => r.json())
+                .then(d => {
+                    // Check if enough data
+                    if (!d.data || d.data.length === 0) setShowSample(true);
+                    else {
+                        setData(d.data);
+                        setShowSample(false);
+                    }
+                    setLoading(false);
+                }).catch(() => {
+                    setShowSample(true);
+                    setLoading(false);
+                });
+        }
+        if (activeTab === 'preview_lowstock') {
+            setLoading(true);
+            fetch('/api/admin/reports/low-stock-alert')
+                .then(r => r.json())
+                .then(d => {
+                    if (!d.data || d.data.length === 0) setShowSample(true);
+                    setData(d.data || []);
+                    setLoading(false);
+                }).catch(() => {
+                    setShowSample(true);
+                    setLoading(false);
+                });
+        }
+
     }, [reportType, activeTab]);
 
     const handleExport = () => {
@@ -32,31 +77,56 @@ export default function ReportsClient() {
         <div className="p-8">
             <div className="flex justify-between items-center mb-8">
                 <h1 className="text-3xl font-bold text-white">Analytics & Reports</h1>
-                <div className="flex bg-gray-800 rounded-lg p-1 border border-gray-700">
+                <div className="bg-gray-800 rounded-lg p-1 border border-gray-700 grid grid-flow-col gap-1">
                     <button
                         onClick={() => setActiveTab('view')}
-                        className={`px-6 py-2 rounded font-bold transition-all ${activeTab === 'view' ? 'bg-blue-600 text-white shadow' : 'text-gray-400 hover:text-white'}`}
+                        className={`px-4 py-2 rounded font-bold transition-all text-sm whitespace-nowrap ${activeTab === 'view' ? 'bg-blue-600 text-white shadow' : 'text-gray-400 hover:text-white'}`}
                     >
                         Standard Reports
                     </button>
                     <button
-                        onClick={() => setActiveTab('builder')}
-                        className={`px-6 py-2 rounded font-bold transition-all ${activeTab === 'builder' ? 'bg-blue-600 text-white shadow' : 'text-gray-400 hover:text-white'}`}
+                        onClick={() => setActiveTab('preview_daily')}
+                        className={`px-4 py-2 rounded font-bold transition-all text-sm whitespace-nowrap ${activeTab === 'preview_daily' ? 'bg-blue-600 text-white shadow' : 'text-gray-400 hover:text-white'}`}
                     >
-                        Custom Reports
+                        Daily Report Preview
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('preview_lowstock')}
+                        className={`px-4 py-2 rounded font-bold transition-all text-sm whitespace-nowrap ${activeTab === 'preview_lowstock' ? 'bg-blue-600 text-white shadow' : 'text-gray-400 hover:text-white'}`}
+                    >
+                        Low Stock Preview
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('builder')}
+                        className={`px-4 py-2 rounded font-bold transition-all text-sm whitespace-nowrap ${activeTab === 'builder' ? 'bg-blue-600 text-white shadow' : 'text-gray-400 hover:text-white'}`}
+                    >
+                        Custom Builder
                     </button>
                     <Link
                         href="/admin/settings/reporting"
-                        className="px-6 py-2 rounded font-bold transition-all text-gray-400 hover:text-white flex items-center gap-2"
+                        className="px-4 py-2 rounded font-bold transition-all text-gray-400 hover:text-white flex items-center gap-2 text-sm whitespace-nowrap bg-gray-900 border border-gray-700 ml-2"
                     >
-                        <span>⚙️</span> Settings
+                        <span>⚙️</span> Config
                     </Link>
                 </div>
             </div>
 
-            {activeTab === 'builder' ? (
-                <ReportingClient />
-            ) : (
+            {activeTab === 'builder' && <ReportingClient />}
+
+            {(activeTab === 'preview_daily' || activeTab === 'preview_lowstock') && (
+                <div className="max-w-4xl mx-auto">
+                    <ReportPreview
+                        type={activeTab === 'preview_daily' ? 'DAILY' : 'LOW_STOCK'}
+                        isSample={showSample}
+                        showSampleToggle={true}
+                        onToggleSample={setShowSample}
+                        data={showSample ? null : data}
+                        lowStockThreshold={settings.low_stock_threshold ? parseInt(settings.low_stock_threshold) : 5}
+                    />
+                </div>
+            )}
+
+            {activeTab === 'view' && (
                 <>
                     <div className="flex justify-between items-center mb-6 bg-gray-800 p-4 rounded-xl border border-gray-700">
                         <div className="flex gap-4 items-center">
@@ -66,7 +136,7 @@ export default function ReportsClient() {
                                 onChange={e => setReportType(e.target.value)}
                                 className="bg-gray-900 text-white border border-gray-600 rounded px-4 py-2 outline-none"
                             >
-                                <option value="stock">Low Stock Alert</option>
+                                <option value="stock">Low Stock List</option>
                                 <option value="usage">Usage Trends (30 Days)</option>
                             </select>
                         </div>
@@ -79,12 +149,6 @@ export default function ReportsClient() {
                             >
                                 <span>⬇️</span> Export CSV
                             </button>
-                            <a href="/admin/reports/smart-order" className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded font-bold transition-colors">
-                                Smart Order Sheet
-                            </a>
-                            <a href="/admin/reports/bottle-levels" className="bg-purple-600 hover:bg-purple-500 text-white px-4 py-2 rounded font-bold transition-colors">
-                                Bottle Levels
-                            </a>
                         </div>
                     </div>
 

@@ -71,7 +71,7 @@ export async function POST(req: NextRequest) {
         }
 
         const body = await req.json();
-        const { name, type, secondary_type, supplier, supplier_id, low_stock_threshold } = body;
+        const { name, type, secondary_type, supplier, supplier_id, low_stock_threshold, order_size } = body;
 
         if (!name || !type) return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
 
@@ -89,8 +89,8 @@ export async function POST(req: NextRequest) {
 
         // Insert and Return ID
         const res = await db.one(
-            'INSERT INTO items (name, type, secondary_type, supplier, organization_id, low_stock_threshold) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
-            [name, type, secondary_type || null, supplier || null, organizationId, low_stock_threshold !== undefined ? low_stock_threshold : 5]
+            'INSERT INTO items (name, type, secondary_type, supplier, organization_id, low_stock_threshold, order_size) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id',
+            [name, type, secondary_type || null, supplier || null, organizationId, low_stock_threshold !== undefined ? low_stock_threshold : 5, order_size || 1]
         );
         const itemId = res.id;
 
@@ -185,15 +185,10 @@ export async function PUT(req: NextRequest) {
                 updates.push(`order_size = $${pIdx++}`);
                 params.push(order_size);
             }
-            // I will first fix the destructuring in a separate step to access the variable safely.
-            // Aborting this specific logic for now to fix the destructure first.
-
-            // Wait, I can't "abort". I will return dummy replacement and fix it properly in next steps.
-            // Actually, I can replace lines 153 down to here.
-
-            // Let's modify the previous `replace` to included correct imports? No I need to import checkAndTriggerSmartOrder.
-
-            // Let's do imports first.
+            if (low_stock_threshold !== undefined) {
+                updates.push(`low_stock_threshold = $${pIdx++}`);
+                params.push(low_stock_threshold); // Can be null
+            }
 
             if (updates.length > 0) {
                 params.push(id);

@@ -2,21 +2,26 @@
 
 import { useState, useEffect } from 'react';
 import styles from '../../admin.module.css';
+import RecipientSelector from '@/components/RecipientSelector';
+import FrequencyPicker from '@/components/FrequencyPicker';
 
 export default function ReportingSettingsClient() {
     const [settings, setSettings] = useState({
-        report_emails: '',
+        report_emails: { to: [], cc: [], bcc: [] } as any,
         smtp_host: '',
         smtp_port: '587',
         smtp_user: '',
         smtp_pass: '',
-        report_time: '08:00',
+        report_schedule: { frequency: 'daily', time: '08:00' } as any, // Replaces simple report_time
         low_stock_threshold: '5',
+        use_global_low_stock: 'false', // New Toggle
+
         report_title: 'Daily Stock Report',
         backup_time: '06:00',
+
         low_stock_alert_enabled: 'false',
-        low_stock_alert_emails: '',
-        low_stock_alert_time: '14:00',
+        low_stock_alert_emails: { to: [], cc: [], bcc: [] } as any,
+        low_stock_alert_schedule: { frequency: 'daily', time: '14:00' } as any, // Replaces alert_time
         low_stock_alert_title: 'URGENT: Low Stock Alert',
     });
     const [loading, setLoading] = useState(true);
@@ -33,13 +38,42 @@ export default function ReportingSettingsClient() {
     useEffect(() => {
         Promise.all([
             fetch('/api/admin/settings').then(r => r.json()),
-            fetch('/api/admin/reporting/subscriptions').then(r => r.json())
-        ]).then(([settingsData, subData]) => {
-            if (settingsData.settings) setSettings(prev => ({ ...prev, ...settingsData.settings }));
+            fetch('/api/admin/reporting/subscriptions').then(r => r.json()),
+            fetch('/api/admin/users').then(r => r.json()) // Fetch users for autocomplete
+        ]).then(([settingsData, subData, userData]) => {
+            if (settingsData.settings) {
+                const s = settingsData.settings;
+
+                // Helper to safe parse or default
+                const parseEmails = (val: string) => {
+                    try { return JSON.parse(val); } catch { return { to: val ? val.split(',').map((x: string) => x.trim()) : [], cc: [], bcc: [] }; }
+                };
+                const parseSchedule = (val: string, defaultTime: string) => {
+                    try {
+                        // If it's a simple time string, convert to daily
+                        if (val && !val.startsWith('{')) return { frequency: 'daily', time: val };
+                        return JSON.parse(val);
+                    } catch { return { frequency: 'daily', time: defaultTime }; }
+                };
+
+                setSettings(prev => ({
+                    ...prev,
+                    ...s,
+                    report_emails: parseEmails(s.report_emails),
+                    report_schedule: parseSchedule(s.report_time || s.report_schedule, '08:00'), // Handle backward combat
+                    low_stock_alert_emails: parseEmails(s.low_stock_alert_emails),
+                    low_stock_alert_schedule: parseSchedule(s.low_stock_alert_time || s.low_stock_alert_schedule, '14:00'),
+                }));
+            }
             if (subData) {
                 setLocations(subData.locations || []);
                 setAllUsers(subData.allUsers || []);
                 setSubscriptions(subData.subscriptions || []);
+            }
+            // Also merge user data if needed for selector (using allUsers from subData is okay but userData might be more complete)
+            if (userData && userData.users) {
+                // We can use this list for the RecipientSelector
+                setAllUsers(userData.users);
             }
             setLoading(false);
         });
@@ -136,42 +170,121 @@ export default function ReportingSettingsClient() {
             <div className={styles.card} style={{ gridColumn: 'span 2' }}>
                 <div className={styles.cardTitle}>Daily Reporting Configuration</div>
                 <form onSubmit={handleSubmit}>
-                    <div style={{ marginBottom: '1rem' }}>
-                        <label className={styles.statLabel}>Recipients (comma separated)</label>
-                        <input
-                            name="report_emails"
+                    <div style={{ marginBottom: '2rem' }}>
+                        <label className={styles.statLabel}>Standard Report Recipients</label>
+                        <RecipientSelector
+                            users={allUsers}
                             value={settings.report_emails}
-                            onChange={handleChange}
-                            className={styles.table}
-                            style={{ background: '#1f2937', color: 'white', padding: '0.5rem', border: '1px solid #374151', borderRadius: '0.25rem', width: '100%' }}
-                            placeholder="boss@bar.com, manager@bar.com"
+                            onChange={(val) => setSettings({ ...settings, report_emails: val })}
                         />
                     </div>
-                    <div style={{ marginBottom: '1rem' }}>
-                        <label className={styles.statLabel}>Report Time (HH:MM 24h)</label>
+
+                    <div style={{ marginBottom: '2rem' }}>
+                        <div className="flex gap-4">
+                            <div className="flex-1">
+                                <label className={styles.statLabel}>Report Frequency</label>
+                                <FrequencyPicker
+                                    value={settings.report_schedule}
+                                    onChange={val => setSettings({ ...settings, report_schedule: val })}
+                                />
+                            </div>
+                            <div className="flex-1">
+                                <label className={styles.statLabel}>Report Title</label>
+                                <input
+                                    name="report_title"
+                                    value={settings.report_title}
+                                    onChange={handleChange}
+                                    className={styles.table}
+                                    style={{ background: '#1f2937', color: 'white', padding: '0.5rem', border: '1px solid #374151', borderRadius: '0.25rem', width: '100%' }}
+                                />
+                                <div className="mt-4">
+                                    <label className={styles.statLabel}>Backup Time (Daily)</label>
+                                    <input
+                                        name="backup_time"
+                                        type="time"
+                                        value={settings.backup_time}
+                                        onChange={handleChange}
+                                        className={styles.table}
+                                        style={{ background: '#1f2937', color: 'white', padding: '0.5rem', border: '1px solid #374151', borderRadius: '0.25rem', width: '100%' }}
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+
+                    <div className={styles.cardTitle} style={{ marginTop: '2rem' }}>Low Stock Configuration</div>
+
+                    <div style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                         <input
-                            name="report_time"
-                            type="time"
-                            value={settings.report_time}
-                            onChange={handleChange}
-                            className={styles.table}
-                            style={{ background: '#1f2937', color: 'white', padding: '0.5rem', border: '1px solid #374151', borderRadius: '0.25rem', width: '100%' }}
+                            type="checkbox"
+                            checked={settings.use_global_low_stock === 'true'}
+                            onChange={(e) => setSettings(prev => ({ ...prev, use_global_low_stock: e.target.checked ? 'true' : 'false' }))}
+                            className="w-4 h-4"
                         />
+                        <label className={styles.statLabel} style={{ marginBottom: 0 }}>Use Global Low Stock Threshold (Override Product Settings)</label>
                     </div>
 
+                    {settings.use_global_low_stock === 'true' && (
+                        <div style={{ marginBottom: '1rem', paddingLeft: '1.5rem' }}>
+                            <label className={styles.statLabel}>Global Threshold</label>
+                            <input
+                                name="low_stock_threshold"
+                                type="number"
+                                value={settings.low_stock_threshold}
+                                onChange={handleChange}
+                                className={styles.table}
+                                style={{ background: '#1f2937', color: 'white', padding: '0.5rem', border: '1px solid #374151', borderRadius: '0.25rem', width: '100px' }}
+                            />
+                            <p className="text-gray-500 text-xs mt-1">If enabled, ALL products will be flagged if quantity is below this number.</p>
+                        </div>
+                    )}
 
-                    <div style={{ marginBottom: '1rem' }}>
-                        <label className={styles.statLabel}>Low Stock Threshold</label>
+
+                    <div className={styles.cardTitle} style={{ marginTop: '2rem' }}>Low Stock Alert Email</div>
+
+                    <div style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                         <input
-                            name="low_stock_threshold"
-                            type="number"
-                            value={settings.low_stock_threshold}
-                            onChange={handleChange}
-                            className={styles.table}
-                            style={{ background: '#1f2937', color: 'white', padding: '0.5rem', border: '1px solid #374151', borderRadius: '0.25rem', width: '100%' }}
+                            type="checkbox"
+                            name="low_stock_alert_enabled"
+                            checked={settings.low_stock_alert_enabled === 'true'}
+                            onChange={(e) => setSettings(prev => ({ ...prev, low_stock_alert_enabled: e.target.checked ? 'true' : 'false' }))}
+                            className="w-4 h-4"
                         />
+                        <label className={styles.statLabel} style={{ marginBottom: 0 }}>Enable Separate Low Stock Alert Email</label>
                     </div>
 
+                    {settings.low_stock_alert_enabled === 'true' && (
+                        <div className="pl-6 border-l-2 border-gray-700 ml-2">
+                            <div className="mb-4">
+                                <label className={styles.statLabel}>Alert Recipients</label>
+                                <RecipientSelector
+                                    users={allUsers}
+                                    value={settings.low_stock_alert_emails}
+                                    onChange={(val) => setSettings({ ...settings, low_stock_alert_emails: val })}
+                                />
+                            </div>
+                            <div className="mb-4">
+                                <label className={styles.statLabel}>Alert Schedule</label>
+                                <FrequencyPicker
+                                    value={settings.low_stock_alert_schedule}
+                                    onChange={val => setSettings({ ...settings, low_stock_alert_schedule: val })}
+                                />
+                            </div>
+                            <div className="mb-4">
+                                <label className={styles.statLabel}>Email Subject</label>
+                                <input
+                                    name="low_stock_alert_title"
+                                    value={settings.low_stock_alert_title}
+                                    onChange={handleChange}
+                                    className={styles.table}
+                                    style={{ background: '#1f2937', color: 'white', padding: '0.5rem', border: '1px solid #374151', borderRadius: '0.25rem', width: '100%' }}
+                                />
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Location Subscriptions (Keep as is) */}
                     <div className={styles.cardTitle} style={{ marginTop: '2rem' }}>Location Reporting Subscriptions</div>
                     <p style={{ color: '#9ca3af', marginBottom: '1rem', fontSize: '0.9rem' }}>Select users to receive daily reports for specific locations.</p>
 
@@ -227,85 +340,6 @@ export default function ReportingSettingsClient() {
                         })}
                     </div>
 
-                    <div className={styles.cardTitle} style={{ marginTop: '2rem' }}>Configuration Options</div>
-
-                    <div style={{ marginBottom: '1rem' }}>
-                        <label className={styles.statLabel}>Report Title</label>
-                        <input
-                            name="report_title"
-                            value={settings.report_title}
-                            onChange={handleChange}
-                            className={styles.table}
-                            style={{ background: '#1f2937', color: 'white', padding: '0.5rem', border: '1px solid #374151', borderRadius: '0.25rem', width: '100%' }}
-                        />
-                    </div>
-
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                        <div style={{ marginBottom: '1rem' }}>
-                            <label className={styles.statLabel}>Backup Time (Daily)</label>
-                            <input
-                                name="backup_time"
-                                type="time"
-                                value={settings.backup_time}
-                                onChange={handleChange}
-                                className={styles.table}
-                                style={{ background: '#1f2937', color: 'white', padding: '0.5rem', border: '1px solid #374151', borderRadius: '0.25rem', width: '100%' }}
-                            />
-                        </div>
-                    </div>
-
-                    <div className={styles.cardTitle} style={{ marginTop: '2rem' }}>Low Stock Alert Email</div>
-
-                    <div style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <input
-                            type="checkbox"
-                            name="low_stock_alert_enabled"
-                            checked={settings.low_stock_alert_enabled === 'true'}
-                            onChange={(e) => setSettings(prev => ({ ...prev, low_stock_alert_enabled: e.target.checked ? 'true' : 'false' }))}
-                            style={{ width: '20px', height: '20px' }}
-                        />
-                        <label className={styles.statLabel} style={{ marginBottom: 0 }}>Enable Separate Alert Email</label>
-                    </div>
-
-                    <div style={{ marginBottom: '1rem' }}>
-                        <label className={styles.statLabel}>Email Subject Title</label>
-                        <input
-                            name="low_stock_alert_title"
-                            value={settings.low_stock_alert_title}
-                            onChange={handleChange}
-                            className={styles.table}
-                            style={{ background: '#1f2937', color: 'white', padding: '0.5rem', border: '1px solid #374151', borderRadius: '0.25rem', width: '100%' }}
-                            placeholder="URGENT: Low Stock Alert"
-                        />
-                    </div>
-
-                    {settings.low_stock_alert_enabled === 'true' && (
-                        <>
-                            <div style={{ marginBottom: '1rem' }}>
-                                <label className={styles.statLabel}>Alert Emails (comma separated)</label>
-                                <input
-                                    name="low_stock_alert_emails"
-                                    value={settings.low_stock_alert_emails}
-                                    onChange={handleChange}
-                                    className={styles.table}
-                                    style={{ background: '#1f2937', color: 'white', padding: '0.5rem', border: '1px solid #374151', borderRadius: '0.25rem', width: '100%' }}
-                                    placeholder="manager@bar.com"
-                                />
-                            </div>
-                            <div style={{ marginBottom: '1rem' }}>
-                                <label className={styles.statLabel}>Alert Time (HH:MM 24h)</label>
-                                <input
-                                    name="low_stock_alert_time"
-                                    type="time"
-                                    value={settings.low_stock_alert_time}
-                                    onChange={handleChange}
-                                    className={styles.table}
-                                    style={{ background: '#1f2937', color: 'white', padding: '0.5rem', border: '1px solid #374151', borderRadius: '0.25rem', width: '100%' }}
-                                />
-                            </div>
-                        </>
-                    )}
-
                     <div className={styles.cardTitle} style={{ marginTop: '2rem' }}>Email Server (SMTP)</div>
 
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
@@ -345,95 +379,6 @@ export default function ReportingSettingsClient() {
                     </div>
                 </form>
             </div >
-
-            <div className={styles.card} style={{ gridColumn: 'span 2', marginTop: '2rem' }}>
-                <div className={styles.cardTitle}>Report Preview (Mockup)</div>
-                <p style={{ color: '#9ca3af', marginBottom: '1rem' }}>
-                    The report covers the <strong>Business Day</strong> and now includes <strong>No Stock</strong> and <strong>Low Stock</strong> alerts based on your threshold.
-                </p>
-
-                <div style={{ background: 'white', border: '1px solid #ccc', borderRadius: '0.5rem', overflow: 'hidden', fontFamily: 'sans-serif', color: '#1f2937' }}>
-                    <div style={{ background: '#111827', color: 'white', padding: '1rem' }}>
-                        <h2 style={{ margin: 0, fontSize: '1.25rem' }}>Daily Stock Report</h2>
-                        <p style={{ margin: '0.25rem 0 0 0', opacity: 0.8, fontSize: '0.875rem' }}>Jan 3, 7:00 AM — Jan 4, 5:00 AM</p>
-                    </div>
-
-                    <div style={{ background: '#f8fafc', padding: '15px', margin: '20px 0 0 0', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-around' }}>
-                        <div style={{ textAlign: 'center' }}>
-                            <div style={{ fontSize: '0.85em', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Total Usage Cost</div>
-                            <div style={{ fontSize: '1.5em', fontWeight: 'bold', color: '#ef4444' }}>$52.00</div>
-                        </div>
-                        <div style={{ textAlign: 'center' }}>
-                            <div style={{ fontSize: '0.85em', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Total Stock Added</div>
-                            <div style={{ fontSize: '1.5em', fontWeight: 'bold', color: '#10b981' }}>$350.00</div>
-                        </div>
-                    </div>
-
-                    <div style={{ padding: '1rem 1rem 0 1rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                        <div style={{ background: '#fff', padding: '1rem', borderRadius: '0.5rem', border: '1px solid #e5e7eb' }}>
-                            <h3 style={{ margin: '0 0 0.5rem 0', color: '#1f2937', fontSize: '1rem' }}>Liquor Cost by Bartender</h3>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #eee', padding: '0.25rem 0' }}><span>Alice</span><strong>$24.00</strong></div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #eee', padding: '0.25rem 0' }}><span>Bob</span><strong>$28.00</strong></div>
-                        </div>
-                    </div>
-
-                    <div style={{ padding: '1rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                        <div style={{ background: '#f3f4f6', padding: '1rem', borderRadius: '0.5rem' }}>
-                            <h3 style={{ margin: '0 0 0.5rem 0', color: '#ef4444', fontSize: '1rem' }}>🔻 Usage</h3>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #ddd', padding: '0.25rem 0' }}><span>Bud Light</span><strong>24</strong></div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #ddd', padding: '0.25rem 0' }}><span>Vodka</span><strong>2</strong></div>
-                        </div>
-                        <div style={{ background: '#ecfdf5', padding: '1rem', borderRadius: '0.5rem' }}>
-                            <h3 style={{ margin: '0 0 0.5rem 0', color: '#10b981', fontSize: '1rem' }}>✅ Restock</h3>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #ddd', padding: '0.25rem 0' }}><span>Jack Daniels</span><strong>12</strong></div>
-                        </div>
-                    </div>
-
-                    {/* New Reports Section */}
-                    <div style={{ padding: '0 1rem 1rem 1rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                        <div style={{ background: '#fee2e2', padding: '1rem', borderRadius: '0.5rem', border: '1px solid #fca5a5' }}>
-                            <h3 style={{ margin: '0 0 0.5rem 0', color: '#dc2626', fontSize: '1rem' }}>❌ No Stock (0 Qty)</h3>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #fca5a5', padding: '0.25rem 0' }}><span>Tequila Silver</span><strong>0</strong></div>
-                        </div>
-                        <div style={{ background: '#ffedd5', padding: '1rem', borderRadius: '0.5rem', border: '1px solid #fdba74' }}>
-                            <h3 style={{ margin: '0 0 0.5rem 0', color: '#ea580c', fontSize: '1rem' }}>⚠️ Low Stock (&le; {settings.low_stock_threshold})</h3>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #fdba74', padding: '0.25rem 0' }}><span>Rum</span><strong>3</strong></div>
-                        </div>
-                    </div>
-
-                    <div style={{ padding: '1rem' }}>
-                        <h3 style={{ borderBottom: '2px solid #eee', paddingBottom: '0.5rem' }}>Detailed Activity</h3>
-                        <table style={{ width: '100%', fontSize: '0.875rem' }}>
-                            <tr style={{ color: '#666', textAlign: 'left' }}><th>Time</th><th>User</th><th>Item</th><th>Action</th></tr>
-                            <tr><td>14:02</td><td>Alice</td><td>Bud Light</td><td style={{ color: '#ef4444' }}>-24 (Stk: 48)</td></tr>
-                            <tr><td>16:45</td><td>Bob</td><td>Jack Daniels</td><td style={{ color: '#10b981' }}>+12 (Stk: 20)</td></tr>
-                        </table>
-                    </div>
-                </div>
-
-                <div className={styles.card} style={{ gridColumn: 'span 2', marginTop: '2rem' }}>
-                    <div className={styles.cardTitle}>Low Stock Alert Preview (Mockup)</div>
-                    <p style={{ color: '#9ca3af', marginBottom: '1rem' }}>
-                        This is how the alert email will look. It uses your custom title and threshold.
-                    </p>
-
-                    <div style={{ background: 'white', border: '1px solid #ccc', borderRadius: '0.5rem', overflow: 'hidden', fontFamily: 'sans-serif', color: '#1f2937', maxWidth: '600px', margin: '0 auto' }}>
-                        <div style={{ background: '#7f1d1d', color: 'white', padding: '1rem' }}>
-                            <h2 style={{ margin: 0, fontSize: '1.25rem', color: 'white' }}>⚠️ {settings.low_stock_alert_title || 'URGENT: Low Stock Alert'}</h2>
-                        </div>
-                        <div style={{ padding: '1.5rem' }}>
-                            <p style={{ marginTop: 0 }}>The following items are at or below the threshold ({settings.low_stock_threshold}):</p>
-                            <ul style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: '0.5rem', padding: '1rem 2rem' }}>
-                                <li style={{ marginBottom: '0.5rem' }}>Rum: <b>3</b></li>
-                                <li style={{ marginBottom: '0.5rem' }}>Tequila Silver: <b>0</b></li>
-                            </ul>
-                            <div style={{ marginTop: '1.5rem' }}>
-                                <a href="#" style={{ background: '#c2410c', color: 'white', textDecoration: 'none', padding: '0.5rem 1rem', borderRadius: '0.25rem', fontSize: '0.9rem' }}>Go to Dashboard</a>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
         </div >
     );
 }

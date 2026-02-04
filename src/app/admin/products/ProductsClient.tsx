@@ -156,7 +156,7 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                     supplier: newItemSupplier,
                     supplier_id: newItemSupplierId,
                     track_quantity: newItemTrackQty ? 1 : 0,
-                    low_stock_threshold: newItemThreshold ? parseInt(newItemThreshold) : 5,
+                    low_stock_threshold: newItemThreshold === '' ? null : parseInt(newItemThreshold),
                     order_size: newItemOrderSize ? parseInt(newItemOrderSize) : 1
                 })
             });
@@ -339,7 +339,7 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                                                         value={editForm.type}
                                                         onChange={e => setEditForm({ ...editForm, type: e.target.value, secondary_type: '' })}
                                                     >
-                                                        {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                                                        {categories.map((c, i) => <option key={c.id || i} value={c.name}>{c.name}</option>)}
                                                     </select>
                                                 </td>
                                                 <td>
@@ -413,13 +413,28 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                                                     </td>
                                                 )}
                                                 <td>
-                                                    <input
-                                                        className={styles.input}
-                                                        type="number"
-                                                        value={editForm.low_stock_threshold !== undefined ? editForm.low_stock_threshold : 5}
-                                                        onChange={e => setEditForm({ ...editForm, low_stock_threshold: parseInt(e.target.value) })}
-                                                        style={{ width: '60px' }}
-                                                    />
+                                                    <div className="flex flex-col text-xs">
+                                                        <label className="flex items-center gap-1 mb-1 whitespace-nowrap">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={editForm.low_stock_threshold === null || editForm.low_stock_threshold === undefined}
+                                                                onChange={(e) => {
+                                                                    if (e.target.checked) setEditForm({ ...editForm, low_stock_threshold: null as any });
+                                                                    else setEditForm({ ...editForm, low_stock_threshold: 5 });
+                                                                }}
+                                                            />
+                                                            Global
+                                                        </label>
+                                                        {editForm.low_stock_threshold !== null && editForm.low_stock_threshold !== undefined && (
+                                                            <input
+                                                                className={styles.input}
+                                                                type="number"
+                                                                value={editForm.low_stock_threshold}
+                                                                onChange={e => setEditForm({ ...editForm, low_stock_threshold: parseInt(e.target.value) })}
+                                                                style={{ width: '60px' }}
+                                                            />
+                                                        )}
+                                                    </div>
                                                 </td>
                                                 <td style={{ textAlign: 'right' }}>
                                                     <button onClick={handleSaveEdit} style={{ color: '#34d399', marginRight: '10px', fontWeight: 'bold' }}>Save</button>
@@ -439,7 +454,7 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                                                         {Math.floor(item.quantity)}
                                                     </td>
                                                 )}
-                                                <td style={{ color: '#9ca3af', fontSize: '0.9em' }}>{item.low_stock_threshold ?? 5}</td>
+                                                <td style={{ color: '#9ca3af', fontSize: '0.9em' }}>{item.low_stock_threshold === null ? 'Global' : item.low_stock_threshold}</td>
                                                 <td style={{ textAlign: 'right' }}>
                                                     <button
                                                         onClick={() => handleEditClick(item)}
@@ -552,14 +567,25 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                                 </div>
                                 <div style={{ flex: 1 }}>
                                     <label className={styles.statLabel}>Low Stock Alert</label>
-                                    <input
-                                        className={styles.input}
-                                        type="number"
-                                        value={newItemThreshold}
-                                        onChange={e => setNewItemThreshold(e.target.value)}
-                                        placeholder="5"
-                                        style={{ width: '100%' }}
-                                    />
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <input
+                                            type="checkbox"
+                                            checked={newItemThreshold === ''}
+                                            onChange={e => setNewItemThreshold(e.target.checked ? '' : '5')}
+                                            className="w-4 h-4"
+                                        />
+                                        <span className="text-sm text-gray-400">Use Global Default</span>
+                                    </div>
+                                    {newItemThreshold !== '' && (
+                                        <input
+                                            className={styles.input}
+                                            type="number"
+                                            value={newItemThreshold}
+                                            onChange={e => setNewItemThreshold(e.target.value)}
+                                            placeholder="5"
+                                            style={{ width: '100%' }}
+                                        />
+                                    )}
                                 </div>
                             </div>
 
