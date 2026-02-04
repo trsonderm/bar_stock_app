@@ -14,8 +14,8 @@ export async function GET(req: NextRequest) {
 
         const parsed = categories.map(c => ({
             ...c,
-            stock_options: c.stock_options ? JSON.parse(c.stock_options) : [1],
-            sub_categories: c.sub_categories ? JSON.parse(c.sub_categories) : []
+            stock_options: typeof c.stock_options === 'string' ? JSON.parse(c.stock_options) : (c.stock_options || [1]),
+            sub_categories: typeof c.sub_categories === 'string' ? JSON.parse(c.sub_categories) : (c.sub_categories || [])
         }));
 
         return NextResponse.json({ categories: parsed });
@@ -27,9 +27,10 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
     try {
         const session = await getSession();
-        if (!session || session.role !== 'admin') {
-            const hasPermission = session?.permissions.includes('all');
-            if (!hasPermission) return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+        if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+        if (session.role !== 'admin' && !session.permissions.includes('all')) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
         }
 
         const { name, stock_options, sub_categories } = await req.json();

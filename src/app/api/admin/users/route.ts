@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
     const organizationId = session.organizationId;
     const users = await db.query(`
         SELECT u.id, u.first_name, u.last_name, u.email, u.role, u.permissions, u.pin_hash, u.created_at, u.phone, u.bio, u.notes,
-        json_group_array(ul.location_id) as assigned_locations
+        json_agg(ul.location_id) as assigned_locations
         FROM users u
         LEFT JOIN user_locations ul ON u.id = ul.user_id
         WHERE u.organization_id = $1 
@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
     // Parse the json string from sqlite
     const parsed = users.map((u: any) => ({
         ...u,
-        assigned_locations: JSON.parse(u.assigned_locations).filter((id: any) => id !== null)
+        assigned_locations: (u.assigned_locations || []).filter((id: any) => id !== null)
     }));
 
     return NextResponse.json({ users: parsed });

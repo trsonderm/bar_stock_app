@@ -10,7 +10,7 @@ export async function middleware(request: NextRequest) {
 
     // Public routes (include register and login)
     const publicPaths = ['/', '/login', '/register'];
-    if (publicPaths.includes(path) || path.startsWith('/api/auth') || path.startsWith('/api/register') || path.startsWith('/_next') || path.startsWith('/favicon.ico') || path.startsWith('/manifest.json')) {
+    if (publicPaths.includes(path) || path.startsWith('/api/auth') || path.startsWith('/api/register') || path.startsWith('/api/system') || path.startsWith('/_next') || path.startsWith('/favicon.ico') || path.startsWith('/manifest.json')) {
         // Optional: Redirect logged in users away from login/register?
         // For now, allow access.
         return NextResponse.next();

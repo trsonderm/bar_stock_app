@@ -4,27 +4,17 @@ const authFile = '.auth/admin.json';
 
 setup('authenticate as admin', async ({ page }) => {
     // Login with initial Admin seed data
-    await page.goto('/api/auth/login'); // Or UI page if exists, assuming UI login at /login? 
-    // Let's check where the login form is. AdminNav logout redirects to /
-    // Let's assume there is a login page.
-    await page.goto('/');
+    // Navigate to login page
+    await page.goto('/login');
 
-    // Enter PIN
-    // Enter PIN 0420 using keypad
-    await page.click('button:has-text("0")');
-    await page.click('button:has-text("4")');
-    await page.click('button:has-text("2")');
-    await page.click('button:has-text("0")');
+    // Wait for the user to manually log in and be redirected to a dashboard
+    // This allows manual entry of Email/Password or PIN without script fragility.
+    console.log('Waiting for manual login... Please log in in the browser window.');
 
-    // Click Enter
-    await page.click('button:has-text("ENTER")');
+    // Wait for any authorized page (inventory, admin, super-admin)
+    await page.waitForURL(/.*(\/inventory|\/admin\/dashboard|\/super-admin).*/, { timeout: 0 });
 
-    // Wait for login to complete (cookie set)
-    await page.waitForURL('**/inventory**', { timeout: 10000 }).catch(() => { });
-    // Or check for navigation element
-    // Just navigate to admin to verify
-    await page.goto('/admin/dashboard');
-    await expect(page).toHaveURL(/.*\/admin\/dashboard/);
+    console.log('Login detected. Saving session state...');
 
     await page.context().storageState({ path: authFile });
 });

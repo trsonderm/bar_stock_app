@@ -159,37 +159,52 @@ export default function LandingPage() {
                     </span>
                     <h2 className="text-3xl font-bold text-white mb-12">Simple, Transparent Pricing</h2>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
-                        {/* Monthly */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-7xl mx-auto">
+                        {/* Monthly Starter */}
                         <div className="flex flex-col p-8 bg-gray-800 rounded-3xl border border-gray-700 hover:border-gray-600 transition-colors">
-                            <h3 className="text-xl font-medium text-gray-300 mb-2">Monthly</h3>
-                            <div className="text-5xl font-bold text-white mb-6">$19.99<span className="text-lg text-gray-500 font-normal">/mo</span></div>
-                            <ul className="space-y-4 mb-8 text-left flex-1">
+                            <h3 className="text-xl font-medium text-gray-300 mb-2">Starter</h3>
+                            <div className="text-4xl font-bold text-white mb-6">$19.99<span className="text-lg text-gray-500 font-normal">/mo</span></div>
+                            <ul className="space-y-4 mb-8 text-left flex-1 text-sm">
+                                <li className="flex items-center text-gray-300"><ShieldCheck className="w-5 h-5 text-amber-500 mr-3" /> Up to 3 Users</li>
                                 <li className="flex items-center text-gray-300"><ShieldCheck className="w-5 h-5 text-amber-500 mr-3" /> Unlimited Items</li>
-                                <li className="flex items-center text-gray-300"><ShieldCheck className="w-5 h-5 text-amber-500 mr-3" /> Multiple Admins</li>
-                                <li className="flex items-center text-gray-300"><ShieldCheck className="w-5 h-5 text-amber-500 mr-3" /> Advanced Reports</li>
+                                <li className="flex items-center text-gray-300"><ShieldCheck className="w-5 h-5 text-amber-500 mr-3" /> Smart Reports</li>
                             </ul>
-                            <Link href="/register" className="block w-full py-4 rounded-xl bg-gray-700 hover:bg-gray-600 text-white font-bold transition-colors">
+                            <Link href="/register?plan=starter" className="block w-full py-4 rounded-xl bg-gray-700 hover:bg-gray-600 text-white font-bold transition-colors">
                                 Start Monthly
                             </Link>
                         </div>
 
-                        {/* Yearly */}
-                        <div className="flex flex-col p-8 bg-gradient-to-b from-gray-800 to-gray-900 rounded-3xl border border-amber-500/50 shadow-2xl relative overflow-hidden">
-                            <div className="absolute top-6 right-6 bg-amber-500 text-white text-xs font-bold px-3 py-1 rounded-full">
-                                SAVE 60%
-                            </div>
-                            <h3 className="text-xl font-medium text-amber-500 mb-2">Yearly</h3>
-                            <div className="text-5xl font-bold text-white mb-6">$99.99<span className="text-lg text-gray-500 font-normal">/yr</span></div>
-                            <ul className="space-y-4 mb-8 text-left flex-1">
-                                <li className="flex items-center text-white"><ShieldCheck className="w-5 h-5 text-amber-500 mr-3" /> All Pro Features</li>
+                        {/* Monthly Pro */}
+                        <div className="flex flex-col p-8 bg-gray-800 rounded-3xl border border-amber-500/30 hover:border-amber-500 transition-colors transform scale-105 shadow-2xl z-10">
+                            <div className="text-amber-500 text-xs font-bold uppercase tracking-wide mb-2">Most Popular</div>
+                            <h3 className="text-xl font-medium text-white mb-2">Pro</h3>
+                            <div className="text-4xl font-bold text-white mb-6">$29.00<span className="text-lg text-gray-500 font-normal">/mo</span></div>
+                            <ul className="space-y-4 mb-8 text-left flex-1 text-sm">
+                                <li className="flex items-center text-white"><ShieldCheck className="w-5 h-5 text-amber-500 mr-3" /> Unlimited Users</li>
                                 <li className="flex items-center text-white"><ShieldCheck className="w-5 h-5 text-amber-500 mr-3" /> Priority Support</li>
-                                <li className="flex items-center text-white"><ShieldCheck className="w-5 h-5 text-amber-500 mr-3" /> Station Mode Included</li>
+                                <li className="flex items-center text-white"><ShieldCheck className="w-5 h-5 text-amber-500 mr-3" /> All Advanced Features</li>
                             </ul>
-                            <Link href="/register?plan=yearly" className="block w-full py-4 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold transition-colors shadow-lg shadow-amber-900/20">
+                            <Link href="/register?plan=pro" className="block w-full py-4 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold transition-colors shadow-lg">
+                                Start Pro
+                            </Link>
+                        </div>
+
+                        {/* Yearly */}
+                        <div className="flex flex-col p-8 bg-gray-800 rounded-3xl border border-gray-700 hover:border-gray-600 transition-colors">
+                            <div className="flex justify-between items-start mb-2">
+                                <h3 className="text-xl font-medium text-gray-300">Yearly</h3>
+                                <span className="bg-amber-500/10 text-amber-500 text-xs font-bold px-2 py-1 rounded">SAVE 70%</span>
+                            </div>
+                            <div className="text-4xl font-bold text-white mb-6">$99.99<span className="text-lg text-gray-500 font-normal">/yr</span></div>
+                            <ul className="space-y-4 mb-8 text-left flex-1 text-sm">
+                                <li className="flex items-center text-gray-300"><ShieldCheck className="w-5 h-5 text-amber-500 mr-3" /> All Pro Features</li>
+                                <li className="flex items-center text-gray-300"><ShieldCheck className="w-5 h-5 text-amber-500 mr-3" /> Unlimited Users</li>
+                                <li className="flex items-center text-gray-300"><ShieldCheck className="w-5 h-5 text-amber-500 mr-3" /> Station Mode Included</li>
+                            </ul>
+                            <Link href="/register?plan=yearly" className="block w-full py-4 rounded-xl bg-gray-700 hover:bg-gray-600 text-white font-bold transition-colors">
                                 Start Yearly
                             </Link>
-                            <p className="mt-3 text-xs text-gray-500">Includes 14-day free trial</p>
+                            <p className="mt-3 text-center text-xs text-gray-500">Includes 14-day free trial</p>
                         </div>
                     </div>
                 </div>

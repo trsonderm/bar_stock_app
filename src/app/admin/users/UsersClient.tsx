@@ -31,6 +31,7 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
 
     const [canAddStock, setCanAddStock] = useState(false);
     const [canAddItem, setCanAddItem] = useState(false);
+    const [canAudit, setCanAudit] = useState(false);
     const [isAdmin, setIsAdmin] = useState(false);
     const [submitting, setSubmitting] = useState(false);
 
@@ -80,6 +81,7 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
         const permissions = [];
         if (canAddStock) permissions.push('add_stock');
         if (canAddItem) permissions.push('add_item_name');
+        if (canAudit) permissions.push('audit');
 
         const role = isAdmin ? 'admin' : 'user';
 
@@ -135,6 +137,7 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
         setNotes('');
         setCanAddStock(false);
         setCanAddItem(false);
+        setCanAudit(false);
         setIsAdmin(false);
         setEditingId(null);
         setAssignedLocations([]);
@@ -155,7 +158,8 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
         try {
             const p = JSON.parse(json);
             if (p.includes('all')) return 'Full Admin';
-            return p.map((perm: string) => perm === 'add_stock' ? 'Add Stock' : perm === 'add_item_name' ? 'Add Items' : perm).join(', ');
+            if (p.includes('all')) return 'Full Admin';
+            return p.map((perm: string) => perm === 'add_stock' ? 'Add Stock' : perm === 'add_item_name' ? 'Add Items' : perm === 'audit' ? 'Audit' : perm).join(', ');
         } catch { return ''; }
     };
 
@@ -175,6 +179,7 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
 
         setCanAddStock(perms.includes('add_stock') || perms.includes('all'));
         setCanAddItem(perms.includes('add_item_name') || perms.includes('all'));
+        setCanAudit(perms.includes('audit') || perms.includes('all'));
         setIsAdmin(u.role === 'admin');
         setAssignedLocations(u.assigned_locations || []);
     };
@@ -258,6 +263,10 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
                                 <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'white' }}>
                                     <input type="checkbox" checked={canAddItem} onChange={e => setCanAddItem(e.target.checked)} />
                                     Can Create Items
+                                </label>
+                                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'white' }}>
+                                    <input type="checkbox" checked={canAudit} onChange={e => setCanAudit(e.target.checked)} />
+                                    Can Perform Audits
                                 </label>
                                 <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#fbbf24', fontWeight: 'bold' }}>
                                     <input type="checkbox" checked={isAdmin} onChange={e => setIsAdmin(e.target.checked)} />

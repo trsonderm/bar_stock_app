@@ -13,10 +13,26 @@ export async function GET(req: NextRequest) {
     const settingsObj: Record<string, string> = {};
     settings.forEach(s => settingsObj[s.key] = s.value);
 
-    // Fetch Organization Subdomain
-    const org = await db.one('SELECT subdomain FROM organizations WHERE id = $1', [organizationId]);
+    // Fetch Organization Subdomain, AI Config, and General Settings
+    const org = await db.one('SELECT subdomain, ai_ordering_config, settings FROM organizations WHERE id = $1', [organizationId]);
     if (org) {
         settingsObj['subdomain'] = org.subdomain || '';
+
+        let aiConfig: { enabled?: boolean; email?: string; phone?: string } = { enabled: false };
+        try {
+            if (org.ai_ordering_config) aiConfig = JSON.parse(org.ai_ordering_config);
+        } catch { }
+        settingsObj['ai_ordering_enabled'] = aiConfig.enabled ? 'true' : 'false';
+        settingsObj['ai_ordering_email'] = aiConfig.email || '';
+        settingsObj['ai_ordering_phone'] = aiConfig.phone || '';
+
+        // New Settings JSONB
+        let generalSettings: any = {};
+        try {
+            if (org.settings) generalSettings = org.settings; // Already JSON
+        } catch { }
+        settingsObj['stock_count_mode'] = generalSettings.stock_count_mode || 'CATEGORY';
+        settingsObj['allow_custom_increment'] = generalSettings.allow_custom_increment ? 'true' : 'false';
     }
 
     return NextResponse.json({ settings: settingsObj });
@@ -61,6 +77,34 @@ export async function POST(req: NextRequest) {
                 return NextResponse.json({ error: 'Subdomain ID already taken' }, { status: 400 });
             }
             await db.execute('UPDATE organizations SET subdomain = $1 WHERE id = $2', [desired || null, organizationId]);
+        }
+
+        // Handle AI Ordering Enabled Update (and config fields)
+        if (body.ai_ordering_enabled !== undefined || body.ai_ordering_email !== undefined || body.ai_ordering_phone !== undefined) {
+
+            // Get existing config to preserve other fields
+            const org = await db.one('SELECT ai_ordering_config FROM organizations WHERE id = $1', [organizationId]);
+            let config: { enabled?: boolean; email?: string; phone?: string } = {};
+            try {
+                if (org.ai_ordering_config) config = JSON.parse(org.ai_ordering_config);
+            } catch { }
+
+            if (body.ai_ordering_enabled !== undefined) {
+                config.enabled = body.ai_ordering_enabled === 'true' || body.ai_ordering_enabled === true;
+            }
+            if (body.ai_ordering_email !== undefined) config.email = body.ai_ordering_email;
+            if (body.ai_ordering_phone !== undefined) config.phone = body.ai_ordering_phone;
+
+            await db.execute('UPDATE organizations SET ai_ordering_config = $1 WHERE id = $2', [JSON.stringify(config), organizationId]);
+        }
+
+        // Handle General Settings (JSONB)
+        if (body.stock_count_mode !== undefined || body.allow_custom_increment !== undefined) {
+            const org = await db.one('SELECT settings FROM organizations WHERE id = $1', [organizationId]);
+            let currentSettings = org.settings || {};
+            if (body.stock_count_mode !== undefined) currentSettings.stock_count_mode = body.stock_count_mode;
+            if (body.allow_custom_increment !== undefined) currentSettings.allow_custom_increment = body.allow_custom_increment === 'true' || body.allow_custom_increment === true;
+            await db.query('UPDATE organizations SET settings = $1 WHERE id = $2', [currentSettings, organizationId]);
         }
 
         await db.execute('INSERT INTO activity_logs (organization_id, user_id, action, details) VALUES ($1, $2, $3, $4)',

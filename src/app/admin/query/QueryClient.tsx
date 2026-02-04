@@ -43,7 +43,7 @@ export default function QueryClient() {
     return (
         <>
             <div className={`${styles.content} ${styles.printContainer}`}>
-                <h1 className={styles.pageTitle}>Custom Activity Report</h1>
+                <h1 className={styles.pageTitle}>Activity Search</h1>
 
                 <form onSubmit={handleSearch} className={`${styles.card} ${styles.noPrint}`} style={{ marginBottom: '2rem' }}>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: '1rem', alignItems: 'end' }}>

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import styles from './inventory.module.css';
 import NotificationBell from '@/components/NotificationBell';
+import StockControls from './StockControls';
 
 interface Item {
     id: number;
@@ -65,6 +66,7 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
 
     const [categories, setCategories] = useState<any[]>([]); // Full Category objects
     const [suppliers, setSuppliers] = useState<{ id: number, name: string }[]>([]);
+    const [allowCustomIncrement, setAllowCustomIncrement] = useState(false);
     const [loading, setLoading] = useState(false);
 
     // Cost Edit State
@@ -127,6 +129,12 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
 
             if (catData.categories) setCategories(catData.categories);
             if (suppData.suppliers) setSuppliers(suppData.suppliers);
+
+            const settingsRes = await fetch('/api/admin/settings');
+            const settingsData = await settingsRes.json();
+            if (settingsData.settings?.allow_custom_increment === 'true') {
+                setAllowCustomIncrement(true);
+            }
         } catch { }
     };
 
@@ -150,7 +158,7 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
             }
         }
         // Optimistic update
-        setItems(prev => prev.map(i => i.id === itemId ? { ...i, quantity: Math.max(0, i.quantity + change) } : i));
+        setItems(prev => prev.map(i => i.id === itemId ? { ...i, quantity: Math.max(0, Number(i.quantity) + change) } : i));
 
         try {
             const res = await fetch('/api/inventory/adjust', {
@@ -428,7 +436,7 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
                         </div>
                         <div className={styles.stockControls}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                                <span className={styles.quantity} style={{ fontSize: '1.5rem' }}>{item.quantity}</span>
+                                <span className={styles.quantity} style={{ fontSize: '1.5rem' }}>{Math.floor(item.quantity)}</span>
                             </div>
 
                             <div style={{ display: 'flex', gap: '0.25rem' }}>
@@ -451,15 +459,13 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
                                     }
 
                                     return (
-                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', justifyContent: 'flex-end', width: '100%' }}>
-                                            {options.sort((a: number, b: number) => a - b).map((amt: number) => (
-                                                <div key={amt} className={styles.stockGroup}>
-                                                    <span style={{ color: '#9ca3af', fontSize: '0.8rem', marginRight: '0.25rem' }}>{amt}:</span>
-                                                    <button className={`${styles.stockBtn} ${styles.minusBtn}`} onClick={() => handleAdjust(item.id, -amt)}>-</button>
-                                                    <button className={`${styles.stockBtn} ${styles.plusBtn}`} disabled={!canAddStock} onClick={() => handleAdjust(item.id, amt)}>+</button>
-                                                </div>
-                                            ))}
-                                        </div>
+                                        <StockControls
+                                            item={item}
+                                            options={options}
+                                            canAddStock={canAddStock}
+                                            allowCustom={allowCustomIncrement}
+                                            onAdjust={handleAdjust}
+                                        />
                                     );
                                 })()}
                             </div>
@@ -658,15 +664,19 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
                                     {myActivity
                                         .filter(log => !user.iat || new Date(log.timestamp).getTime() > user.iat * 1000)
                                         .map(log => {
-                                            let displayText = log.details;
+                                            let displayText = 'Activity Recorded';
                                             try {
-                                                const json = JSON.parse(log.details);
-                                                if (log.action === 'ADD_STOCK') {
+                                                const json = typeof log.details === 'string' ? JSON.parse(log.details) : log.details;
+                                                if (log.action === 'ADD_STOCK' && json.itemName) {
                                                     displayText = `Added ${json.quantity} to ${json.itemName}`;
-                                                } else if (log.action === 'SUBTRACT_STOCK') {
+                                                } else if (log.action === 'SUBTRACT_STOCK' && json.itemName) {
                                                     displayText = `Removed ${json.quantity} from ${json.itemName}`;
+                                                } else if (typeof log.details === 'string') {
+                                                    displayText = log.details;
                                                 }
-                                            } catch { }
+                                            } catch {
+                                                if (typeof log.details === 'string') displayText = log.details;
+                                            }
 
                                             return (
                                                 <li key={log.id} style={{ borderBottom: '1px solid #374151', padding: '0.75rem 0' }}>

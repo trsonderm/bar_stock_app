@@ -24,7 +24,11 @@ export async function GET(req: NextRequest) {
         // Enhance logs with correct name
         const enhancedLogs = logs.map((log: any) => {
             let details: any = {};
-            try { details = JSON.parse(log.details); } catch { }
+            if (typeof log.details === 'string') {
+                try { details = JSON.parse(log.details); } catch { }
+            } else {
+                details = log.details || {};
+            }
 
             // If details has itemName, use it (historical accuracy). 
             // If not, use current db name (better than nothing).

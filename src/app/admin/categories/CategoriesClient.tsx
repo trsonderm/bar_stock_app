@@ -26,8 +26,13 @@ export default function CategoriesClient() {
 
     const PRESETS = [1, 4, 5, 6, 8, 10, 12, 18, 24, 30];
 
+    const [stockMode, setStockMode] = useState<string>('CATEGORY');
+
     useEffect(() => {
         fetchCategories();
+        fetch('/api/admin/settings').then(r => r.json()).then(d => {
+            if (d.settings?.stock_count_mode) setStockMode(d.settings.stock_count_mode);
+        });
     }, []);
 
     const fetchCategories = async () => {
@@ -145,13 +150,13 @@ export default function CategoriesClient() {
         <div className={styles.card}>
             <div style={{ marginBottom: '2rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #374151', paddingBottom: '0.5rem', marginBottom: '1rem' }}>
-                    <h3 style={{ margin: 0 }}>{editingId ? 'Edit Variance' : 'Add New Variance'}</h3>
+                    <h3 style={{ margin: 0 }}>{editingId ? 'Edit Category' : 'Add New Category'}</h3>
                     {editingId && <button onClick={resetForm} style={{ background: 'transparent', border: '1px solid #ef4444', color: '#ef4444', borderRadius: '4px', cursor: 'pointer', padding: '4px 8px' }}>Cancel Edit</button>}
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
                     <div>
-                        <label className={styles.label}>Variance Name</label>
+                        <label className={styles.label}>Category Name</label>
                         <input
                             className={styles.input}
                             value={name}
@@ -161,73 +166,82 @@ export default function CategoriesClient() {
                     </div>
 
                     <div>
-                        <label className={styles.label}>Variance Amounts (Stock Buttons)</label>
-                        <p style={{ color: '#9ca3af', fontSize: '0.85rem', marginBottom: '0.5rem' }}>
-                            Define the +/- buttons available for products in this group.
-                        </p>
+                        <label className={styles.label}>Category Amounts (Stock Buttons)</label>
+                        {stockMode === 'PRODUCT' && (
+                            <div style={{ gridColumn: 'span 1', background: '#1f2937', padding: '1rem', borderRadius: '0.5rem', border: '1px solid #374151' }}>
+                                <label className={styles.label} style={{ color: '#9ca3af' }}>Stock Options</label>
+                                <p style={{ fontSize: '0.85rem', color: '#6b7280' }}>
+                                    Stock options are disabled because "Product Level Counting" is active in Settings.
+                                </p>
+                            </div>
+                        )}
+                        {stockMode === 'CATEGORY' && (
+                            <div style={{ gridColumn: 'span 1' }}>
+                                <label className={styles.label}>Default Stock Increment Buttons</label>
+                                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                                    <select
+                                        className={styles.input}
+                                        onChange={(e) => {
+                                            const val = parseInt(e.target.value);
+                                            if (val && !selectedOptions.includes(val)) {
+                                                setSelectedOptions([...selectedOptions, val]);
+                                            }
+                                            e.target.value = '';
+                                        }}
+                                    >
+                                        <option value="">Select a preset button...</option>
+                                        {PRESETS.map(p => (
+                                            <option key={p} value={p}>+{p}</option>
+                                        ))}
+                                    </select>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const custom = prompt('Enter custom number:');
+                                            if (custom) {
+                                                const val = parseInt(custom);
+                                                if (val && !selectedOptions.includes(val)) {
+                                                    setSelectedOptions([...selectedOptions, val]);
+                                                }
+                                            }
+                                        }}
+                                        style={{ background: '#374151', color: 'white', border: 'none', borderRadius: '4px', padding: '0 1rem', cursor: 'pointer' }}
+                                    >
+                                        Add
+                                    </button>
+                                </div>
 
-                        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                            <input
-                                type="number"
-                                placeholder="Amount (e.g. 1, 0.5, 24)"
-                                className={styles.input}
-                                id="newOptionInput"
-                                onKeyDown={(e) => {
-                                    if (e.key === 'Enter') {
-                                        e.preventDefault();
-                                        const val = parseFloat((e.target as HTMLInputElement).value);
-                                        if (!isNaN(val) && !selectedOptions.includes(val)) {
-                                            setSelectedOptions([...selectedOptions, val].sort((a, b) => a - b));
-                                            (e.target as HTMLInputElement).value = '';
-                                        }
-                                    }
-                                }}
-                            />
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    const input = document.getElementById('newOptionInput') as HTMLInputElement;
-                                    const val = parseFloat(input.value);
-                                    if (!isNaN(val) && !selectedOptions.includes(val)) {
-                                        setSelectedOptions([...selectedOptions, val].sort((a, b) => a - b));
-                                        input.value = '';
-                                    }
-                                }}
-                                style={{ background: '#374151', color: 'white', border: 'none', borderRadius: '4px', padding: '0 1rem', cursor: 'pointer' }}
-                            >
-                                Add
-                            </button>
-                        </div>
-
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-                            {selectedOptions.map(opt => (
-                                <span
-                                    key={opt}
-                                    style={{
-                                        background: '#1f2937',
-                                        color: '#e5e7eb',
-                                        padding: '4px 8px',
-                                        borderRadius: '4px',
-                                        border: '1px solid #4b5563',
-                                        fontSize: '0.9rem',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '6px'
-                                    }}
-                                >
-                                    {opt > 0 ? `+${opt}` : opt}
-                                    <span
-                                        onClick={() => setSelectedOptions(selectedOptions.filter(o => o !== opt))}
-                                        style={{ cursor: 'pointer', color: '#9ca3af', fontWeight: 'bold' }}
-                                    >×</span>
-                                </span>
-                            ))}
-                            {selectedOptions.length === 0 && <span style={{ color: '#6b7280', fontStyle: 'italic' }}>No buttons defined.</span>}
-                        </div>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                                    {selectedOptions.map(opt => (
+                                        <span
+                                            key={opt}
+                                            style={{
+                                                background: '#1f2937',
+                                                color: '#e5e7eb',
+                                                padding: '4px 8px',
+                                                borderRadius: '4px',
+                                                border: '1px solid #4b5563',
+                                                fontSize: '0.9rem',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '6px'
+                                            }}
+                                        >
+                                            {opt > 0 ? `+${opt}` : opt}
+                                            <span
+                                                onClick={() => setSelectedOptions(selectedOptions.filter(o => o !== opt))}
+                                                style={{ cursor: 'pointer', color: '#9ca3af', fontWeight: 'bold' }}
+                                            >×</span>
+                                        </span>
+                                    ))}
+                                    {selectedOptions.length === 0 && <span style={{ color: '#6b7280', fontStyle: 'italic' }}>No buttons defined.</span>}
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     <div style={{ gridColumn: '1 / -1', borderTop: '1px solid #374151', paddingTop: '1rem' }}>
-                        <label className={styles.label}>Sub-Variances (Optional)</label>
+                        <label className={styles.label}>Sub-Categories (Optional)</label>
                         <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
                             <input
                                 className={styles.input}
@@ -269,7 +283,7 @@ export default function CategoriesClient() {
                     onClick={editingId ? handleUpdate : handleCreate}
                     style={{ marginTop: '1rem', width: 'auto', padding: '0.5rem 2rem', background: editingId ? '#3b82f6' : '#d97706' }}
                 >
-                    {editingId ? 'Update Variance' : 'Create Variance'}
+                    {editingId ? 'Update Category' : 'Create Category'}
                 </button>
             </div>
 
@@ -277,8 +291,8 @@ export default function CategoriesClient() {
                 <table className={styles.table}>
                     <thead>
                         <tr>
-                            <th>Variance Name</th>
-                            <th>Stock Buttons</th>
+                            <th>Category Name</th>
+                            {stockMode === 'CATEGORY' && <th>Stock Buttons</th>}
                             <th>Sub-Categories</th>
                             <th style={{ width: '150px', textAlign: 'right' }}>Actions</th>
                         </tr>
@@ -287,13 +301,15 @@ export default function CategoriesClient() {
                         {categories.map((cat: any) => (
                             <tr key={cat.id}>
                                 <td>{cat.name}</td>
-                                <td>
-                                    <div style={{ display: 'flex', gap: '0.25rem' }}>
-                                        {(cat.stock_options || [1]).map((n: number) => (
-                                            <span key={n} style={{ background: '#374151', padding: '2px 6px', borderRadius: '4px', fontSize: '0.8rem' }}>+{n}</span>
-                                        ))}
-                                    </div>
-                                </td>
+                                {stockMode === 'CATEGORY' && (
+                                    <td>
+                                        <div style={{ display: 'flex', gap: '0.25rem' }}>
+                                            {(cat.stock_options || [1]).map((n: number) => (
+                                                <span key={n} style={{ background: '#374151', padding: '2px 6px', borderRadius: '4px', fontSize: '0.8rem' }}>+{n}</span>
+                                            ))}
+                                        </div>
+                                    </td>
+                                )}
                                 <td>
                                     {cat.sub_categories?.length > 0 ? cat.sub_categories.join(', ') : <span style={{ color: '#6b7280' }}>-</span>}
                                 </td>

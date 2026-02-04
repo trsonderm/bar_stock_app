@@ -11,6 +11,9 @@ interface Item {
     unit_cost: number;
     quantity: number;
     supplier?: string;
+    supplier_id?: number;
+    low_stock_threshold?: number;
+    order_size?: number;
 }
 
 interface Category {
@@ -38,10 +41,18 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
     const [newItemCost, setNewItemCost] = useState('');
     const [newItemQty, setNewItemQty] = useState('');
     const [newItemSupplier, setNewItemSupplier] = useState('');
+    const [newItemSupplierId, setNewItemSupplierId] = useState<number | undefined>(undefined);
+    const [newItemThreshold, setNewItemThreshold] = useState('5');
+    const [newItemOrderSize, setNewItemOrderSize] = useState('1');
     const [newItemTrackQty, setNewItemTrackQty] = useState(true);
+
+    const [stockMode, setStockMode] = useState<string>('CATEGORY');
 
     useEffect(() => {
         fetchData();
+        fetch('/api/admin/settings').then(r => r.json()).then(d => {
+            if (d.settings?.stock_count_mode) setStockMode(d.settings.stock_count_mode);
+        });
     }, [overrideOrgId]);
 
     const fetchData = async () => {
@@ -97,7 +108,10 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                     secondary_type: editForm.secondary_type,
                     unit_cost: editForm.unit_cost,
                     quantity: editForm.quantity,
-                    supplier: editForm.supplier
+                    supplier: editForm.supplier,
+                    supplier_id: editForm.supplier_id,
+                    low_stock_threshold: editForm.low_stock_threshold,
+                    order_size: editForm.order_size
                 })
             });
 
@@ -140,7 +154,10 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                     name: newItemName,
                     type: newItemType,
                     supplier: newItemSupplier,
-                    track_quantity: newItemTrackQty ? 1 : 0
+                    supplier_id: newItemSupplierId,
+                    track_quantity: newItemTrackQty ? 1 : 0,
+                    low_stock_threshold: newItemThreshold ? parseInt(newItemThreshold) : 5,
+                    order_size: newItemOrderSize ? parseInt(newItemOrderSize) : 1
                 })
             });
 
@@ -168,6 +185,7 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                 setNewItemCost('');
                 setNewItemQty('');
                 setNewItemSupplier('');
+                setNewItemSupplierId(undefined); // Reset
                 fetchData();
             } else {
                 const d = await res.json();
@@ -295,7 +313,9 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                                 <th>Sub-Category</th>
                                 <th>Supplier</th>
                                 <th>Cost ($)</th>
-                                <th>In Stock</th>
+                                <th>Order Qty</th>
+                                {stockMode === 'PRODUCT' && <th>In Stock</th>}
+                                <th>Low Limit</th>
                                 <th style={{ textAlign: 'right' }}>Actions</th>
                             </tr>
                         </thead>
@@ -341,11 +361,15 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                                                     {suppliers.length > 0 ? (
                                                         <select
                                                             className={styles.input}
-                                                            value={editForm.supplier || ''}
-                                                            onChange={e => setEditForm({ ...editForm, supplier: e.target.value })}
+                                                            value={editForm.supplier_id || ''}
+                                                            onChange={e => {
+                                                                const id = parseInt(e.target.value);
+                                                                const name = suppliers.find(s => s.id === id)?.name;
+                                                                setEditForm({ ...editForm, supplier_id: id, supplier: name });
+                                                            }}
                                                         >
                                                             <option value="">(None)</option>
-                                                            {suppliers.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                                                            {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                                                         </select>
                                                     ) : (
                                                         <input
@@ -362,16 +386,39 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                                                         type="number" step="0.01"
                                                         value={editForm.unit_cost}
                                                         onChange={e => setEditForm({ ...editForm, unit_cost: parseFloat(e.target.value) })}
-                                                        style={{ width: '100px' }}
+                                                        style={{ width: '80px' }}
                                                     />
                                                 </td>
                                                 <td>
                                                     <input
                                                         className={styles.input}
                                                         type="number"
-                                                        value={editForm.quantity}
-                                                        onChange={e => setEditForm({ ...editForm, quantity: parseInt(e.target.value) })}
-                                                        style={{ width: '80px' }}
+                                                        min="1"
+                                                        value={editForm.order_size || 1}
+                                                        onChange={e => setEditForm({ ...editForm, order_size: parseInt(e.target.value) })}
+                                                        style={{ width: '60px' }}
+                                                        placeholder="1"
+                                                    />
+                                                </td>
+                                                {stockMode === 'PRODUCT' && (
+                                                    <td>
+                                                        <input
+                                                            className={styles.input}
+                                                            type="number"
+                                                            value={editForm.quantity}
+                                                            onChange={e => setEditForm({ ...editForm, quantity: parseInt(e.target.value) })}
+                                                            style={{ width: '80px' }}
+                                                            step="1"
+                                                        />
+                                                    </td>
+                                                )}
+                                                <td>
+                                                    <input
+                                                        className={styles.input}
+                                                        type="number"
+                                                        value={editForm.low_stock_threshold !== undefined ? editForm.low_stock_threshold : 5}
+                                                        onChange={e => setEditForm({ ...editForm, low_stock_threshold: parseInt(e.target.value) })}
+                                                        style={{ width: '60px' }}
                                                     />
                                                 </td>
                                                 <td style={{ textAlign: 'right' }}>
@@ -385,10 +432,14 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                                                 <td>{item.type}</td>
                                                 <td>{item.secondary_type || '-'}</td>
                                                 <td>{item.supplier || '-'}</td>
-                                                <td>${item.unit_cost?.toFixed(2)}</td>
-                                                <td style={{ fontWeight: 'bold', color: item.quantity === 0 ? '#ef4444' : item.quantity < 5 ? '#f59e0b' : 'inherit' }}>
-                                                    {item.quantity}
-                                                </td>
+                                                <td>${Number(item.unit_cost || 0).toFixed(2)}</td>
+                                                <td style={{ fontSize: '0.9em', color: '#cbd5e1' }}>{item.order_size ?? 1}</td>
+                                                {stockMode === 'PRODUCT' && (
+                                                    <td style={{ fontWeight: 'bold', color: item.quantity === 0 ? '#ef4444' : item.quantity < (item.low_stock_threshold ?? 5) ? '#f59e0b' : 'inherit' }}>
+                                                        {Math.floor(item.quantity)}
+                                                    </td>
+                                                )}
+                                                <td style={{ color: '#9ca3af', fontSize: '0.9em' }}>{item.low_stock_threshold ?? 5}</td>
                                                 <td style={{ textAlign: 'right' }}>
                                                     <button
                                                         onClick={() => handleEditClick(item)}
@@ -440,7 +491,11 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                             <div style={{ marginBottom: '1rem' }}>
                                 <label className={styles.statLabel}>Category</label>
                                 <select style={{ width: '100%' }} className={styles.input} value={newItemType} onChange={e => setNewItemType(e.target.value)}>
-                                    {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                                    {categories.length > 0 ? (
+                                        categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)
+                                    ) : (
+                                        <option value="">No categories found</option>
+                                    )}
                                 </select>
                             </div>
                             <div style={{ marginBottom: '1rem' }}>
@@ -449,11 +504,16 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                                     <select
                                         style={{ width: '100%' }}
                                         className={styles.input}
-                                        value={newItemSupplier}
-                                        onChange={e => setNewItemSupplier(e.target.value)}
+                                        value={newItemSupplierId || ''}
+                                        onChange={e => {
+                                            const id = parseInt(e.target.value);
+                                            setNewItemSupplierId(id);
+                                            const name = suppliers.find(s => s.id === id)?.name || '';
+                                            setNewItemSupplier(name);
+                                        }}
                                     >
                                         <option value="">Select a Supplier</option>
-                                        {suppliers.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                                        {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                                     </select>
                                 ) : (
                                     <input
@@ -465,25 +525,42 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                                     />
                                 )}
                             </div>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
                                 <div>
                                     <label className={styles.statLabel}>Cost ($)</label>
                                     <input style={{ width: '100%' }} className={styles.input} type="number" step="0.01" value={newItemCost} onChange={e => setNewItemCost(e.target.value)} placeholder="0.00" />
                                 </div>
                                 <div>
+                                    <label className={styles.statLabel}>Order Size (e.g. 24)</label>
+                                    <input style={{ width: '100%' }} className={styles.input} type="number" step="1" min="1" value={newItemOrderSize} onChange={e => setNewItemOrderSize(e.target.value)} placeholder="1" />
+                                </div>
+                                <div>
                                     <label className={styles.statLabel}>Initial Qty</label>
-                                    <input style={{ width: '100%' }} className={styles.input} type="number" value={newItemQty} onChange={e => setNewItemQty(e.target.value)} placeholder="0" />
+                                    <input style={{ width: '100%' }} className={styles.input} type="number" step="1" value={newItemQty} onChange={e => setNewItemQty(e.target.value)} placeholder="0" />
                                 </div>
                             </div>
 
-                            <div style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                <input
-                                    type="checkbox"
-                                    checked={newItemTrackQty}
-                                    onChange={e => setNewItemTrackQty(e.target.checked)}
-                                    style={{ width: '20px', height: '20px' }}
-                                />
-                                <label className={styles.statLabel} style={{ marginBottom: 0 }}>Track Quantity (Inventory)</label>
+                            <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={newItemTrackQty}
+                                        onChange={e => setNewItemTrackQty(e.target.checked)}
+                                        style={{ width: '20px', height: '20px' }}
+                                    />
+                                    <label className={styles.statLabel} style={{ marginBottom: 0 }}>Track Inventory</label>
+                                </div>
+                                <div style={{ flex: 1 }}>
+                                    <label className={styles.statLabel}>Low Stock Alert</label>
+                                    <input
+                                        className={styles.input}
+                                        type="number"
+                                        value={newItemThreshold}
+                                        onChange={e => setNewItemThreshold(e.target.value)}
+                                        placeholder="5"
+                                        style={{ width: '100%' }}
+                                    />
+                                </div>
                             </div>
 
                             <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end', marginTop: '1rem' }}>
@@ -491,9 +568,10 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                                 <button type="submit" style={{ padding: '0.5rem 1rem', background: '#d97706', color: 'white', border: 'none', borderRadius: '0.5rem', cursor: 'pointer', fontWeight: 'bold' }}>Create Product</button>
                             </div>
                         </form>
-                    </div>
-                </div>
-            )}
+                    </div >
+                </div >
+            )
+            }
         </>
     );
 

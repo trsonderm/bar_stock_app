@@ -25,6 +25,8 @@ export default function AdminNav() {
     const [currentLocName, setCurrentLocName] = useState('');
     const [locDropdownOpen, setLocDropdownOpen] = useState(false);
 
+    const [showBottleLevels, setShowBottleLevels] = useState(true);
+
     useEffect(() => {
         // Fetch locations
         fetch('/api/user/locations')
@@ -50,6 +52,14 @@ export default function AdminNav() {
                     }
                 }
             });
+
+        fetch('/api/admin/settings')
+            .then(r => r.json())
+            .then(data => {
+                if (data.settings) {
+                    setShowBottleLevels(data.settings.track_bottle_levels !== 'false');
+                }
+            });
     }, []);
 
     const handleSelectLocation = (loc: { id: number, name: string }) => {
@@ -62,14 +72,14 @@ export default function AdminNav() {
     return (
         <nav className={styles.nav}>
             <Link href="/admin/dashboard" className={isActive('/admin/dashboard') ? styles.navItemActive : styles.navItem}>Dashboard</Link>
+            <Link href="/admin/reports" className={isActive('/admin/reports') ? styles.navItemActive : styles.navItem}>Reporting</Link>
             <Link href="/admin/prices" className={isActive('/admin/prices') ? styles.navItemActive : styles.navItem}>Prices</Link>
-            <Link href="/admin/categories" className={isActive('/admin/categories') ? styles.navItemActive : styles.navItem}>Categories</Link>
             <Link href="/admin/products" className={isActive('/admin/products') ? styles.navItemActive : styles.navItem}>Product List</Link>
-            <Link href="/admin/query" className={isActive('/admin/query') ? styles.navItemActive : styles.navItem}>Query</Link>
+            <Link href="/admin/query" className={isActive('/admin/query') ? styles.navItemActive : styles.navItem}>Activity Search</Link>
             <Link href="/inventory" className={isActive('/inventory') ? styles.navItemActive : styles.navItem} target="_blank">Stock View</Link>
 
             {/* Reports Dropdown */}
-            <Link href="/admin/reports/bottle-levels" className={isActive('/admin/reports/bottle-levels') ? styles.navItemActive : styles.navItem}>Bottle Levels</Link>
+            {showBottleLevels && <Link href="/admin/reports/bottle-levels" className={isActive('/admin/reports/bottle-levels') ? styles.navItemActive : styles.navItem}>Bottle Levels</Link>}
             <Link href="/admin/reports/smart-order" className={isActive('/admin/reports/smart-order') ? styles.navItemActive : styles.navItem}>Smart Order</Link>
 
             {/* Location Switcher */}
@@ -130,7 +140,8 @@ export default function AdminNav() {
                 {dropdownOpen && (
                     <div className={styles.dropdownMenu}>
                         <Link href="/admin/settings" className={styles.dropdownItem}>General Settings</Link>
-                        <Link href="/admin/settings/reporting" className={styles.dropdownItem}>Reporting</Link>
+                        <Link href="/admin/categories" className={styles.dropdownItem}>Categories</Link>
+                        <Link href="/admin/settings/reporting" className={styles.dropdownItem}>Reporting Config</Link>
                         <Link href="/admin/settings/ordering" className={styles.dropdownItem}>Automated Ordering</Link>
                         <Link href="/admin/users" className={styles.dropdownItem}>Users</Link>
                         <Link href="/admin/billing" className={styles.dropdownItem}>Billing</Link>

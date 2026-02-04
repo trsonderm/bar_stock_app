@@ -1,0 +1,10 @@
+node_modules
+.next
+.git
+.gitignore
+inventory.db
+bar_stock.db
+Dockerfile
+docker-compose.yml
+README.md
+scripts

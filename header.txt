@@ -1,0 +1,27 @@
+* Host localhost:3000 was resolved.
+* IPv6: ::1
+* IPv4: 127.0.0.1
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0*   Trying [::1]:3000...
+* Connected to localhost (::1) port 3000
+> GET /api/inventory/predictive?model=SMA HTTP/1.1
+> Host: localhost:3000
+> User-Agent: curl/8.7.1
+> Accept: */*
+> Cookie: session=dummy
+> 
+* Request completely sent off
+< HTTP/1.1 404 Not Found
+< Cache-Control: no-store, must-revalidate
+< Vary: rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding
+< X-Powered-By: Next.js
+< Content-Type: text/html; charset=utf-8
+< Date: Mon, 02 Feb 2026 04:26:08 GMT
+< Connection: keep-alive
+< Keep-Alive: timeout=5
+< Transfer-Encoding: chunked
+< 
+{ [6110 bytes data]
+100 28851    0 28851    0     0   169k      0 --:--:-- --:--:-- --:--:--  170k
+* Connection #0 to host localhost left intact

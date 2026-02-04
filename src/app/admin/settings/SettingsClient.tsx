@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import styles from '../admin.module.css';
 import { Smartphone } from 'lucide-react';
 import NotificationSettings from '@/components/NotificationSettings';
+import SignatureManager from '@/components/SignatureManager';
 
 export default function SettingsClient() {
     const router = useRouter();
@@ -23,8 +24,52 @@ export default function SettingsClient() {
         low_stock_alert_time: '14:00',
         low_stock_alert_title: 'URGENT: Low Stock Alert',
         track_bottle_levels: 'true',
-        subdomain: ''
+        subdomain: '',
+        ai_ordering_enabled: 'false',
+        ai_ordering_email: '',
+        ai_ordering_phone: '',
+        stock_count_mode: 'CATEGORY', // 'CATEGORY' or 'PRODUCT'
+        allow_custom_increment: 'false'
     });
+
+    const HistoryList = () => {
+        const [history, setHistory] = useState<any[]>([]);
+        const [loadingH, setLoadingH] = useState(true);
+
+        useEffect(() => {
+            fetch('/api/admin/notifications?limit=20')
+                .then(res => res.json())
+                .then(data => {
+                    if (data.notifications) setHistory(data.notifications);
+                    setLoadingH(false);
+                })
+                .catch(() => setLoadingH(false));
+        }, []);
+
+        if (loadingH) return <div style={{ color: '#9ca3af' }}>Loading history...</div>;
+        if (history.length === 0) return <div style={{ color: '#9ca3af' }}>No order history found.</div>;
+
+        return (
+            <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                {history.map(h => {
+                    let details = {};
+                    try { details = h.data || {}; } catch { }
+                    return (
+                        <li key={h.id} style={{ borderBottom: '1px solid #374151', padding: '0.5rem 0' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#e5e7eb' }}>
+                                <span style={{ fontWeight: 'bold' }}>{h.title}</span>
+                                <span style={{ color: '#9ca3af' }}>{new Date(h.created_at).toLocaleDateString()}</span>
+                            </div>
+                            <div style={{ fontSize: '0.8rem', color: '#9ca3af', marginTop: '0.25rem' }}>{h.message}</div>
+                            <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.25rem' }}>
+                                {(details as any).channel} to: {(details as any).recipient}
+                            </div>
+                        </li>
+                    );
+                })}
+            </ul>
+        );
+    };
     const [options, setOptions] = useState<any[]>([]);
     const [newOption, setNewOption] = useState('');
     const [loading, setLoading] = useState(true);
@@ -133,6 +178,27 @@ export default function SettingsClient() {
         }
     };
 
+    const handleTestEmail = async () => {
+        if (!settings.report_emails || !settings.smtp_host) {
+            alert('Please configure SMTP settings and Report Emails first.');
+            return;
+        }
+        if (!confirm(`Send test emails to ${settings.report_emails}?`)) return;
+
+        try {
+            const res = await fetch('/api/admin/settings/test-email', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(settings)
+            });
+            const data = await res.json();
+            if (res.ok) alert(data.message || 'Emails Sent!');
+            else alert(data.error || 'Failed to send emails');
+        } catch (e) {
+            alert('Error sending emails');
+        }
+    };
+
     if (loading) return <div className={styles.container}>Loading...</div>;
 
     return (
@@ -207,6 +273,63 @@ export default function SettingsClient() {
                     </div>
                 </div>
 
+                {/* Stock Count Mode Config */}
+                <div className={styles.card} style={{ gridColumn: 'span 2' }}>
+                    <div className={styles.cardTitle}>Global Stock Counting Mode</div>
+                    <p style={{ color: '#9ca3af', marginBottom: '1rem' }}>
+                        Choose how your inventory counts are entered. Changing this affects the "Stock View" and "Bottles" pages.
+                    </p>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', background: '#1f2937', padding: '1rem', borderRadius: '0.5rem', border: '1px solid #374151' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '1rem', cursor: 'pointer' }}>
+                            <input
+                                type="radio"
+                                name="stock_count_mode"
+                                value="CATEGORY"
+                                checked={(settings as any).stock_count_mode === 'CATEGORY'}
+                                onChange={handleChange}
+                                style={{ width: '20px', height: '20px' }}
+                            />
+                            <div>
+                                <div style={{ color: 'white', fontWeight: 'bold' }}>Category Level Counting</div>
+                                <div style={{ fontSize: '0.85rem', color: '#9ca3af' }}>Stock is entered per category (e.g. "Liquor" page lists all liquors).</div>
+                            </div>
+                        </label>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '1rem', cursor: 'pointer' }}>
+                            <input
+                                type="radio"
+                                name="stock_count_mode"
+                                value="PRODUCT"
+                                checked={(settings as any).stock_count_mode === 'PRODUCT'}
+                                onChange={handleChange}
+                                style={{ width: '20px', height: '20px' }}
+                            />
+                            <div>
+                                <div style={{ color: 'white', fontWeight: 'bold' }}>Product Level Counting</div>
+                                <div style={{ fontSize: '0.85rem', color: '#9ca3af' }}>Stock is entered on the master Product List. Good for large warehouses.</div>
+                            </div>
+                        </label>
+                    </div>
+
+                    <div style={{ marginTop: '1rem', display: 'flex', alignItems: 'center', gap: '1rem', background: '#1f2937', padding: '1rem', borderRadius: '0.5rem', border: '1px solid #374151' }}>
+                        <input
+                            type="checkbox"
+                            checked={(settings as any).allow_custom_increment === 'true'}
+                            onChange={(e) => setSettings(prev => ({ ...prev, allow_custom_increment: e.target.checked ? 'true' : 'false' }))}
+                            style={{ width: '20px', height: '20px' }}
+                        />
+                        <div>
+                            <div style={{ color: 'white', fontWeight: 'bold' }}>Allow Custom Increments</div>
+                            <div style={{ fontSize: '0.85rem', color: '#9ca3af' }}>If enabled, staff can manually enter any quantity to add/subtract.</div>
+                        </div>
+                    </div>
+
+                    <div style={{ marginTop: '1rem' }}>
+                        <button onClick={handleSubmit} style={{ padding: '0.5rem 1rem', background: '#3b82f6', color: 'white', borderRadius: '0.25rem', border: 'none', cursor: 'pointer' }}>
+                            Save Preference
+                        </button>
+                    </div>
+                </div>
+
                 <div className={styles.card} style={{ gridColumn: 'span 2' }}>
                     <div className={styles.cardTitle} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                         <Smartphone size={20} className="text-amber-500" /> Station Mode (Kiosk)
@@ -243,7 +366,90 @@ export default function SettingsClient() {
                 </div>
 
                 <div className={styles.card} style={{ gridColumn: 'span 2' }}>
+                    <div className={styles.cardTitle}>Smart Ordering Automation</div>
+                    <p style={{ color: '#9ca3af', marginBottom: '1rem' }}>
+                        Enable or disable the AI-driven smart ordering system for this organization.
+                    </p>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#1f2937', padding: '1rem', borderRadius: '0.5rem', border: '1px solid #374151' }}>
+                        <div>
+                            <div style={{ fontWeight: 'bold', color: settings.ai_ordering_enabled === 'true' ? '#10b981' : '#ef4444' }}>
+                                {settings.ai_ordering_enabled === 'true' ? 'System Enabled' : 'System Disabled'}
+                            </div>
+                            <div style={{ fontSize: '0.85rem', color: '#9ca3af' }}>
+                                {settings.ai_ordering_enabled === 'true' ? 'Automated orders will be drafted based on stock levels.' : 'No automated ordering activity.'}
+                            </div>
+                        </div>
+                        <label className={styles.switch}>
+                            <input
+                                type="checkbox"
+                                checked={settings.ai_ordering_enabled === 'true'}
+                                onChange={(e) => setSettings(prev => ({ ...prev, ai_ordering_enabled: e.target.checked ? 'true' : 'false' }))}
+                            />
+                            <span className={styles.slider}></span>
+                        </label>
+                    </div>
+
+                    {settings.ai_ordering_enabled === 'true' && (
+                        <div style={{ marginTop: '1rem', borderTop: '1px solid #374151', paddingTop: '1rem' }}>
+                            <div style={{ marginBottom: '1rem' }}>
+                                <label className={styles.statLabel}>Supplier Ordering Email (Default)</label>
+                                <input
+                                    name="ai_ordering_email"
+                                    value={settings.ai_ordering_email || ''}
+                                    onChange={handleChange}
+                                    placeholder="orders@supplier.com"
+                                    className={styles.input}
+                                    style={{ width: '100%', background: '#111827', color: 'white', padding: '0.5rem', border: '1px solid #374151', borderRadius: '0.25rem' }}
+                                />
+                                <p style={{ fontSize: '0.8rem', color: '#6b7280' }}>Fallback email if item has no specific supplier email.</p>
+                            </div>
+                            <div style={{ marginBottom: '1rem' }}>
+                                <label className={styles.statLabel}>Ordering SMS Number</label>
+                                <input
+                                    name="ai_ordering_phone"
+                                    value={settings.ai_ordering_phone || ''}
+                                    onChange={handleChange}
+                                    placeholder="+1-555-0199"
+                                    className={styles.input}
+                                    style={{ width: '100%', background: '#111827', color: 'white', padding: '0.5rem', border: '1px solid #374151', borderRadius: '0.25rem' }}
+                                />
+                            </div>
+                            <button onClick={handleSubmit} style={{ padding: '0.5rem 1rem', background: '#3b82f6', color: 'white', borderRadius: '0.25rem', border: 'none', cursor: 'pointer' }}>
+                                Save Configurations
+                            </button>
+                        </div>
+                    )}
+
+                    <div style={{ marginTop: '1.5rem', borderTop: '1px solid #374151', paddingTop: '1rem' }}>
+                        <details style={{ cursor: 'pointer' }}>
+                            <summary style={{ color: '#60a5fa', fontWeight: 'bold', marginBottom: '0.5rem' }}>View Order History (Sent Emails/Texts)</summary>
+                            <div style={{ background: '#111827', padding: '1rem', borderRadius: '0.5rem', maxHeight: '300px', overflowY: 'auto' }}>
+                                <HistoryList />
+                            </div>
+                        </details>
+                    </div>
+                </div>
+
+                <div className={styles.card} style={{ gridColumn: 'span 2' }}>
                     <NotificationSettings />
+
+                    <div style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid #374151' }}>
+                        <div className={styles.cardTitle} style={{ fontSize: '1rem' }}>Email System Test</div>
+                        <p style={{ fontSize: '0.9rem', color: '#9ca3af', marginBottom: '1rem' }}>
+                            Send a test email to <strong>{settings.report_emails || '(No Email Configured)'}</strong> to verify SMTP settings.
+                        </p>
+                        <button
+                            type="button"
+                            onClick={handleTestEmail}
+                            style={{ padding: '0.5rem 1rem', background: '#4b5563', color: 'white', border: 'none', borderRadius: '0.25rem', cursor: 'pointer' }}
+                        >
+                            Test All Emails
+                        </button>
+                    </div>
+                </div>
+
+                <div className={styles.card} style={{ gridColumn: 'span 2' }}>
+                    <SignatureManager />
                 </div>
 
                 <div className={styles.card} style={{ gridColumn: 'span 2' }}>
@@ -287,7 +493,7 @@ export default function SettingsClient() {
                     </form>
                 </div>
 
-            </div>
+            </div >
         </>
     );
 }

@@ -34,14 +34,20 @@ export default function AdminDashboardClient() {
             .catch(e => setLoading(false));
     }, []);
 
-    const formatDetails = (details: string) => {
+    const formatDetails = (details: string | object) => {
         try {
-            const d = JSON.parse(details);
-            if (d.name) return `Item: ${d.name}`;
-            if (d.quantity) return `Qty: ${d.quantity}`;
-            return details;
+            const d = typeof details === 'string' ? JSON.parse(details) : details;
+
+            // Handle specific known structures
+            if (d && typeof d === 'object') {
+                if ('name' in d) return `Item: ${d.name}`;
+                if ('itemName' in d) return `Item: ${d.itemName}`;
+                if ('quantity' in d) return `Qty: ${d.quantity}`;
+            }
+
+            return typeof details === 'string' ? details : JSON.stringify(details);
         } catch {
-            return details;
+            return typeof details === 'string' ? details : 'Invalid Details';
         }
     };
 
