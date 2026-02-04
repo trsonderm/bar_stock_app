@@ -25,23 +25,25 @@ export async function GET(req: NextRequest) {
 
         // Refactored Query for Multi-tenancy
         // Usage of $1 for organizationId (reused) and $2 for LocationId
-        let query = `
-      SELECT 
+        SELECT
         i.id, i.name, i.type, i.secondary_type, i.unit_cost, i.supplier,
-        i.order_size, i.low_stock_threshold,
-        COALESCE(inv.quantity, 0) as quantity,
-        COALESCE(usage_stats.usage_count, 0) as usage_count
+            i.order_size, i.low_stock_threshold,
+            COALESCE(i.stock_options, '[]') as stock_options,
+            isp.supplier_id,
+            COALESCE(inv.quantity, 0) as quantity,
+            COALESCE(usage_stats.usage_count, 0) as usage_count
       FROM items i
       LEFT JOIN inventory inv ON i.id = inv.item_id AND inv.location_id = $2
-      LEFT JOIN (
-        SELECT 
-            (details->>'itemId')::int as item_id, 
-            COUNT(*) as usage_count 
+      LEFT JOIN item_suppliers isp ON i.id = isp.item_id AND isp.is_preferred = true
+      LEFT JOIN(
+                SELECT
+                    (details ->> 'itemId'):: int as item_id,
+                COUNT(*) as usage_count 
         FROM activity_logs 
         WHERE action = 'SUBTRACT_STOCK' AND organization_id = $1
-        GROUP BY (details->>'itemId')::int
-      ) usage_stats ON i.id = usage_stats.item_id
-      WHERE (i.organization_id = $1 OR i.organization_id IS NULL)
+        GROUP BY(details ->> 'itemId'):: int
+            ) usage_stats ON i.id = usage_stats.item_id
+        WHERE(i.organization_id = $1 OR i.organization_id IS NULL)
     `;
 
         if (sort === 'usage') {
@@ -72,7 +74,7 @@ export async function POST(req: NextRequest) {
         }
 
         const body = await req.json();
-        const { name, type, secondary_type, supplier, supplier_id, low_stock_threshold, order_size } = body;
+        const { name, type, secondary_type, supplier, supplier_id, low_stock_threshold, order_size, stock_options } = body;
 
         if (!name || !type) return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
 
@@ -90,8 +92,8 @@ export async function POST(req: NextRequest) {
 
         // Insert and Return ID
         const res = await db.one(
-            'INSERT INTO items (name, type, secondary_type, supplier, organization_id, low_stock_threshold, order_size) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id',
-            [name, type, secondary_type || null, supplier || null, organizationId, low_stock_threshold !== undefined ? low_stock_threshold : 5, order_size || 1]
+            'INSERT INTO items (name, type, secondary_type, supplier, organization_id, low_stock_threshold, order_size, stock_options) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id',
+            [name, type, secondary_type || null, supplier || null, organizationId, low_stock_threshold !== undefined ? low_stock_threshold : 5, order_size || 1, stock_options ? JSON.stringify(stock_options) : null]
         );
         const itemId = res.id;
 
@@ -100,10 +102,10 @@ export async function POST(req: NextRequest) {
             const sup = await db.one('SELECT supplier_sku FROM item_suppliers WHERE item_id = $1 AND is_preferred = true', [itemId]);
             // Since it's new, we just insert
             await db.execute(`
-                INSERT INTO item_suppliers (item_id, supplier_id, is_preferred)
-                VALUES ($1, $2, true)
-                ON CONFLICT (item_id, supplier_id) DO UPDATE SET is_preferred = true
-             `, [itemId, supplier_id]);
+                INSERT INTO item_suppliers(item_id, supplier_id, is_preferred)
+        VALUES($1, $2, true)
+                ON CONFLICT(item_id, supplier_id) DO UPDATE SET is_preferred = true
+            `, [itemId, supplier_id]);
         }
 
         // Also init inventory for current location (or default)
@@ -163,31 +165,31 @@ export async function PUT(req: NextRequest) {
             let pIdx = 1;
 
             if (unit_cost !== undefined) {
-                updates.push(`unit_cost = $${pIdx++}`);
+                updates.push(`unit_cost = $${ pIdx++ } `);
                 params.push(unit_cost);
             }
             if (name !== undefined) {
-                updates.push(`name = $${pIdx++}`);
+                updates.push(`name = $${ pIdx++ } `);
                 params.push(name);
             }
             if (type !== undefined) {
-                updates.push(`type = $${pIdx++}`);
+                updates.push(`type = $${ pIdx++ } `);
                 params.push(type);
             }
             if (secondary_type !== undefined) {
-                updates.push(`secondary_type = $${pIdx++}`);
+                updates.push(`secondary_type = $${ pIdx++ } `);
                 params.push(secondary_type);
             }
             if (supplier !== undefined) {
-                updates.push(`supplier = $${pIdx++}`);
+                updates.push(`supplier = $${ pIdx++ } `);
                 params.push(supplier);
             }
             if (order_size !== undefined) {
-                updates.push(`order_size = $${pIdx++}`);
+                updates.push(`order_size = $${ pIdx++ } `);
                 params.push(order_size);
             }
             if (low_stock_threshold !== undefined) {
-                updates.push(`low_stock_threshold = $${pIdx++}`);
+                updates.push(`low_stock_threshold = $${ pIdx++ } `);
                 params.push(low_stock_threshold); // Can be null
             }
 
@@ -197,7 +199,7 @@ export async function PUT(req: NextRequest) {
                 // Last two params are ID and OrgID
                 // Indexes are pIdx and pIdx+1
                 await db.execute(
-                    `UPDATE items SET ${updates.join(', ')} WHERE id = $${pIdx} AND organization_id = $${pIdx + 1}`,
+                    `UPDATE items SET ${ updates.join(', ') } WHERE id = $${ pIdx } AND organization_id = $${ pIdx + 1 } `,
                     params
                 );
             }
@@ -205,10 +207,10 @@ export async function PUT(req: NextRequest) {
             // Auto-link logic for Updates
             if (supplier_id) {
                 await db.execute(`
-                    INSERT INTO item_suppliers (item_id, supplier_id, is_preferred)
-                    VALUES ($1, $2, true)
-                    ON CONFLICT (item_id, supplier_id) DO UPDATE SET is_preferred = true
-                `, [id, supplier_id]);
+                    INSERT INTO item_suppliers(item_id, supplier_id, is_preferred)
+        VALUES($1, $2, true)
+                    ON CONFLICT(item_id, supplier_id) DO UPDATE SET is_preferred = true
+            `, [id, supplier_id]);
             }
         }
 
@@ -225,8 +227,8 @@ export async function PUT(req: NextRequest) {
             const oldQty = current ? current.quantity : 0;
             // Upsert inventory
             await db.execute(
-                `INSERT INTO inventory (item_id, location_id, quantity, organization_id) 
-                 VALUES ($1, $2, $3, $4) 
+                `INSERT INTO inventory(item_id, location_id, quantity, organization_id)
+        VALUES($1, $2, $3, $4) 
                  ON CONFLICT(item_id, location_id) DO UPDATE SET quantity = $3`,
                 [id, location.id, quantity, organizationId]
             );

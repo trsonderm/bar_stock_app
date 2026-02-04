@@ -14,6 +14,7 @@ interface Item {
     supplier_id?: number;
     low_stock_threshold?: number;
     order_size?: number;
+    stock_options?: number[];
 }
 
 interface Category {
@@ -45,6 +46,7 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
     const [newItemThreshold, setNewItemThreshold] = useState('5');
     const [newItemOrderSize, setNewItemOrderSize] = useState('1');
     const [newItemTrackQty, setNewItemTrackQty] = useState(true);
+    const [newItemStockOptions, setNewItemStockOptions] = useState(''); // Comma separated
 
     const [stockMode, setStockMode] = useState<string>('CATEGORY');
 
@@ -110,8 +112,12 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                     quantity: editForm.quantity,
                     supplier: editForm.supplier,
                     supplier_id: editForm.supplier_id,
+                    supplier_id: editForm.supplier_id,
                     low_stock_threshold: editForm.low_stock_threshold,
-                    order_size: editForm.order_size
+                    order_size: editForm.order_size,
+                    stock_options: typeof editForm.stock_options === 'string'
+                        ? (editForm.stock_options as string).split(',').map((s: string) => parseInt(s.trim())).filter((n: number) => !isNaN(n))
+                        : editForm.stock_options
                 })
             });
 
@@ -157,7 +163,10 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                     supplier_id: newItemSupplierId,
                     track_quantity: newItemTrackQty ? 1 : 0,
                     low_stock_threshold: newItemThreshold === '' ? null : parseInt(newItemThreshold),
-                    order_size: newItemOrderSize ? parseInt(newItemOrderSize) : 1
+                    order_size: newItemOrderSize ? parseInt(newItemOrderSize) : 1,
+                    stock_options: newItemStockOptions
+                        ? newItemStockOptions.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n))
+                        : null
                 })
             });
 
@@ -315,6 +324,7 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                                 <th>Cost ($)</th>
                                 <th>Order Qty</th>
                                 {stockMode === 'PRODUCT' && <th>In Stock</th>}
+                                {stockMode === 'PRODUCT' && <th>Count Options</th>}
                                 <th>Low Limit</th>
                                 <th style={{ textAlign: 'right' }}>Actions</th>
                             </tr>
@@ -412,6 +422,23 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                                                         />
                                                     </td>
                                                 )}
+                                                {stockMode === 'PRODUCT' && (
+                                                    <td>
+                                                        <input
+                                                            className={styles.input}
+                                                            value={Array.isArray(editForm.stock_options) ? editForm.stock_options.join(', ') : (editForm.stock_options || '')}
+                                                            onChange={e => {
+                                                                // Allow editing as string, parse on save
+                                                                // We need to store it as string in state temporarily or handle type check
+                                                                // Dirty hack: just cast to any for strict mode or allow string in interface (better option: use local state but we are using editForm)
+                                                                // Let's rely on the parsing in handleSaveEdit and treating it as string here.
+                                                                setEditForm({ ...editForm, stock_options: e.target.value as any });
+                                                            }}
+                                                            placeholder="1, 6, 12"
+                                                            style={{ width: '100px' }}
+                                                        />
+                                                    </td>
+                                                )}
                                                 <td>
                                                     <div className="flex flex-col text-xs">
                                                         <label className="flex items-center gap-1 mb-1 whitespace-nowrap">
@@ -452,6 +479,11 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                                                 {stockMode === 'PRODUCT' && (
                                                     <td style={{ fontWeight: 'bold', color: item.quantity === 0 ? '#ef4444' : item.quantity < (item.low_stock_threshold ?? 5) ? '#f59e0b' : 'inherit' }}>
                                                         {Math.floor(item.quantity)}
+                                                    </td>
+                                                )}
+                                                {stockMode === 'PRODUCT' && (
+                                                    <td style={{ fontSize: '0.8em', color: '#9ca3af' }}>
+                                                        {Array.isArray(item.stock_options) && item.stock_options.length > 0 ? item.stock_options.join(', ') : 'Default'}
                                                     </td>
                                                 )}
                                                 <td style={{ color: '#9ca3af', fontSize: '0.9em' }}>{item.low_stock_threshold === null ? 'Global' : item.low_stock_threshold}</td>
@@ -554,6 +586,20 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                                     <input style={{ width: '100%' }} className={styles.input} type="number" step="1" value={newItemQty} onChange={e => setNewItemQty(e.target.value)} placeholder="0" />
                                 </div>
                             </div>
+
+                            {stockMode === 'PRODUCT' && (
+                                <div style={{ marginBottom: '1rem' }}>
+                                    <label className={styles.statLabel}>Counting Options (comma separated)</label>
+                                    <input
+                                        style={{ width: '100%' }}
+                                        className={styles.input}
+                                        value={newItemStockOptions}
+                                        onChange={e => setNewItemStockOptions(e.target.value)}
+                                        placeholder="e.g. 1, 6, 12, 24"
+                                    />
+                                    <p className="text-xs text-gray-500 mt-1">Leave empty to use category defaults.</p>
+                                </div>
+                            )}
 
                             <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
