@@ -25,25 +25,28 @@ export async function GET(req: NextRequest) {
 
         // Refactored Query for Multi-tenancy
         // Usage of $1 for organizationId (reused) and $2 for LocationId
-        SELECT
+        let query = `
+      SELECT 
         i.id, i.name, i.type, i.secondary_type, i.unit_cost, i.supplier,
-            i.order_size, i.low_stock_threshold,
-            COALESCE(i.stock_options, '[]') as stock_options,
-            isp.supplier_id,
-            COALESCE(inv.quantity, 0) as quantity,
-            COALESCE(usage_stats.usage_count, 0) as usage_count
+        i.order_size, i.low_stock_threshold,
+        COALESCE(i.stock_options, '[]') as stock_options,
+        COALESCE(i.include_in_audit, true) as include_in_audit,
+        MAX(isp.supplier_id) as supplier_id,
+        COALESCE(SUM(inv.quantity), 0) as quantity,
+        COALESCE(MAX(usage_stats.usage_count), 0) as usage_count
       FROM items i
       LEFT JOIN inventory inv ON i.id = inv.item_id AND inv.location_id = $2
       LEFT JOIN item_suppliers isp ON i.id = isp.item_id AND isp.is_preferred = true
-      LEFT JOIN(
-                SELECT
-                    (details ->> 'itemId'):: int as item_id,
-                COUNT(*) as usage_count 
+      LEFT JOIN (
+        SELECT 
+            (details->>'itemId')::int as item_id, 
+            COUNT(*) as usage_count 
         FROM activity_logs 
         WHERE action = 'SUBTRACT_STOCK' AND organization_id = $1
-        GROUP BY(details ->> 'itemId'):: int
-            ) usage_stats ON i.id = usage_stats.item_id
-        WHERE(i.organization_id = $1 OR i.organization_id IS NULL)
+        GROUP BY (details->>'itemId')::int
+      ) usage_stats ON i.id = usage_stats.item_id
+      WHERE (i.organization_id = $1 OR i.organization_id IS NULL)
+      GROUP BY i.id, usage_stats.usage_count
     `;
 
         if (sort === 'usage') {
@@ -74,7 +77,7 @@ export async function POST(req: NextRequest) {
         }
 
         const body = await req.json();
-        const { name, type, secondary_type, supplier, supplier_id, low_stock_threshold, order_size, stock_options } = body;
+        const { name, type, secondary_type, supplier, supplier_id, low_stock_threshold, order_size, stock_options, include_in_audit } = body;
 
         if (!name || !type) return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
 
@@ -92,8 +95,8 @@ export async function POST(req: NextRequest) {
 
         // Insert and Return ID
         const res = await db.one(
-            'INSERT INTO items (name, type, secondary_type, supplier, organization_id, low_stock_threshold, order_size, stock_options) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id',
-            [name, type, secondary_type || null, supplier || null, organizationId, low_stock_threshold !== undefined ? low_stock_threshold : 5, order_size || 1, stock_options ? JSON.stringify(stock_options) : null]
+            'INSERT INTO items (name, type, secondary_type, supplier, organization_id, low_stock_threshold, order_size, stock_options, include_in_audit) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id',
+            [name, type, secondary_type || null, supplier || null, organizationId, low_stock_threshold !== undefined ? low_stock_threshold : 5, order_size || 1, stock_options ? JSON.stringify(stock_options) : null, include_in_audit !== undefined ? include_in_audit : true]
         );
         const itemId = res.id;
 
@@ -154,7 +157,7 @@ export async function PUT(req: NextRequest) {
 
         if (!canEdit && !canStock) return NextResponse.json({ error: 'Permission denied' }, { status: 403 });
 
-        const { id, unit_cost, name, type, quantity, secondary_type, supplier, supplier_id, low_stock_threshold, order_size } = await req.json();
+        const { id, unit_cost, name, type, quantity, secondary_type, supplier, supplier_id, low_stock_threshold, order_size, stock_options, include_in_audit } = await req.json();
 
         if (!id) return NextResponse.json({ error: 'Missing ID' }, { status: 400 });
 
@@ -165,32 +168,40 @@ export async function PUT(req: NextRequest) {
             let pIdx = 1;
 
             if (unit_cost !== undefined) {
-                updates.push(`unit_cost = $${ pIdx++ } `);
+                updates.push(`unit_cost = $${pIdx++} `);
                 params.push(unit_cost);
             }
             if (name !== undefined) {
-                updates.push(`name = $${ pIdx++ } `);
+                updates.push(`name = $${pIdx++} `);
                 params.push(name);
             }
             if (type !== undefined) {
-                updates.push(`type = $${ pIdx++ } `);
+                updates.push(`type = $${pIdx++} `);
                 params.push(type);
             }
             if (secondary_type !== undefined) {
-                updates.push(`secondary_type = $${ pIdx++ } `);
+                updates.push(`secondary_type = $${pIdx++} `);
                 params.push(secondary_type);
             }
             if (supplier !== undefined) {
-                updates.push(`supplier = $${ pIdx++ } `);
+                updates.push(`supplier = $${pIdx++} `);
                 params.push(supplier);
             }
             if (order_size !== undefined) {
-                updates.push(`order_size = $${ pIdx++ } `);
+                updates.push(`order_size = $${pIdx++} `);
                 params.push(order_size);
             }
             if (low_stock_threshold !== undefined) {
-                updates.push(`low_stock_threshold = $${ pIdx++ } `);
+                updates.push(`low_stock_threshold = $${pIdx++} `);
                 params.push(low_stock_threshold); // Can be null
+            }
+            if (stock_options !== undefined) {
+                updates.push(`stock_options = $${pIdx++} `);
+                params.push(stock_options ? JSON.stringify(stock_options) : null);
+            }
+            if (include_in_audit !== undefined) {
+                updates.push(`include_in_audit = $${pIdx++} `);
+                params.push(include_in_audit);
             }
 
             if (updates.length > 0) {
@@ -199,7 +210,7 @@ export async function PUT(req: NextRequest) {
                 // Last two params are ID and OrgID
                 // Indexes are pIdx and pIdx+1
                 await db.execute(
-                    `UPDATE items SET ${ updates.join(', ') } WHERE id = $${ pIdx } AND organization_id = $${ pIdx + 1 } `,
+                    `UPDATE items SET ${updates.join(', ')} WHERE id = $${pIdx} AND organization_id = $${pIdx + 1} `,
                     params
                 );
             }

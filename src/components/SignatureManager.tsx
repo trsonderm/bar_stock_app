@@ -7,6 +7,7 @@ export default function SignatureManager() {
     const [signatures, setSignatures] = useState<any[]>([]);
     const [mode, setMode] = useState<'LIST' | 'DRAW' | 'UPLOAD'>('LIST');
     const [label, setLabel] = useState('');
+    const [isShared, setIsShared] = useState(false);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const [isDrawing, setIsDrawing] = useState(false);
 
@@ -102,10 +103,11 @@ export default function SignatureManager() {
             const res = await fetch('/api/settings/signatures', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ label, data_url: dataUrl })
+                body: JSON.stringify({ label, data_url: dataUrl, is_shared: isShared })
             });
             if (res.ok) {
                 setLabel('');
+                setIsShared(false);
                 setMode('LIST');
                 fetchSignatures();
             } else {
@@ -127,13 +129,15 @@ export default function SignatureManager() {
         } catch (e) { console.error(e); }
     };
 
+
+
     return (
         <div className="bg-gray-800 p-4 rounded-lg border border-gray-700">
             <div className="flex justify-between items-center mb-4">
                 <h3 className="text-white font-bold text-lg">Digital Signatures</h3>
                 {mode === 'LIST' && (
                     <button
-                        onClick={() => setMode('DRAW')}
+                        onClick={() => { setMode('DRAW'); setLabel(''); setIsShared(false); }}
                         className="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded text-sm font-bold flex items-center gap-2"
                     >
                         + Add Signature
@@ -161,7 +165,11 @@ export default function SignatureManager() {
                                     <img src={sig.data} alt={sig.label} className="h-8 w-auto mix-blend-multiply" />
                                 </div>
                                 <div>
-                                    <p className="text-white font-bold text-sm">{sig.label}</p>
+                                    <div className="flex items-center gap-2">
+                                        <p className="text-white font-bold text-sm">{sig.label}</p>
+                                        {sig.is_shared && <span className="text-[10px] bg-blue-900 text-blue-300 px-1.5 py-0.5 rounded uppercase font-bold">Shared</span>}
+                                        {!sig.is_shared && <span className="text-[10px] bg-gray-700 text-gray-300 px-1.5 py-0.5 rounded uppercase font-bold">Private</span>}
+                                    </div>
                                     {sig.is_active && <p className="text-green-400 text-xs">Active Default</p>}
                                 </div>
                             </div>
@@ -190,6 +198,19 @@ export default function SignatureManager() {
                             className="w-full bg-gray-900 border border-gray-600 rounded p-2 text-white"
                             placeholder="Enter name..."
                         />
+                    </div>
+
+                    <div className="mb-4 flex items-center gap-2">
+                        <input
+                            type="checkbox"
+                            id="shareSig"
+                            checked={isShared}
+                            onChange={(e) => setIsShared(e.target.checked)}
+                            className="w-4 h-4 rounded bg-gray-700 border-gray-600"
+                        />
+                        <label htmlFor="shareSig" className="text-gray-300 text-sm cursor-pointer select-none">
+                            Share with organization <span className="text-gray-500 text-xs block">(Visible to all users)</span>
+                        </label>
                     </div>
 
                     <div className="bg-white rounded p-1 mb-4 relative">

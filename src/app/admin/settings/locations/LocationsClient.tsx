@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { Plus } from 'lucide-react';
 import styles from '../../admin.module.css';
 
 interface Location {
@@ -17,6 +18,7 @@ export default function LocationsClient() {
     const [name, setName] = useState('');
     const [address, setAddress] = useState('');
     const [editingId, setEditingId] = useState<number | null>(null);
+    const [showForm, setShowForm] = useState(false);
 
     useEffect(() => {
         fetchLocations();
@@ -49,8 +51,10 @@ export default function LocationsClient() {
             if (res.ok) {
                 resetForm();
                 fetchLocations();
+                setShowForm(false);
             } else {
-                alert('Failed to save location');
+                const d = await res.json();
+                alert(d.error || 'Failed to save location');
             }
         } catch (e) {
             alert('Error saving location');
@@ -71,37 +75,59 @@ export default function LocationsClient() {
         setEditingId(loc.id);
         setName(loc.name);
         setAddress(loc.address || '');
+        setShowForm(true);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
     const resetForm = () => {
         setEditingId(null);
         setName('');
         setAddress('');
+        setShowForm(false);
+    };
+
+    const handleAddNew = () => {
+        setEditingId(null);
+        setName('');
+        setAddress('');
+        setShowForm(true);
     };
 
     return (
         <div className={styles.container}>
-            <h1 className={styles.pageTitle}>Manage Locations</h1>
-
-            <div className={styles.card}>
-                <h3 className={styles.cardTitle}>{editingId ? 'Edit Location' : 'Add New Location'}</h3>
-                <form onSubmit={handleSubmit} style={{ display: 'grid', gap: '1rem', maxWidth: '500px' }}>
-                    <div>
-                        <label className={styles.statLabel}>Name</label>
-                        <input className={styles.input} value={name} onChange={e => setName(e.target.value)} required placeholder="e.g. Main Bar, Patio..." />
-                    </div>
-                    <div>
-                        <label className={styles.statLabel}>Address (Optional)</label>
-                        <input className={styles.input} value={address} onChange={e => setAddress(e.target.value)} placeholder="123 Main St" />
-                    </div>
-                    <div style={{ display: 'flex', gap: '1rem' }}>
-                        <button type="submit" className={styles.submitBtn} style={{ background: editingId ? '#3b82f6' : '#d97706' }}>
-                            {editingId ? 'Update Location' : 'Create Location'}
-                        </button>
-                        {editingId && <button type="button" onClick={resetForm} style={{ background: 'transparent', color: '#9ca3af', border: 'none', cursor: 'pointer' }}>Cancel</button>}
-                    </div>
-                </form>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+                <h1 className={styles.pageTitle}>Manage Locations</h1>
+                {!showForm && (
+                    <button
+                        onClick={handleAddNew}
+                        style={{ background: '#3b82f6', color: 'white', padding: '0.75rem 1.5rem', borderRadius: '0.5rem', border: 'none', display: 'flex', gap: '0.5rem', alignItems: 'center', cursor: 'pointer', fontWeight: 'bold' }}
+                    >
+                        <Plus size={20} /> Add Location
+                    </button>
+                )}
             </div>
+
+            {showForm && (
+                <div className={styles.card} style={{ marginBottom: '2rem' }}>
+                    <h3 className={styles.cardTitle}>{editingId ? 'Edit Location' : 'Add New Location'}</h3>
+                    <form onSubmit={handleSubmit} style={{ display: 'grid', gap: '1rem', maxWidth: '500px' }}>
+                        <div>
+                            <label className={styles.statLabel}>Name</label>
+                            <input className={styles.input} value={name} onChange={e => setName(e.target.value)} required placeholder="e.g. Main Bar, Patio..." />
+                        </div>
+                        <div>
+                            <label className={styles.statLabel}>Address (Optional)</label>
+                            <input className={styles.input} value={address} onChange={e => setAddress(e.target.value)} placeholder="123 Main St" />
+                        </div>
+                        <div style={{ display: 'flex', gap: '1rem' }}>
+                            <button type="submit" className={styles.submitBtn} style={{ background: editingId ? '#3b82f6' : '#10b981' }}>
+                                {editingId ? 'Update Location' : 'Create Location'}
+                            </button>
+                            <button type="button" onClick={resetForm} style={{ background: 'transparent', color: '#9ca3af', border: 'none', cursor: 'pointer' }}>Cancel</button>
+                        </div>
+                    </form>
+                </div>
+            )}
 
             <div className={styles.card}>
                 <h3 className={styles.cardTitle}>Existing Locations</h3>

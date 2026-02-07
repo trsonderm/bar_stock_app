@@ -9,6 +9,7 @@ interface Category {
     name: string;
     stock_options: number[];
     sub_categories: string[];
+    enable_low_stock_reporting: boolean;
 }
 
 export default function CategoriesClient() {
@@ -21,6 +22,7 @@ export default function CategoriesClient() {
     const [selectedOptions, setSelectedOptions] = useState<number[]>([1]);
     const [subCats, setSubCats] = useState<string[]>([]);
     const [newSubCat, setNewSubCat] = useState('');
+    const [enableReporting, setEnableReporting] = useState(true);
 
     const [editingId, setEditingId] = useState<number | null>(null);
 
@@ -57,7 +59,8 @@ export default function CategoriesClient() {
                 body: JSON.stringify({
                     name: name.trim(),
                     stock_options: selectedOptions.sort((a, b) => a - b),
-                    sub_categories: subCats
+                    sub_categories: subCats,
+                    enable_low_stock_reporting: enableReporting
                 })
             });
             if (res.ok) {
@@ -83,7 +86,8 @@ export default function CategoriesClient() {
                     id: editingId,
                     name: name.trim(),
                     stock_options: selectedOptions.sort((a, b) => a - b),
-                    sub_categories: subCats
+                    sub_categories: subCats,
+                    enable_low_stock_reporting: enableReporting
                 })
             });
             if (res.ok) {
@@ -118,6 +122,7 @@ export default function CategoriesClient() {
         setName(cat.name);
         setSelectedOptions(cat.stock_options || [1]);
         setSubCats(cat.sub_categories || []);
+        setEnableReporting(cat.enable_low_stock_reporting !== false);
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
@@ -127,6 +132,7 @@ export default function CategoriesClient() {
         setSelectedOptions([1]);
         setSubCats([]);
         setNewSubCat('');
+        setEnableReporting(true);
     };
 
     const toggleOption = (opt: number) => {
@@ -163,6 +169,15 @@ export default function CategoriesClient() {
                             onChange={(e) => setName(e.target.value)}
                             placeholder="e.g. Snacks, Merch..."
                         />
+                        <div style={{ marginTop: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <input
+                                type="checkbox"
+                                checked={enableReporting}
+                                onChange={e => setEnableReporting(e.target.checked)}
+                                style={{ width: '18px', height: '18px' }}
+                            />
+                            <label style={{ fontSize: '0.9rem', color: '#d1d5db' }}>Include in "Bottle Levels" Report</label>
+                        </div>
                     </div>
 
                     <div>

@@ -8,11 +8,12 @@ export async function GET(req: NextRequest) {
 
     try {
         const signatures = await db.query(`
-            SELECT id, label, data, is_active, created_at 
+            SELECT id, label, data, is_active, is_shared, user_id, created_at 
             FROM signatures 
             WHERE organization_id = $1 
-            ORDER BY created_at DESC
-        `, [session.organizationId]);
+            AND (user_id = $2 OR is_shared = true)
+            ORDER BY is_active DESC, created_at DESC
+        `, [session.organizationId, session.id]);
 
         return NextResponse.json({ signatures });
     } catch (e) {
@@ -26,16 +27,16 @@ export async function POST(req: NextRequest) {
     if (!session || !session.organizationId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     try {
-        const { label, data_url } = await req.json();
+        const { label, data_url, is_shared } = await req.json();
 
         if (!data_url) return NextResponse.json({ error: 'No data provided' }, { status: 400 });
 
         // Insert new signature
         const res = await db.query(`
-            INSERT INTO signatures (organization_id, user_id, label, data, is_active)
-            VALUES ($1, $2, $3, $4, false)
-            RETURNING id, label, is_active
-        `, [session.organizationId, session.id, label || 'Signature', data_url]);
+            INSERT INTO signatures (organization_id, user_id, label, data, is_active, is_shared)
+            VALUES ($1, $2, $3, $4, false, $5)
+            RETURNING id, label, is_active, is_shared
+        `, [session.organizationId, session.id, label || 'Signature', data_url, !!is_shared]);
 
         return NextResponse.json({ signature: res[0] });
     } catch (e) {

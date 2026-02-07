@@ -41,6 +41,9 @@ export async function GET(req: NextRequest) {
             ORDER BY ordinal_position
         `, [table]);
 
+        const hasOrgId = columns.some((c: any) => c.column_name === 'organization_id');
+        const organizationId = searchParams.get('organizationId');
+
         // Detect Primary Key
         const pkRes = await db.query(`
             SELECT kcu.column_name
@@ -55,9 +58,26 @@ export async function GET(req: NextRequest) {
         const pk = pkRes.length > 0 ? pkRes[0].column_name : 'id';
 
         // Fetch Data
-        // Safe to inject table name now that it is validated against schema
-        const rows = await db.query(`SELECT * FROM "${table}" ORDER BY "${pk}" DESC LIMIT $1 OFFSET $2`, [limit, offset]);
-        const count = await db.one(`SELECT COUNT(*) as c FROM "${table}"`);
+        let query = `SELECT * FROM "${table}"`;
+        const params: any[] = [];
+
+        if (hasOrgId && organizationId) {
+            query += ` WHERE organization_id = $1`;
+            params.push(organizationId);
+        }
+
+        query += ` ORDER BY "${pk}" DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+        params.push(limit, offset);
+
+        const rows = await db.query(query, params);
+
+        let countQuery = `SELECT COUNT(*) as c FROM "${table}"`;
+        let countParams: any[] = [];
+        if (hasOrgId && organizationId) {
+            countQuery += ` WHERE organization_id = $1`;
+            countParams.push(organizationId);
+        }
+        const count = await db.one(countQuery, countParams);
 
         return NextResponse.json({
             columns,

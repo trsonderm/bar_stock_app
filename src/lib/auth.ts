@@ -15,6 +15,7 @@ export interface UserSession {
     organizationId: number; // New
     isSuperAdmin: boolean; // New
     isImpersonating?: boolean; // New
+    subscriptionPlan?: 'base' | 'pro' | 'free_trial' | string; // New
     role: UserRole;
     permissions: string[];
     iat?: number;
@@ -28,7 +29,7 @@ export const COOKIE_OPTIONS = {
     maxAge: 60 * 60 * 24 * 7 // 7 days
 };
 
-export async function createSessionToken(user: { id: number; role: UserRole; permissions: string | string[]; firstName: string; lastName: string; email?: string; organizationId: number; isSuperAdmin?: boolean; isImpersonating?: boolean }) {
+export async function createSessionToken(user: { id: number; role: UserRole; permissions: string | string[]; firstName: string; lastName: string; email?: string; organizationId: number; isSuperAdmin?: boolean; isImpersonating?: boolean; subscriptionPlan?: string }) {
     const permissions = typeof user.permissions === 'string' ? JSON.parse(user.permissions) : user.permissions;
 
     const token = await new SignJWT({
@@ -40,7 +41,8 @@ export async function createSessionToken(user: { id: number; role: UserRole; per
         email: user.email,
         organizationId: user.organizationId,
         isSuperAdmin: user.isSuperAdmin || false,
-        isImpersonating: user.isImpersonating || false
+        isImpersonating: user.isImpersonating || false,
+        subscriptionPlan: user.subscriptionPlan || 'base'
     })
         .setProtectedHeader({ alg: ALG })
         .setIssuedAt()

@@ -62,6 +62,20 @@ export default function OrganizationsPage() {
             )
         },
         {
+            header: 'Plan',
+            cell: (row: any) => (
+                <select
+                    value={row.subscription_plan || 'base'}
+                    onChange={(e) => handleUpdate(row.id, 'subscription_plan', e.target.value)}
+                    className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white"
+                >
+                    <option value="base">Base ($200/yr)</option>
+                    <option value="pro">Pro ($300/yr)</option>
+                    <option value="free_trial">Free Trial</option>
+                </select>
+            )
+        },
+        {
             header: 'Billing Status',
             cell: (row: any) => (
                 <select

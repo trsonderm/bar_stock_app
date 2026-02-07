@@ -8,9 +8,13 @@ export default function HelpPage() {
     const [description, setDescription] = useState('');
     const [file, setFile] = useState<File | null>(null);
     const [loading, setLoading] = useState(false);
+    const [chatAvailable, setChatAvailable] = useState(false);
 
     useEffect(() => {
         loadTickets();
+        fetch('/api/system-settings/chat')
+            .then(res => res.json())
+            .then(data => setChatAvailable(data.available));
     }, []);
 
     const loadTickets = async () => {
@@ -47,6 +51,21 @@ export default function HelpPage() {
     return (
         <div style={{ padding: '2rem', maxWidth: '800px' }}>
             <h1 style={{ fontSize: '2rem', marginBottom: '2rem' }}>Help & Support</h1>
+
+            {chatAvailable && (
+                <div style={{ background: 'linear-gradient(90deg, #8b5cf6 0%, #d946ef 100%)', padding: '1.5rem', borderRadius: '0.75rem', marginBottom: '2rem', color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                        <h2 style={{ fontSize: '1.25rem', fontWeight: 'bold', marginBottom: '0.25rem' }}>Live Support Online</h2>
+                        <p style={{ opacity: 0.9, fontSize: '0.9rem' }}>Our team is available to help you in real-time.</p>
+                    </div>
+                    <button
+                        style={{ background: 'white', color: '#8b5cf6', padding: '0.75rem 1.5rem', borderRadius: '0.5rem', border: 'none', fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}
+                        onClick={() => alert('Opening Live Chat Window... (Placeholder)')}
+                    >
+                        Start Chat
+                    </button>
+                </div>
+            )}
 
             <div style={{ background: '#1f2937', padding: '1.5rem', borderRadius: '0.75rem', marginBottom: '2rem' }}>
                 <h2 style={{ fontSize: '1.25rem', marginBottom: '1rem' }}>Submit a Ticket</h2>

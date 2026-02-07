@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 
 export default function GlobalSettings() {
-    const [config, setConfig] = useState({ billing_enabled: false, maintenance_mode: false, quick_login_enabled: true });
+    const [config, setConfig] = useState({ billing_enabled: false, maintenance_mode: false, quick_login_enabled: true, chat_available: false });
     const [loading, setLoading] = useState(false);
 
     useEffect(() => {
@@ -14,7 +14,8 @@ export default function GlobalSettings() {
                     setConfig({
                         billing_enabled: data.config.billing_enabled === 'true',
                         maintenance_mode: data.config.maintenance_mode === 'true',
-                        quick_login_enabled: data.config.quick_login_enabled === 'true'
+                        quick_login_enabled: data.config.quick_login_enabled === 'true',
+                        chat_available: data.config.chat_available === 'true'
                     });
                 }
             });
@@ -62,6 +63,16 @@ export default function GlobalSettings() {
                         className="w-5 h-5 rounded bg-gray-700 border-gray-600 text-amber-500"
                     />
                     <span className="text-gray-300">Quick Login Shortcuts</span>
+                </label>
+
+                <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                        type="checkbox"
+                        checked={(config as any).chat_available}
+                        onChange={e => setConfig({ ...config, chat_available: e.target.checked } as any)}
+                        className="w-5 h-5 rounded bg-gray-700 border-gray-600 text-purple-500"
+                    />
+                    <span className="text-gray-300">Enable Live Chat (Help Page)</span>
                 </label>
             </div>
             <button

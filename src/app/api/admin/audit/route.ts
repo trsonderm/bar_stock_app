@@ -50,13 +50,14 @@ export async function POST(req: NextRequest) {
             const diff = newQty - oldQty;
 
             await client.query(`
-                INSERT INTO activity_logs (organization_id, user_id, action, type, details)
-                VALUES ($1, $2, $3, 'audit', $4)
+                INSERT INTO activity_logs (organization_id, user_id, action, details)
+                VALUES ($1, $2, $3, $4)
             `, [
                 session.organizationId,
                 session.id,
                 diff > 0 ? 'ADD_STOCK' : 'SUBTRACT_STOCK',
                 JSON.stringify({
+                    itemId: id,
                     itemId: id,
                     itemName: change.name,
                     quantity: Math.abs(diff),

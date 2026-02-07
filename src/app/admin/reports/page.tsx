@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/auth';
-import ReportsClient from './ReportsClient';
+import ReportingClient from '../reporting/ReportingClient';
 
 export default async function ReportsPage() {
     const session = await getSession();
@@ -8,5 +8,10 @@ export default async function ReportsPage() {
         redirect('/login');
     }
 
-    return <ReportsClient />;
+    const isPro = session.subscriptionPlan === 'pro' || session.subscriptionPlan === 'free_trial' || session.isSuperAdmin;
+    if (!isPro) {
+        redirect('/admin/dashboard?upgrade=true');
+    }
+
+    return <ReportingClient />;
 }

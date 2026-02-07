@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import styles from '../admin.module.css';
-import { Smartphone } from 'lucide-react';
+import { Smartphone, Trash2, Edit } from 'lucide-react';
 import NotificationSettings from '@/components/NotificationSettings';
 import SignatureManager from '@/components/SignatureManager';
 
@@ -29,8 +29,15 @@ export default function SettingsClient() {
         ai_ordering_email: '',
         ai_ordering_phone: '',
         stock_count_mode: 'CATEGORY', // 'CATEGORY' or 'PRODUCT'
-        allow_custom_increment: 'false'
+
+        allow_custom_increment: 'false',
+        workday_start: '06:00'
     });
+
+    const [shifts, setShifts] = useState<any[]>([]);
+    const [users, setUsers] = useState<any[]>([]);
+    const [newShift, setNewShift] = useState<{ label: string, start: string, end: string, assignedUsers: number[] }>({ label: '', start: '08:00', end: '16:00', assignedUsers: [] });
+    const [editingShift, setEditingShift] = useState<{ id: number, label: string, start: string, end: string, assignedUsers: number[] } | null>(null);
 
     const HistoryList = () => {
         const [history, setHistory] = useState<any[]>([]);
@@ -84,6 +91,8 @@ export default function SettingsClient() {
                 setLoading(false);
             });
         fetchOptions();
+        fetchShifts();
+        fetchUsers();
     }, []);
 
     const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
@@ -110,6 +119,60 @@ export default function SettingsClient() {
         fetch('/api/admin/settings/options')
             .then(res => res.json())
             .then(data => setOptions(data.options || []));
+    };
+
+    const fetchShifts = () => {
+        fetch('/api/admin/settings/shifts')
+            .then(res => res.json())
+            .then(data => setShifts(data.shifts || []));
+    };
+
+    const fetchUsers = () => {
+        fetch('/api/admin/users').then(r => r.json()).then(d => setUsers(d.users || []));
+    };
+
+    const handleSaveShift = async (e: React.FormEvent) => {
+        e.preventDefault();
+
+        if (editingShift) {
+            if (!editingShift.label || !editingShift.start || !editingShift.end) return;
+            await fetch('/api/admin/settings/shifts', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    id: editingShift.id,
+                    label: editingShift.label,
+                    start_time: editingShift.start,
+                    end_time: editingShift.end,
+                    assigned_user_ids: editingShift.assignedUsers
+                })
+            });
+            setEditingShift(null);
+        } else {
+            if (!newShift.label || !newShift.start || !newShift.end) return;
+            await fetch('/api/admin/settings/shifts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    label: newShift.label,
+                    start_time: newShift.start,
+                    end_time: newShift.end,
+                    assigned_user_ids: newShift.assignedUsers
+                })
+            });
+            setNewShift({ label: '', start: '08:00', end: '16:00', assignedUsers: [] });
+        }
+        fetchShifts();
+    };
+
+    const handleDeleteShift = async (id: number) => {
+        if (!confirm('Delete this shift?')) return;
+        await fetch('/api/admin/settings/shifts', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id })
+        });
+        fetchShifts();
     };
 
     const handleAddOption = async (e: React.FormEvent) => {
@@ -427,6 +490,128 @@ export default function SettingsClient() {
                                 <HistoryList />
                             </div>
                         </details>
+                    </div>
+                </div>
+
+                {/* Shifts & Workday Section */}
+                <div className={styles.card} style={{ gridColumn: 'span 2' }}>
+                    <div className={styles.cardTitle}>Workday & Shift Config</div>
+
+                    <div style={{ marginBottom: '2rem' }}>
+                        <label className={styles.statLabel}>Workday Start Time (Business Day)</label>
+                        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                            <input
+                                type="time"
+                                name="workday_start"
+                                value={settings.workday_start || '06:00'}
+                                onChange={handleChange}
+                                className={styles.input}
+                                style={{ background: '#1f2937', color: 'white', padding: '0.5rem', border: '1px solid #374151', borderRadius: '0.25rem' }}
+                            />
+                            <p style={{ fontSize: '0.8rem', color: '#9ca3af', margin: 0 }}>
+                                Transactions before this time count as the previous day.
+                            </p>
+                        </div>
+                        <button onClick={handleSubmit} style={{ marginTop: '0.5rem', padding: '0.5rem 1rem', background: '#3b82f6', color: 'white', borderRadius: '0.25rem', border: 'none', cursor: 'pointer' }}>
+                            Save Workday
+                        </button>
+                    </div>
+
+                    <div style={{ borderTop: '1px solid #374151', paddingTop: '1.5rem' }}>
+                        <div className={styles.cardTitle} style={{ fontSize: '1rem' }}>Shift Definitions</div>
+                        <p style={{ color: '#9ca3af', fontSize: '0.9rem', marginBottom: '1rem' }}>
+                            Define shifts for reporting (e.g., Morning, Night). Times can overlap midnight.
+                        </p>
+
+                        <div style={{ display: 'grid', gap: '0.5rem', marginBottom: '1rem' }}>
+                            {shifts.map(s => (
+                                <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#1f2937', padding: '0.75rem', borderRadius: '0.25rem' }}>
+                                    <div>
+                                        <span style={{ fontWeight: 'bold', marginRight: '0.5rem' }}>{s.label}</span>
+                                        <span style={{ color: '#fbbf24', fontSize: '0.9rem' }}>{s.start_time} - {s.end_time}</span>
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                        <button
+                                            onClick={() => setEditingShift({
+                                                id: s.id,
+                                                label: s.label,
+                                                start: s.start_time,
+                                                end: s.end_time,
+                                                assignedUsers: s.assigned_user_ids || []
+                                            })}
+                                            style={{ color: '#3b82f6', background: 'none', border: 'none', cursor: 'pointer' }}
+                                        >
+                                            <Edit size={16} />
+                                        </button>
+                                        <button onClick={() => handleDeleteShift(s.id)} style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer' }}><Trash2 size={16} /></button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        <form onSubmit={handleSaveShift} style={{ background: '#1f2937', padding: '0.75rem', borderRadius: '0.25rem' }}>
+                            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.5rem' }}>
+                                <input
+                                    placeholder="Shift Name (e.g. Night)"
+                                    value={editingShift ? editingShift.label : newShift.label}
+                                    onChange={e => editingShift ? setEditingShift({ ...editingShift, label: e.target.value }) : setNewShift({ ...newShift, label: e.target.value })}
+                                    style={{ flex: 1, padding: '0.5rem', borderRadius: '0.25rem', border: 'none', background: '#374151', color: 'white' }}
+                                />
+                                <input
+                                    type="time"
+                                    value={editingShift ? editingShift.start : newShift.start}
+                                    onChange={e => editingShift ? setEditingShift({ ...editingShift, start: e.target.value }) : setNewShift({ ...newShift, start: e.target.value })}
+                                    style={{ padding: '0.5rem', borderRadius: '0.25rem', border: 'none', background: '#374151', color: 'white', cursor: 'pointer' }}
+                                />
+                                <span style={{ color: '#9ca3af' }}>to</span>
+                                <input
+                                    type="time"
+                                    value={editingShift ? editingShift.end : newShift.end}
+                                    onChange={e => editingShift ? setEditingShift({ ...editingShift, end: e.target.value }) : setNewShift({ ...newShift, end: e.target.value })}
+                                    style={{ padding: '0.5rem', borderRadius: '0.25rem', border: 'none', background: '#374151', color: 'white', cursor: 'pointer' }}
+                                />
+                            </div>
+
+                            <div style={{ marginTop: '0.5rem', marginBottom: '0.5rem' }}>
+                                <label style={{ display: 'block', color: '#9ca3af', fontSize: '0.75rem', marginBottom: '0.25rem' }}>Assign Employees (Optional)</label>
+                                <div style={{ maxHeight: '300px', overflowY: 'auto', background: '#374151', padding: '0.5rem', borderRadius: '0.25rem' }}>
+                                    {users.map(u => {
+                                        const currentAssigned = editingShift ? editingShift.assignedUsers : newShift.assignedUsers;
+                                        return (
+                                            <label key={u.id} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.25rem', cursor: 'pointer' }}>
+                                                <input
+                                                    type="checkbox"
+                                                    checked={currentAssigned.includes(u.id)}
+                                                    onChange={e => {
+                                                        const setter = editingShift ? setEditingShift : setNewShift;
+                                                        const target = editingShift ? editingShift : newShift;
+
+                                                        if (e.target.checked) setter({ ...target, assignedUsers: [...target.assignedUsers, u.id] } as any);
+                                                        else setter({ ...target, assignedUsers: target.assignedUsers.filter(id => id !== u.id) } as any);
+                                                    }}
+                                                />
+                                                <span style={{ color: 'white', fontSize: '0.85rem' }}>{u.first_name} {u.last_name}</span>
+                                            </label>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+
+                            <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                {editingShift && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setEditingShift(null)}
+                                        style={{ padding: '0.5rem 1rem', background: '#4b5563', color: 'white', borderRadius: '0.25rem', border: 'none', cursor: 'pointer', flex: 1 }}
+                                    >
+                                        Cancel Edit
+                                    </button>
+                                )}
+                                <button type="submit" style={{ padding: '0.5rem 1rem', background: '#10b981', color: 'white', borderRadius: '0.25rem', border: 'none', cursor: 'pointer', flex: 1 }}>
+                                    {editingShift ? 'Update Shift' : 'Add Shift'}
+                                </button>
+                            </div>
+                        </form>
                     </div>
                 </div>
 

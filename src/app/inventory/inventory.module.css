@@ -165,6 +165,12 @@
     margin-right: 0.5rem;
 }
 
+.plusBtn {
+    background-color: #374151;
+    color: #34d399;
+    /* emerald-400 */
+}
+
 /* ... */
 .stockGroup {
     display: flex;

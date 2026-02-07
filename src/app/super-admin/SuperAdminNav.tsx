@@ -22,8 +22,9 @@ export default function SuperAdminNav() {
         { name: 'Organizations', href: '/super-admin/organizations', icon: Building2 },
         { name: 'Support Tickets', href: '/super-admin/support', icon: Ticket },
         { name: 'Global Users', href: '/super-admin/users', icon: Users },
-        { name: 'Audit Logs', href: '/super-admin/logs', icon: FileBarChart }, // Added this line
-        { name: 'Database', href: '/super-admin/database', icon: Database },
+        { name: 'Audit Logs', href: '/super-admin/logs', icon: FileBarChart },
+        { name: 'Database Explorer', href: '/super-admin/database', icon: Database },
+        { name: 'DB Maintenance Tools', href: '/super-admin/maintenance', icon: Database },
         { name: 'Site Settings', href: '/super-admin/settings', icon: Settings },
         { name: 'Report Builder', href: '/super-admin/reports/custom', icon: FileBarChart },
     ];

@@ -5,11 +5,12 @@ interface StockControlsProps {
     item: any;
     options: number[];
     canAddStock: boolean;
+    canSubtractStock: boolean;
     allowCustom: boolean;
     onAdjust: (id: number, amount: number) => void;
 }
 
-export default function StockControls({ item, options, canAddStock, allowCustom, onAdjust }: StockControlsProps) {
+export default function StockControls({ item, options, canAddStock, canSubtractStock, allowCustom, onAdjust }: StockControlsProps) {
     const [customAmount, setCustomAmount] = useState<string>('');
 
     return (
@@ -17,7 +18,7 @@ export default function StockControls({ item, options, canAddStock, allowCustom,
             {options.sort((a, b) => a - b).map((amt) => (
                 <div key={amt} className={styles.stockGroup}>
                     <span style={{ color: '#9ca3af', fontSize: '0.8rem', marginRight: '0.25rem' }}>{amt}:</span>
-                    <button className={`${styles.stockBtn} ${styles.minusBtn}`} onClick={() => onAdjust(item.id, -amt)}>-</button>
+                    <button className={`${styles.stockBtn} ${styles.minusBtn}`} disabled={!canSubtractStock} onClick={() => onAdjust(item.id, -amt)}>-</button>
                     <button className={`${styles.stockBtn} ${styles.plusBtn}`} disabled={!canAddStock} onClick={() => onAdjust(item.id, amt)}>+</button>
                 </div>
             ))}
@@ -34,7 +35,7 @@ export default function StockControls({ item, options, canAddStock, allowCustom,
                     />
                     <button
                         className={`${styles.stockBtn} ${styles.minusBtn}`}
-                        disabled={!customAmount}
+                        disabled={!canSubtractStock || !customAmount}
                         onClick={() => {
                             const val = parseFloat(customAmount);
                             if (val > 0) onAdjust(item.id, -val);

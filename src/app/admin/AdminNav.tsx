@@ -5,7 +5,13 @@ import { useState, useRef, useEffect } from 'react';
 import styles from './admin.module.css';
 import NotificationBell from '@/components/NotificationBell';
 
-export default function AdminNav() {
+interface NavUser {
+    role: string;
+    permissions: string[];
+    subscriptionPlan?: string;
+}
+
+export default function AdminNav({ user }: { user: NavUser }) {
     const pathname = usePathname();
     const router = useRouter();
 
@@ -26,6 +32,9 @@ export default function AdminNav() {
     const [locDropdownOpen, setLocDropdownOpen] = useState(false);
 
     const [showBottleLevels, setShowBottleLevels] = useState(true);
+
+    const canAudit = user?.role === 'admin' || user?.permissions?.includes('audit') || user?.permissions?.includes('all');
+    const isPro = user?.subscriptionPlan === 'pro' || user?.subscriptionPlan === 'free_trial' || user?.role === 'super_admin'; // Super admin bypass or logic if needed
 
     useEffect(() => {
         // Fetch locations
@@ -72,15 +81,21 @@ export default function AdminNav() {
     return (
         <nav className={styles.nav}>
             <Link href="/admin/dashboard" className={isActive('/admin/dashboard') ? styles.navItemActive : styles.navItem}>Dashboard</Link>
-            <Link href="/admin/reports" className={isActive('/admin/reports') ? styles.navItemActive : styles.navItem}>Reporting</Link>
+            {isPro && (
+                <Link href="/admin/reports" className={isActive('/admin/reports') ? styles.navItemActive : styles.navItem}>Reporting</Link>
+            )}
             <Link href="/admin/prices" className={isActive('/admin/prices') ? styles.navItemActive : styles.navItem}>Prices</Link>
             <Link href="/admin/products" className={isActive('/admin/products') ? styles.navItemActive : styles.navItem}>Product List</Link>
             <Link href="/admin/query" className={isActive('/admin/query') ? styles.navItemActive : styles.navItem}>Activity Search</Link>
+            {canAudit && (
+                <Link href="/admin/audit" className={isActive('/admin/audit') ? styles.navItemActive : styles.navItem} style={{ color: '#ec4899' }}>Audit</Link>
+            )}
             <Link href="/inventory" className={isActive('/inventory') ? styles.navItemActive : styles.navItem} target="_blank">Stock View</Link>
 
-            {/* Reports Dropdown */}
-            {showBottleLevels && <Link href="/admin/reports/bottle-levels" className={isActive('/admin/reports/bottle-levels') ? styles.navItemActive : styles.navItem}>Bottle Levels</Link>}
-            <Link href="/admin/reports/smart-order" className={isActive('/admin/reports/smart-order') ? styles.navItemActive : styles.navItem}>Smart Order</Link>
+
+            {isPro && (
+                <Link href="/admin/reports/smart-order" className={isActive('/admin/reports/smart-order') ? styles.navItemActive : styles.navItem}>Smart Order</Link>
+            )}
 
             {/* Location Switcher */}
             {myLocations.length > 1 && (

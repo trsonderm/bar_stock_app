@@ -1,8 +1,13 @@
+'use client';
+
+import { useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { ArrowRight, BarChart3, ShieldCheck, Smartphone, Users } from 'lucide-react';
 
 export default function LandingPage() {
+    const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('yearly');
+
     return (
         <div className="min-h-screen bg-gray-900 text-white font-sans selection:bg-amber-500 selection:text-white">
             {/* Navigation */}
@@ -159,52 +164,70 @@ export default function LandingPage() {
                     </span>
                     <h2 className="text-3xl font-bold text-white mb-12">Simple, Transparent Pricing</h2>
 
+                    <div className="flex justify-center mb-12">
+                        <div className="bg-gray-800 p-1 rounded-full border border-gray-700 inline-flex">
+                            <button
+                                onClick={() => setBillingCycle('monthly')}
+                                className={`px-6 py-2 rounded-full text-sm font-bold transition-all ${billingCycle === 'monthly' ? 'bg-amber-500 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}
+                            >
+                                Monthly
+                            </button>
+                            <button
+                                onClick={() => setBillingCycle('yearly')}
+                                className={`px-6 py-2 rounded-full text-sm font-bold transition-all ${billingCycle === 'yearly' ? 'bg-amber-500 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}
+                            >
+                                Yearly <span className="ml-1 text-xs opacity-75 hidden sm:inline">(Save 20%)</span>
+                            </button>
+                        </div>
+                    </div>
+
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-7xl mx-auto">
-                        {/* Monthly Starter */}
+                        {/* Base Edition */}
                         <div className="flex flex-col p-8 bg-gray-800 rounded-3xl border border-gray-700 hover:border-gray-600 transition-colors">
-                            <h3 className="text-xl font-medium text-gray-300 mb-2">Starter</h3>
-                            <div className="text-4xl font-bold text-white mb-6">$19.99<span className="text-lg text-gray-500 font-normal">/mo</span></div>
+                            <h3 className="text-xl font-medium text-gray-300 mb-2">Base Edition</h3>
+                            <div className="text-4xl font-bold text-white mb-6">
+                                {billingCycle === 'yearly' ? '$200' : '$19.99'}
+                                <span className="text-lg text-gray-500 font-normal">/{billingCycle === 'yearly' ? 'yr' : 'mo'}</span>
+                            </div>
                             <ul className="space-y-4 mb-8 text-left flex-1 text-sm">
-                                <li className="flex items-center text-gray-300"><ShieldCheck className="w-5 h-5 text-amber-500 mr-3" /> Up to 3 Users</li>
-                                <li className="flex items-center text-gray-300"><ShieldCheck className="w-5 h-5 text-amber-500 mr-3" /> Unlimited Items</li>
-                                <li className="flex items-center text-gray-300"><ShieldCheck className="w-5 h-5 text-amber-500 mr-3" /> Smart Reports</li>
+                                <li className="flex items-center text-gray-300"><ShieldCheck className="w-5 h-5 text-amber-500 mr-3" /> Unlimited Items & Users</li>
+                                <li className="flex items-center text-gray-300"><ShieldCheck className="w-5 h-5 text-amber-500 mr-3" /> Multi-Location Support</li>
+                                <li className="flex items-center text-gray-300"><ShieldCheck className="w-5 h-5 text-amber-500 mr-3" /> Standard Support (48h)</li>
                             </ul>
-                            <Link href="/register?plan=starter" className="block w-full py-4 rounded-xl bg-gray-700 hover:bg-gray-600 text-white font-bold transition-colors">
-                                Start Monthly
+                            <Link href="/register?plan=base" className="block w-full py-4 rounded-xl bg-gray-700 hover:bg-gray-600 text-white font-bold transition-colors">
+                                Start Base Plan
                             </Link>
                         </div>
 
-                        {/* Monthly Pro */}
+                        {/* Pro Edition */}
                         <div className="flex flex-col p-8 bg-gray-800 rounded-3xl border border-amber-500/30 hover:border-amber-500 transition-colors transform scale-105 shadow-2xl z-10">
-                            <div className="text-amber-500 text-xs font-bold uppercase tracking-wide mb-2">Most Popular</div>
-                            <h3 className="text-xl font-medium text-white mb-2">Pro</h3>
-                            <div className="text-4xl font-bold text-white mb-6">$29.00<span className="text-lg text-gray-500 font-normal">/mo</span></div>
+                            <div className="text-amber-500 text-xs font-bold uppercase tracking-wide mb-2">Recommended</div>
+                            <h3 className="text-xl font-medium text-white mb-2">Pro Edition</h3>
+                            <div className="text-4xl font-bold text-white mb-6">
+                                {billingCycle === 'yearly' ? '$300' : '$29.99'}
+                                <span className="text-lg text-gray-500 font-normal">/{billingCycle === 'yearly' ? 'yr' : 'mo'}</span>
+                            </div>
                             <ul className="space-y-4 mb-8 text-left flex-1 text-sm">
-                                <li className="flex items-center text-white"><ShieldCheck className="w-5 h-5 text-amber-500 mr-3" /> Unlimited Users</li>
-                                <li className="flex items-center text-white"><ShieldCheck className="w-5 h-5 text-amber-500 mr-3" /> Priority Support</li>
-                                <li className="flex items-center text-white"><ShieldCheck className="w-5 h-5 text-amber-500 mr-3" /> All Advanced Features</li>
+                                <li className="flex items-center text-white"><BarChart3 className="w-5 h-5 text-amber-500 mr-3" /> Advanced Reporting & Analytics</li>
+                                <li className="flex items-center text-white"><Smartphone className="w-5 h-5 text-amber-500 mr-3" /> AI Smart Ordering</li>
+                                <li className="flex items-center text-white"><ShieldCheck className="w-5 h-5 text-amber-500 mr-3" /> Same-Day Priority Support</li>
+                                <li className="flex items-center text-white"><Users className="w-5 h-5 text-amber-500 mr-3" /> Free Setup Assistance</li>
                             </ul>
                             <Link href="/register?plan=pro" className="block w-full py-4 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold transition-colors shadow-lg">
-                                Start Pro
+                                Start Pro Plan
                             </Link>
                         </div>
 
-                        {/* Yearly */}
+                        {/* Enterprise / Custom (Optional, replacing Yearly) */}
                         <div className="flex flex-col p-8 bg-gray-800 rounded-3xl border border-gray-700 hover:border-gray-600 transition-colors">
-                            <div className="flex justify-between items-start mb-2">
-                                <h3 className="text-xl font-medium text-gray-300">Yearly</h3>
-                                <span className="bg-amber-500/10 text-amber-500 text-xs font-bold px-2 py-1 rounded">SAVE 70%</span>
-                            </div>
-                            <div className="text-4xl font-bold text-white mb-6">$99.99<span className="text-lg text-gray-500 font-normal">/yr</span></div>
-                            <ul className="space-y-4 mb-8 text-left flex-1 text-sm">
-                                <li className="flex items-center text-gray-300"><ShieldCheck className="w-5 h-5 text-amber-500 mr-3" /> All Pro Features</li>
-                                <li className="flex items-center text-gray-300"><ShieldCheck className="w-5 h-5 text-amber-500 mr-3" /> Unlimited Users</li>
-                                <li className="flex items-center text-gray-300"><ShieldCheck className="w-5 h-5 text-amber-500 mr-3" /> Station Mode Included</li>
-                            </ul>
-                            <Link href="/register?plan=yearly" className="block w-full py-4 rounded-xl bg-gray-700 hover:bg-gray-600 text-white font-bold transition-colors">
-                                Start Yearly
+                            <h3 className="text-xl font-medium text-gray-300 mb-2">Enterprise</h3>
+                            <div className="text-4xl font-bold text-white mb-6">Custom</div>
+                            <p className="text-gray-400 text-sm mb-6 flex-1">
+                                Need custom integrations, white-labeling, or dedicated account management? Let's talk.
+                            </p>
+                            <Link href="mailto:sales@topshelf.com" className="block w-full py-4 rounded-xl bg-gray-700 hover:bg-gray-600 text-white font-bold transition-colors">
+                                Contact Sales
                             </Link>
-                            <p className="mt-3 text-center text-xs text-gray-500">Includes 14-day free trial</p>
                         </div>
                     </div>
                 </div>

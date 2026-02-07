@@ -8,5 +8,10 @@ export default async function SmartOrderPage() {
         redirect('/login');
     }
 
+    const isPro = session.subscriptionPlan === 'pro' || session.subscriptionPlan === 'free_trial' || session.isSuperAdmin;
+    if (!isPro) {
+        redirect('/admin/dashboard?upgrade=true');
+    }
+
     return <SmartOrderClient />;
 }

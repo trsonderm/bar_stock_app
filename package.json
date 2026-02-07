@@ -24,7 +24,7 @@
     "pg": "^8.17.1",
     "react": "18.2.0",
     "react-dom": "18.2.0",
-    "recharts": "^3.6.0",
+    "recharts": "^3.7.0",
     "systeminformation": "^5.30.4",
     "twilio": "^5.12.0",
     "uuid": "^9.0.1",

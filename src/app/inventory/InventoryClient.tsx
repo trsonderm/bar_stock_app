@@ -13,6 +13,7 @@ interface Item {
     secondary_type?: string;
     quantity: number;
     unit_cost: number;
+    stock_options?: number[] | string;
 }
 
 interface ActivityLog {
@@ -79,6 +80,7 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
     const router = useRouter();
 
     const canAddStock = user.role === 'admin' || user.permissions.includes('add_stock') || user.permissions.includes('all');
+    const canSubtractStock = user.role === 'admin' || user.permissions.includes('subtract_stock') || user.permissions.includes('all');
     const canAddItem = user.role === 'admin' || user.permissions.includes('add_item_name') || user.permissions.includes('all');
 
     const fetchItems = async () => {
@@ -441,19 +443,39 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
 
                             <div style={{ display: 'flex', gap: '0.25rem' }}>
                                 {(() => {
-                                    // Find category options
-                                    const cat = categories.find(c => c.name === item.type);
                                     let options = [1];
 
+                                    // 1. Check Item-level options
+                                    if (item.stock_options) {
+                                        let parsed = item.stock_options;
+                                        if (typeof parsed === 'string') {
+                                            try { parsed = JSON.parse(parsed); } catch { }
+                                        }
+                                        if (Array.isArray(parsed) && parsed.length > 0) {
+                                            options = parsed.map((p: any) => parseInt(p)).filter((n: number) => !isNaN(n));
+                                            if (options.length > 0) return (
+                                                <StockControls
+                                                    item={item}
+                                                    options={options}
+                                                    canAddStock={canAddStock}
+                                                    canSubtractStock={canSubtractStock}
+                                                    allowCustom={allowCustomIncrement}
+                                                    onAdjust={handleAdjust}
+                                                />
+                                            );
+                                        }
+                                    }
+
+                                    // 2. Fallback to Category-level options
+                                    const cat = categories.find(c => c.name === item.type);
                                     if (cat && cat.stock_options) {
-                                        // Ensure we handle both string JSON and parsed array
                                         let parsed = cat.stock_options;
                                         if (typeof parsed === 'string') {
                                             try { parsed = JSON.parse(parsed); } catch { }
                                         }
                                         if (Array.isArray(parsed) && parsed.length > 0) {
-                                            // Ensure all are numbers
                                             options = parsed.map((p: any) => parseInt(p)).filter((n: number) => !isNaN(n));
+                                            // Ensure we have at least one valid option
                                             if (options.length === 0) options = [1];
                                         }
                                     }
@@ -463,6 +485,7 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
                                             item={item}
                                             options={options}
                                             canAddStock={canAddStock}
+                                            canSubtractStock={canSubtractStock}
                                             allowCustom={allowCustomIncrement}
                                             onAdjust={handleAdjust}
                                         />
@@ -664,23 +687,43 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
                                     {myActivity
                                         .filter(log => !user.iat || new Date(log.timestamp).getTime() > user.iat * 1000)
                                         .map(log => {
-                                            let displayText = 'Activity Recorded';
+                                            let content = null;
                                             try {
-                                                const json = typeof log.details === 'string' ? JSON.parse(log.details) : log.details;
-                                                if (log.action === 'ADD_STOCK' && json.itemName) {
-                                                    displayText = `Added ${json.quantity} to ${json.itemName}`;
-                                                } else if (log.action === 'SUBTRACT_STOCK' && json.itemName) {
-                                                    displayText = `Removed ${json.quantity} from ${json.itemName}`;
-                                                } else if (typeof log.details === 'string') {
-                                                    displayText = log.details;
+                                                const d = typeof log.details === 'string' ? JSON.parse(log.details) : log.details;
+
+                                                if (log.action === 'ADD_STOCK' || log.action === 'SUBTRACT_STOCK') {
+                                                    content = (
+                                                        <>
+                                                            <span style={{ fontWeight: 'bold', color: log.action === 'ADD_STOCK' ? '#34d399' : '#f87171' }}>
+                                                                {log.action === 'ADD_STOCK' ? 'Added' : 'Removed'} {d.quantity || Math.abs(d.change || 0)}
+                                                            </span>
+                                                            <span style={{ marginLeft: '5px' }}>
+                                                                {d.itemName}
+                                                            </span>
+                                                            {d.bottleLevel && <div style={{ fontSize: '0.8em', color: '#fbbf24' }}>Level: {d.bottleLevel}</div>}
+                                                        </>
+                                                    );
+                                                } else if (log.action === 'CREATE_ITEM') {
+                                                    content = <span>Created Item: <strong>{d.name}</strong></span>;
+                                                } else {
+                                                    // Fallback for other objects
+                                                    content = (
+                                                        <div style={{ fontSize: '0.9rem' }}>
+                                                            {Object.entries(d).map(([k, v]) => (
+                                                                <span key={k} style={{ marginRight: '10px' }}>
+                                                                    <span style={{ opacity: 0.7, fontSize: '0.8em' }}>{k}:</span> {String(v)}
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    );
                                                 }
                                             } catch {
-                                                if (typeof log.details === 'string') displayText = log.details;
+                                                content = typeof log.details === 'string' ? log.details : JSON.stringify(log.details);
                                             }
 
                                             return (
                                                 <li key={log.id} style={{ borderBottom: '1px solid #374151', padding: '0.75rem 0' }}>
-                                                    <div style={{ fontWeight: 'bold', color: 'white' }}>{displayText}</div>
+                                                    <div style={{ color: 'white' }}>{content}</div>
                                                     <div style={{ fontSize: '0.8rem', color: '#9ca3af', marginTop: '0.25rem' }}>
                                                         {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                                     </div>

@@ -46,6 +46,10 @@ export async function POST(req: NextRequest) {
         }
 
         if (matchedUser) {
+            // Fetch Organization Plan
+            const org = await db.one('SELECT subscription_plan FROM organizations WHERE id = $1', [matchedUser.organization_id || 1]);
+            const subscriptionPlan = org ? org.subscription_plan : 'base';
+
             const permissions = typeof matchedUser.permissions === 'string' ? JSON.parse(matchedUser.permissions) : matchedUser.permissions;
             // Check if permissions includes super_admin
             const isSuperAdmin = permissions.includes('super_admin');
@@ -58,7 +62,8 @@ export async function POST(req: NextRequest) {
                 lastName: matchedUser.last_name,
                 email: matchedUser.email,
                 organizationId: matchedUser.organization_id || 1, // Fallback to 1 if null (shouldn't happen after migration)
-                isSuperAdmin
+                isSuperAdmin,
+                subscriptionPlan
             };
 
             const token = await createSessionToken(sessionUser);

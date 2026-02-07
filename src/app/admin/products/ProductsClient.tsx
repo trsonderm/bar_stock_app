@@ -15,6 +15,7 @@ interface Item {
     low_stock_threshold?: number;
     order_size?: number;
     stock_options?: number[];
+    include_in_audit?: boolean;
 }
 
 interface Category {
@@ -31,22 +32,28 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
     const [search, setSearch] = useState('');
     const [filterType, setFilterType] = useState('All');
 
-    // Editing State
+    // State for Modal
+    const [showModal, setShowModal] = useState(false);
     const [editingId, setEditingId] = useState<number | null>(null);
-    const [editForm, setEditForm] = useState<Partial<Item>>({});
 
-    // Creating State
-    const [showCreate, setShowCreate] = useState(false);
-    const [newItemName, setNewItemName] = useState('');
-    const [newItemType, setNewItemType] = useState('Liquor');
-    const [newItemCost, setNewItemCost] = useState('');
-    const [newItemQty, setNewItemQty] = useState('');
-    const [newItemSupplier, setNewItemSupplier] = useState('');
-    const [newItemSupplierId, setNewItemSupplierId] = useState<number | undefined>(undefined);
-    const [newItemThreshold, setNewItemThreshold] = useState('5');
-    const [newItemOrderSize, setNewItemOrderSize] = useState('1');
-    const [newItemTrackQty, setNewItemTrackQty] = useState(true);
-    const [newItemStockOptions, setNewItemStockOptions] = useState(''); // Comma separated
+    // Unified Form State
+    const [formData, setFormData] = useState({
+        name: '',
+        type: 'Liquor',
+        secondary_type: '',
+        supplier: '',
+        supplier_id: undefined as number | undefined,
+        unit_cost: '',
+        quantity: '',
+        order_size: '1',
+        low_stock_threshold: '5' as string | null, // '5' or null (for global) or custom string
+        track_quantity: true,
+        include_in_audit: true,
+        stock_options: [] as number[]
+    });
+
+    // Temp input for stock options
+    const [tempOptionInput, setTempOptionInput] = useState('');
 
     const [stockMode, setStockMode] = useState<string>('CATEGORY');
 
@@ -85,51 +92,91 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
         }
     };
 
+    const resetForm = () => {
+        setEditingId(null);
+        setFormData({
+            name: '',
+            type: 'Liquor',
+            secondary_type: '',
+            supplier: '',
+            supplier_id: undefined,
+            unit_cost: '',
+            quantity: '',
+            order_size: '1',
+            low_stock_threshold: '5',
+            track_quantity: true,
+            include_in_audit: true,
+            stock_options: []
+        });
+        setTempOptionInput('');
+    };
+
+    const handleCreateClick = () => {
+        resetForm();
+        setShowModal(true);
+    };
+
     const handleEditClick = (item: Item) => {
         setEditingId(item.id);
-        setEditForm({ ...item });
+
+        // Populate Form
+        setFormData({
+            name: item.name,
+            type: item.type,
+            secondary_type: item.secondary_type || '',
+            supplier: item.supplier || '',
+            supplier_id: item.supplier_id,
+            unit_cost: item.unit_cost !== undefined ? item.unit_cost.toString() : '',
+            quantity: item.quantity !== undefined ? Math.floor(item.quantity).toString() : '',
+            order_size: item.order_size ? item.order_size.toString() : '1',
+            low_stock_threshold: item.low_stock_threshold === null || item.low_stock_threshold === undefined ? null : item.low_stock_threshold.toString(),
+            track_quantity: true, // Assuming true if it exists, or check quantity
+            include_in_audit: item.include_in_audit !== undefined ? item.include_in_audit : true,
+            stock_options: Array.isArray(item.stock_options) ? item.stock_options : []
+        });
+
+        setShowModal(true);
     };
 
-    const handleCancelEdit = () => {
-        setEditingId(null);
-        setEditForm({});
-    };
-
-    const handleSaveEdit = async () => {
-        if (!editingId) return;
-
+    const handleSave = async (e: React.FormEvent) => {
+        e.preventDefault();
         try {
-            const url = overrideOrgId ? `/api/inventory?orgId=${overrideOrgId}` : '/api/inventory';
+            const body = {
+                id: editingId, // Undefined for Create
+                name: formData.name,
+                type: formData.type,
+                secondary_type: formData.secondary_type || undefined,
+                supplier: formData.supplier || undefined,
+                supplier_id: formData.supplier_id,
+                unit_cost: formData.unit_cost ? parseFloat(formData.unit_cost) : 0,
+                quantity: formData.quantity ? parseInt(formData.quantity) : 0,
+                order_size: formData.order_size ? parseInt(formData.order_size) : 1,
+                low_stock_threshold: formData.low_stock_threshold === null ? null : parseInt(formData.low_stock_threshold || '5'),
+                track_quantity: formData.track_quantity ? 1 : 0,
+                include_in_audit: formData.include_in_audit,
+                stock_options: formData.stock_options.length > 0 ? formData.stock_options : null
+            };
+
+            const url = '/api/inventory' + (overrideOrgId ? `?orgId=${overrideOrgId}` : '');
+            const method = editingId ? 'PUT' : 'POST';
+
             const res = await fetch(url, {
-                method: 'PUT',
+                method,
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    id: editingId,
-                    name: editForm.name,
-                    type: editForm.type,
-                    secondary_type: editForm.secondary_type,
-                    unit_cost: editForm.unit_cost,
-                    quantity: editForm.quantity,
-                    supplier: editForm.supplier,
-                    supplier_id: editForm.supplier_id,
-                    supplier_id: editForm.supplier_id,
-                    low_stock_threshold: editForm.low_stock_threshold,
-                    order_size: editForm.order_size,
-                    stock_options: typeof editForm.stock_options === 'string'
-                        ? (editForm.stock_options as string).split(',').map((s: string) => parseInt(s.trim())).filter((n: number) => !isNaN(n))
-                        : editForm.stock_options
-                })
+                body: JSON.stringify(body)
             });
 
             if (res.ok) {
-                setEditingId(null);
-                fetchData(); // Reload to confirm
+                setShowModal(false);
+                resetForm();
+                fetchData();
             } else {
                 const d = await res.json();
-                alert(d.error || 'Failed to update');
+                alert(d.error || 'Failed to save');
             }
         } catch (e) {
-            alert('Error updating item');
+            console.error(e);
+            alert('Error saving item');
         }
     };
 
@@ -145,64 +192,6 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
             }
         } catch (e) {
             alert('Error deleting');
-        }
-    };
-
-    const handleCreate = async (e: React.FormEvent) => {
-        e.preventDefault();
-        try {
-            console.log('Creating item:', { name: newItemName, type: newItemType, supplier: newItemSupplier });
-            // First create item
-            const res = await fetch('/api/inventory', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    name: newItemName,
-                    type: newItemType,
-                    supplier: newItemSupplier,
-                    supplier_id: newItemSupplierId,
-                    track_quantity: newItemTrackQty ? 1 : 0,
-                    low_stock_threshold: newItemThreshold === '' ? null : parseInt(newItemThreshold),
-                    order_size: newItemOrderSize ? parseInt(newItemOrderSize) : 1,
-                    stock_options: newItemStockOptions
-                        ? newItemStockOptions.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n))
-                        : null
-                })
-            });
-
-            if (res.ok) {
-                const data = await res.json();
-                const newId = data.id;
-
-                // Then update cost/qty if provided (since POST only takes name/type currently, or we can use PUT after)
-                // Actually our POST creates it with 0 qty. 
-                // Let's use PUT to set the details immediately if needed.
-                if (newItemCost || newItemQty) {
-                    await fetch('/api/inventory', {
-                        method: 'PUT',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            id: newId,
-                            unit_cost: newItemCost ? parseFloat(newItemCost) : 0,
-                            quantity: newItemQty ? parseInt(newItemQty) : 0
-                        })
-                    });
-                }
-
-                setShowCreate(false);
-                setNewItemName('');
-                setNewItemCost('');
-                setNewItemQty('');
-                setNewItemSupplier('');
-                setNewItemSupplierId(undefined); // Reset
-                fetchData();
-            } else {
-                const d = await res.json();
-                alert(d.error || 'Failed to create');
-            }
-        } catch (e) {
-            console.error(e);
-            alert('Error creating item');
         }
     };
 
@@ -286,7 +275,7 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                             onChange={handleImportCSV}
                         />
                         <button
-                            onClick={() => setShowCreate(true)}
+                            onClick={handleCreateClick}
                             style={{ background: '#d97706', color: 'white', padding: '0.5rem 1rem', borderRadius: '0.5rem', fontWeight: 'bold', border: 'none', cursor: 'pointer' }}
                         >
                             + Add New Product
@@ -330,321 +319,284 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                             </tr>
                         </thead>
                         <tbody>
-                            {filtered.map(item => {
-                                const isEditing = editingId === item.id;
-                                return (
-                                    <tr key={item.id} style={isEditing ? { background: '#374151' } : {}}>
-                                        {isEditing ? (
-                                            <>
-                                                <td>
-                                                    <input
-                                                        className={styles.input}
-                                                        value={editForm.name}
-                                                        onChange={e => setEditForm({ ...editForm, name: e.target.value })}
-                                                    />
-                                                </td>
-                                                <td>
-                                                    <select
-                                                        className={styles.input}
-                                                        value={editForm.type}
-                                                        onChange={e => setEditForm({ ...editForm, type: e.target.value, secondary_type: '' })}
-                                                    >
-                                                        {categories.map((c, i) => <option key={`cat-${c.id}-${i}`} value={c.name}>{c.name}</option>)}
-                                                    </select>
-                                                </td>
-                                                <td>
-                                                    <select
-                                                        className={styles.input}
-                                                        value={editForm.secondary_type || ''}
-                                                        onChange={e => setEditForm({ ...editForm, secondary_type: e.target.value })}
-                                                    >
-                                                        <option value="">(None)</option>
-                                                        {(() => {
-                                                            const cat = categories.find(c => c.name === editForm.type);
-                                                            return cat?.sub_categories?.map((sub: string) => (
-                                                                <option key={sub} value={sub}>{sub}</option>
-                                                            ));
-                                                        })()}
-                                                    </select>
-                                                </td>
-                                                <td>
-                                                    {suppliers.length > 0 ? (
-                                                        <select
-                                                            className={styles.input}
-                                                            value={editForm.supplier_id || ''}
-                                                            onChange={e => {
-                                                                const id = parseInt(e.target.value);
-                                                                const name = suppliers.find(s => s.id === id)?.name;
-                                                                setEditForm({ ...editForm, supplier_id: id, supplier: name });
-                                                            }}
-                                                        >
-                                                            <option value="">(None)</option>
-                                                            {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                                                        </select>
-                                                    ) : (
-                                                        <input
-                                                            className={styles.input}
-                                                            value={editForm.supplier || ''}
-                                                            onChange={e => setEditForm({ ...editForm, supplier: e.target.value })}
-                                                            placeholder="Supplier"
-                                                        />
-                                                    )}
-                                                </td>
-                                                <td>
-                                                    <input
-                                                        className={styles.input}
-                                                        type="number" step="0.01"
-                                                        value={editForm.unit_cost}
-                                                        onChange={e => setEditForm({ ...editForm, unit_cost: parseFloat(e.target.value) })}
-                                                        style={{ width: '80px' }}
-                                                    />
-                                                </td>
-                                                <td>
-                                                    <input
-                                                        className={styles.input}
-                                                        type="number"
-                                                        min="1"
-                                                        value={editForm.order_size || 1}
-                                                        onChange={e => setEditForm({ ...editForm, order_size: parseInt(e.target.value) })}
-                                                        style={{ width: '60px' }}
-                                                        placeholder="1"
-                                                    />
-                                                </td>
-                                                {stockMode === 'PRODUCT' && (
-                                                    <td>
-                                                        <input
-                                                            className={styles.input}
-                                                            type="number"
-                                                            value={editForm.quantity}
-                                                            onChange={e => setEditForm({ ...editForm, quantity: parseInt(e.target.value) })}
-                                                            style={{ width: '80px' }}
-                                                            step="1"
-                                                        />
-                                                    </td>
-                                                )}
-                                                {stockMode === 'PRODUCT' && (
-                                                    <td>
-                                                        <input
-                                                            className={styles.input}
-                                                            value={Array.isArray(editForm.stock_options) ? editForm.stock_options.join(', ') : (editForm.stock_options || '')}
-                                                            onChange={e => {
-                                                                // Allow editing as string, parse on save
-                                                                // We need to store it as string in state temporarily or handle type check
-                                                                // Dirty hack: just cast to any for strict mode or allow string in interface (better option: use local state but we are using editForm)
-                                                                // Let's rely on the parsing in handleSaveEdit and treating it as string here.
-                                                                setEditForm({ ...editForm, stock_options: e.target.value as any });
-                                                            }}
-                                                            placeholder="1, 6, 12"
-                                                            style={{ width: '100px' }}
-                                                        />
-                                                    </td>
-                                                )}
-                                                <td>
-                                                    <div className="flex flex-col text-xs">
-                                                        <label className="flex items-center gap-1 mb-1 whitespace-nowrap">
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={editForm.low_stock_threshold === null || editForm.low_stock_threshold === undefined}
-                                                                onChange={(e) => {
-                                                                    if (e.target.checked) setEditForm({ ...editForm, low_stock_threshold: null as any });
-                                                                    else setEditForm({ ...editForm, low_stock_threshold: 5 });
-                                                                }}
-                                                            />
-                                                            Global
-                                                        </label>
-                                                        {editForm.low_stock_threshold !== null && editForm.low_stock_threshold !== undefined && (
-                                                            <input
-                                                                className={styles.input}
-                                                                type="number"
-                                                                value={editForm.low_stock_threshold}
-                                                                onChange={e => setEditForm({ ...editForm, low_stock_threshold: parseInt(e.target.value) })}
-                                                                style={{ width: '60px' }}
-                                                            />
-                                                        )}
-                                                    </div>
-                                                </td>
-                                                <td style={{ textAlign: 'right' }}>
-                                                    <button onClick={handleSaveEdit} style={{ color: '#34d399', marginRight: '10px', fontWeight: 'bold' }}>Save</button>
-                                                    <button onClick={handleCancelEdit} style={{ color: '#9ca3af' }}>Cancel</button>
-                                                </td>
-                                            </>
-                                        ) : (
-                                            <>
-                                                <td>{item.name}</td>
-                                                <td>{item.type}</td>
-                                                <td>{item.secondary_type || '-'}</td>
-                                                <td>{item.supplier || '-'}</td>
-                                                <td>${Number(item.unit_cost || 0).toFixed(2)}</td>
-                                                <td style={{ fontSize: '0.9em', color: '#cbd5e1' }}>{item.order_size ?? 1}</td>
-                                                {stockMode === 'PRODUCT' && (
-                                                    <td style={{ fontWeight: 'bold', color: item.quantity === 0 ? '#ef4444' : item.quantity < (item.low_stock_threshold ?? 5) ? '#f59e0b' : 'inherit' }}>
-                                                        {Math.floor(item.quantity)}
-                                                    </td>
-                                                )}
-                                                {stockMode === 'PRODUCT' && (
-                                                    <td style={{ fontSize: '0.8em', color: '#9ca3af' }}>
-                                                        {Array.isArray(item.stock_options) && item.stock_options.length > 0 ? item.stock_options.join(', ') : 'Default'}
-                                                    </td>
-                                                )}
-                                                <td style={{ color: '#9ca3af', fontSize: '0.9em' }}>{item.low_stock_threshold === null ? 'Global' : item.low_stock_threshold}</td>
-                                                <td style={{ textAlign: 'right' }}>
-                                                    <button
-                                                        onClick={() => handleEditClick(item)}
-                                                        style={{
-                                                            background: '#3b82f6',
-                                                            color: 'white',
-                                                            border: 'none',
-                                                            padding: '4px 8px',
-                                                            borderRadius: '4px',
-                                                            cursor: 'pointer',
-                                                            marginRight: '8px'
-                                                        }}
-                                                    >
-                                                        Edit
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleDelete(item.id)}
-                                                        style={{
-                                                            background: '#ef4444',
-                                                            color: 'white',
-                                                            border: 'none',
-                                                            padding: '4px 8px',
-                                                            borderRadius: '4px',
-                                                            cursor: 'pointer'
-                                                        }}
-                                                    >
-                                                        Delete
-                                                    </button>
-                                                </td>
-                                            </>
-                                        )}
-                                    </tr>
-                                );
-                            })}
+                            {filtered.map(item => (
+                                <tr key={item.id}>
+                                    <td>{item.name}</td>
+                                    <td>{item.type}</td>
+                                    <td>{item.secondary_type || '-'}</td>
+                                    <td>{item.supplier || '-'}</td>
+                                    <td>${Number(item.unit_cost || 0).toFixed(2)}</td>
+                                    <td style={{ fontSize: '0.9em', color: '#cbd5e1' }}>{item.order_size ?? 1}</td>
+                                    {stockMode === 'PRODUCT' && (
+                                        <td style={{ fontWeight: 'bold', color: item.quantity === 0 ? '#ef4444' : item.quantity < (item.low_stock_threshold ?? 5) ? '#f59e0b' : 'inherit' }}>
+                                            {Math.floor(item.quantity)}
+                                        </td>
+                                    )}
+                                    {stockMode === 'PRODUCT' && (
+                                        <td style={{ fontSize: '0.8em', color: '#9ca3af' }}>
+                                            {Array.isArray(item.stock_options) && item.stock_options.length > 0 ? item.stock_options.join(', ') : 'Default'}
+                                        </td>
+                                    )}
+                                    <td style={{ color: '#9ca3af', fontSize: '0.9em' }}>{item.low_stock_threshold === null ? 'Global' : item.low_stock_threshold}</td>
+                                    <td style={{ textAlign: 'right' }}>
+                                        <button
+                                            onClick={() => handleEditClick(item)}
+                                            style={{
+                                                background: '#3b82f6',
+                                                color: 'white',
+                                                border: 'none',
+                                                padding: '4px 8px',
+                                                borderRadius: '4px',
+                                                cursor: 'pointer',
+                                                marginRight: '8px'
+                                            }}
+                                        >
+                                            Edit
+                                        </button>
+                                        <button
+                                            onClick={() => handleDelete(item.id)}
+                                            style={{
+                                                background: '#ef4444',
+                                                color: 'white',
+                                                border: 'none',
+                                                padding: '4px 8px',
+                                                borderRadius: '4px',
+                                                cursor: 'pointer'
+                                            }}
+                                        >
+                                            Delete
+                                        </button>
+                                    </td>
+                                </tr>
+                            ))}
                         </tbody>
                     </table>
                 </div>
             </div>
 
-            {showCreate && (
+            {showModal && (
                 <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 100 }}>
-                    <div style={{ background: '#111827', padding: '2rem', borderRadius: '1rem', width: '90%', maxWidth: '500px', border: '1px solid #374151' }}>
-                        <h2 style={{ marginTop: 0, color: 'white' }}>Add New Product</h2>
-                        <form onSubmit={handleCreate}>
+                    <div style={{ background: '#111827', padding: '2rem', borderRadius: '1rem', width: '90%', maxWidth: '500px', border: '1px solid #374151', maxHeight: '90vh', overflowY: 'auto' }}>
+                        <h2 style={{ marginTop: 0, color: 'white' }}>{editingId ? 'Edit Product' : 'Add New Product'}</h2>
+                        <form onSubmit={handleSave}>
                             <div style={{ marginBottom: '1rem' }}>
                                 <label className={styles.statLabel}>Name</label>
-                                <input style={{ width: '100%' }} className={styles.input} value={newItemName} onChange={e => setNewItemName(e.target.value)} required autoFocus />
+                                <input
+                                    style={{ width: '100%' }}
+                                    className={styles.input}
+                                    value={formData.name}
+                                    onChange={e => setFormData({ ...formData, name: e.target.value })}
+                                    required
+                                    autoFocus
+                                />
                             </div>
                             <div style={{ marginBottom: '1rem' }}>
                                 <label className={styles.statLabel}>Category</label>
-                                <select style={{ width: '100%' }} className={styles.input} value={newItemType} onChange={e => setNewItemType(e.target.value)}>
+                                <select
+                                    style={{ width: '100%' }}
+                                    className={styles.input}
+                                    value={formData.type}
+                                    onChange={e => setFormData({ ...formData, type: e.target.value })}
+                                >
                                     {categories.length > 0 ? (
-                                        categories.map((c, i) => <option key={`new-cat-${c.id}-${i}`} value={c.name}>{c.name}</option>)
+                                        categories.map((c, i) => <option key={`cat-${c.id}-${i}`} value={c.name}>{c.name}</option>)
                                     ) : (
-                                        <option value="">No categories found</option>
+                                        <option value="">No categories</option>
                                     )}
                                 </select>
                             </div>
+                            {/* SubCategory Logic */}
+                            {(() => {
+                                const cat = categories.find(c => c.name === formData.type);
+                                if (cat && cat.sub_categories && cat.sub_categories.length > 0) {
+                                    return (
+                                        <div style={{ marginBottom: '1rem' }}>
+                                            <label className={styles.statLabel}>Sub-Category</label>
+                                            <select
+                                                style={{ width: '100%' }}
+                                                className={styles.input}
+                                                value={formData.secondary_type}
+                                                onChange={e => setFormData({ ...formData, secondary_type: e.target.value })}
+                                            >
+                                                <option value="">(None)</option>
+                                                {cat.sub_categories.map((sub: string) => <option key={sub} value={sub}>{sub}</option>)}
+                                            </select>
+                                        </div>
+                                    );
+                                }
+                                return null;
+                            })()}
+
                             <div style={{ marginBottom: '1rem' }}>
-                                <label className={styles.statLabel}>Supplier (Optional)</label>
+                                <label className={styles.statLabel}>Supplier</label>
                                 {suppliers.length > 0 ? (
                                     <select
                                         style={{ width: '100%' }}
                                         className={styles.input}
-                                        value={newItemSupplierId || ''}
+                                        value={formData.supplier_id || ''}
                                         onChange={e => {
                                             const id = parseInt(e.target.value);
-                                            setNewItemSupplierId(id);
-                                            const name = suppliers.find(s => s.id === id)?.name || '';
-                                            setNewItemSupplier(name);
+                                            const name = suppliers.find(s => s.id === id)?.name;
+                                            setFormData({ ...formData, supplier_id: id, supplier: name || '' });
                                         }}
                                     >
-                                        <option value="">Select a Supplier</option>
+                                        <option value="">Select Supplier</option>
                                         {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                                     </select>
                                 ) : (
                                     <input
                                         style={{ width: '100%' }}
                                         className={styles.input}
-                                        value={newItemSupplier}
-                                        onChange={e => setNewItemSupplier(e.target.value)}
-                                        placeholder="e.g. Acme Distributors"
+                                        value={formData.supplier}
+                                        onChange={e => setFormData({ ...formData, supplier: e.target.value })}
                                     />
                                 )}
                             </div>
+
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
                                 <div>
                                     <label className={styles.statLabel}>Cost ($)</label>
-                                    <input style={{ width: '100%' }} className={styles.input} type="number" step="0.01" value={newItemCost} onChange={e => setNewItemCost(e.target.value)} placeholder="0.00" />
+                                    <input
+                                        style={{ width: '100%' }}
+                                        className={styles.input}
+                                        type="number" step="0.01"
+                                        value={formData.unit_cost}
+                                        onChange={e => setFormData({ ...formData, unit_cost: e.target.value })}
+                                    />
                                 </div>
                                 <div>
-                                    <label className={styles.statLabel}>Order Size (e.g. 24)</label>
-                                    <input style={{ width: '100%' }} className={styles.input} type="number" step="1" min="1" value={newItemOrderSize} onChange={e => setNewItemOrderSize(e.target.value)} placeholder="1" />
+                                    <label className={styles.statLabel}>Order Size</label>
+                                    <input
+                                        style={{ width: '100%' }}
+                                        className={styles.input}
+                                        type="number" step="1" min="1"
+                                        value={formData.order_size}
+                                        onChange={e => setFormData({ ...formData, order_size: e.target.value })}
+                                    />
                                 </div>
                                 <div>
-                                    <label className={styles.statLabel}>Initial Qty</label>
-                                    <input style={{ width: '100%' }} className={styles.input} type="number" step="1" value={newItemQty} onChange={e => setNewItemQty(e.target.value)} placeholder="0" />
+                                    <label className={styles.statLabel}>Inventory Qty</label>
+                                    <input
+                                        style={{ width: '100%' }}
+                                        className={styles.input}
+                                        type="number" step="1"
+                                        value={formData.quantity}
+                                        onChange={e => setFormData({ ...formData, quantity: e.target.value })}
+                                    />
                                 </div>
+                            </div>
+
+                            <div style={{ marginBottom: '1rem' }}>
+                                <label className={styles.statLabel} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={formData.include_in_audit}
+                                        onChange={e => setFormData({ ...formData, include_in_audit: e.target.checked })}
+                                        style={{ width: '18px', height: '18px' }}
+                                    />
+                                    Include in Audit
+                                </label>
+                                <p className="text-xs text-gray-500 mt-1" style={{ marginLeft: '26px' }}>
+                                    If unchecked, this item will be hidden from default audit views.
+                                </p>
                             </div>
 
                             {stockMode === 'PRODUCT' && (
                                 <div style={{ marginBottom: '1rem' }}>
-                                    <label className={styles.statLabel}>Counting Options (comma separated)</label>
-                                    <input
-                                        style={{ width: '100%' }}
-                                        className={styles.input}
-                                        value={newItemStockOptions}
-                                        onChange={e => setNewItemStockOptions(e.target.value)}
-                                        placeholder="e.g. 1, 6, 12, 24"
-                                    />
+                                    <label className={styles.statLabel}>Counting Options</label>
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', background: '#374151', padding: '0.5rem', borderRadius: '0.5rem' }}>
+                                        {formData.stock_options.map((opt) => (
+                                            <span key={opt} style={{
+                                                background: '#3b82f6', color: 'white', padding: '2px 8px', borderRadius: '4px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '4px'
+                                            }}>
+                                                {opt}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setFormData(prev => ({ ...prev, stock_options: prev.stock_options.filter(o => o !== opt) }))}
+                                                    style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', padding: 0, fontSize: '0.85rem', fontWeight: 'bold' }}
+                                                >
+                                                    x
+                                                </button>
+                                            </span>
+                                        ))}
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                            <input
+                                                className={styles.input}
+                                                value={tempOptionInput}
+                                                onChange={e => setTempOptionInput(e.target.value)}
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') {
+                                                        e.preventDefault();
+                                                        const val = parseInt(tempOptionInput);
+                                                        if (!isNaN(val) && !formData.stock_options.includes(val)) {
+                                                            setFormData(prev => ({
+                                                                ...prev,
+                                                                stock_options: [...prev.stock_options, val].sort((a, b) => a - b)
+                                                            }));
+                                                            setTempOptionInput('');
+                                                        }
+                                                    }
+                                                }}
+                                                placeholder="Add #"
+                                                style={{ width: '80px' }}
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    const val = parseInt(tempOptionInput);
+                                                    if (!isNaN(val) && !formData.stock_options.includes(val)) {
+                                                        setFormData(prev => ({
+                                                            ...prev,
+                                                            stock_options: [...prev.stock_options, val].sort((a, b) => a - b)
+                                                        }));
+                                                        setTempOptionInput('');
+                                                    }
+                                                }}
+                                                style={{ background: '#10b981', color: 'white', border: 'none', borderRadius: '4px', padding: '4px 8px', cursor: 'pointer' }}
+                                            >
+                                                +
+                                            </button>
+                                        </div>
+                                    </div>
                                     <p className="text-xs text-gray-500 mt-1">Leave empty to use category defaults.</p>
                                 </div>
                             )}
 
-                            <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <div style={{ marginBottom: '1rem' }}>
+                                <label className={styles.statLabel}>Low Stock Alert</label>
+                                <div className="flex items-center gap-2 mb-2">
                                     <input
                                         type="checkbox"
-                                        checked={newItemTrackQty}
-                                        onChange={e => setNewItemTrackQty(e.target.checked)}
-                                        style={{ width: '20px', height: '20px' }}
+                                        checked={formData.low_stock_threshold === null}
+                                        onChange={e => setFormData({ ...formData, low_stock_threshold: e.target.checked ? null : '5' })}
+                                        style={{ width: '16px', height: '16px' }}
                                     />
-                                    <label className={styles.statLabel} style={{ marginBottom: 0 }}>Track Inventory</label>
+                                    <span className="text-sm text-gray-400">Use Global Default</span>
                                 </div>
-                                <div style={{ flex: 1 }}>
-                                    <label className={styles.statLabel}>Low Stock Alert</label>
-                                    <div className="flex items-center gap-2 mb-2">
-                                        <input
-                                            type="checkbox"
-                                            checked={newItemThreshold === ''}
-                                            onChange={e => setNewItemThreshold(e.target.checked ? '' : '5')}
-                                            className="w-4 h-4"
-                                        />
-                                        <span className="text-sm text-gray-400">Use Global Default</span>
-                                    </div>
-                                    {newItemThreshold !== '' && (
-                                        <input
-                                            className={styles.input}
-                                            type="number"
-                                            value={newItemThreshold}
-                                            onChange={e => setNewItemThreshold(e.target.value)}
-                                            placeholder="5"
-                                            style={{ width: '100%' }}
-                                        />
-                                    )}
-                                </div>
+                                {formData.low_stock_threshold !== null && (
+                                    <input
+                                        className={styles.input}
+                                        type="number"
+                                        value={formData.low_stock_threshold}
+                                        onChange={e => setFormData({ ...formData, low_stock_threshold: e.target.value })}
+                                        placeholder="5"
+                                        style={{ width: '100px' }}
+                                    />
+                                )}
                             </div>
 
                             <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end', marginTop: '1rem' }}>
-                                <button type="button" onClick={() => setShowCreate(false)} style={{ padding: '0.5rem 1rem', background: 'transparent', color: '#9ca3af', border: '1px solid #374151', borderRadius: '0.5rem', cursor: 'pointer' }}>Cancel</button>
-                                <button type="submit" style={{ padding: '0.5rem 1rem', background: '#d97706', color: 'white', border: 'none', borderRadius: '0.5rem', cursor: 'pointer', fontWeight: 'bold' }}>Create Product</button>
+                                <button type="button" onClick={() => setShowModal(false)} style={{ padding: '0.5rem 1rem', background: 'transparent', color: '#9ca3af', border: '1px solid #374151', borderRadius: '0.5rem', cursor: 'pointer' }}>Cancel</button>
+                                <button type="submit" style={{ padding: '0.5rem 1rem', background: '#d97706', color: 'white', border: 'none', borderRadius: '0.5rem', cursor: 'pointer', fontWeight: 'bold' }}>
+                                    {editingId ? 'Save Changes' : 'Create Product'}
+                                </button>
                             </div>
                         </form>
                     </div >
                 </div >
-            )
-            }
+            )}
         </>
     );
+
 
 }

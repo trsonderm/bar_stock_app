@@ -455,15 +455,20 @@ export default function SmartOrderClient() {
 
                 <div className="bg-blue-900/20 border border-blue-500/30 rounded-lg p-6 mb-8 mt-4 print:hidden">
                     <h3 className="text-lg font-bold text-blue-300 mb-2">🧠 How Smart Order Works</h3>
-                    <p className="text-blue-100 text-sm mb-2">
-                        This system predicts your order needs by analyzing your <strong>usage burn rate</strong> over the last 30 days.
-                        It compares your current stock + recent orders against your average daily consumption.
-                    </p>
-                    <ul className="list-disc list-inside text-blue-100 text-sm space-y-1">
-                        <li><span className="text-red-400 font-bold">CRITICAL</span>: Stock will run out in &lt; 3 days. Order immediately.</li>
-                        <li><span className="text-yellow-400 font-bold">HIGH</span>: Stock will run out in &lt; 7 days. Plan to order soon.</li>
-                        <li><span className="text-green-400 font-bold">HEALTHY</span>: Sufficient stock for &gt; 7 days.</li>
-                    </ul>
+                    <div className="text-blue-100 text-sm space-y-2">
+                        <p>
+                            This system predicts your order needs by analyzing your <strong>usage burn rate</strong> over the last {forecastDays} days.
+                            It compares your current on-hand stock plus any pending orders against your calculated daily consumption.
+                        </p>
+                        <p>
+                            <strong>Formula:</strong> <code>Days Remaining = Current Stock / Avg Daily Usage</code>
+                        </p>
+                        <ul className="list-disc list-inside space-y-1 mt-2">
+                            <li><span className="text-red-400 font-bold">CRITICAL</span>: Stock will run out in &lt; 3 days (Lead Time + Buffer). Order immediately to avoid 86ing items.</li>
+                            <li><span className="text-yellow-400 font-bold">HIGH</span>: Stock will run out in &lt; 7 days. Plan to order soon to maintain par levels.</li>
+                            <li><span className="text-green-400 font-bold">HEALTHY</span>: Sufficient stock for &gt; 7 days. No action needed unless preparing for a big event.</li>
+                        </ul>
+                    </div>
                 </div>
 
                 {/* Suggestions Table */}

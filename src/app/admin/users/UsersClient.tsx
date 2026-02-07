@@ -30,33 +30,50 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
     const [notes, setNotes] = useState('');
 
     const [canAddStock, setCanAddStock] = useState(false);
+    const [canSubtractStock, setCanSubtractStock] = useState(false);
     const [canAddItem, setCanAddItem] = useState(false);
     const [canAudit, setCanAudit] = useState(false);
+    const [canViewReports, setCanViewReports] = useState(false);
     const [isAdmin, setIsAdmin] = useState(false);
     const [submitting, setSubmitting] = useState(false);
 
-    // Locations
+    // Locations & Shifts
     const [locations, setLocations] = useState<{ id: number, name: string }[]>([]);
     const [assignedLocations, setAssignedLocations] = useState<number[]>([]);
+
+    const [shifts, setShifts] = useState<any[]>([]);
+    const [assignedShifts, setAssignedShifts] = useState<number[]>([]);
 
     // Edit Mode
     const [editingId, setEditingId] = useState<number | null>(null);
 
-    const fetchUsers = () => {
-        const url = overrideOrgId ? `/api/admin/users?orgId=${overrideOrgId}` : '/api/admin/users';
-        fetch(url)
-            .then(res => res.json())
-            .then(data => {
-                setUsers(data.users || []);
-                setLoading(false);
-            });
+    const fetchUsers = async () => {
+        try {
+            const url = overrideOrgId ? `/api/admin/users?orgId=${overrideOrgId}` : '/api/admin/users';
+            const res = await fetch(url);
+            if (!res.ok) {
+                const err = await res.json();
+                console.error('Failed to fetch users:', err);
+                return;
+            }
+            const data = await res.json();
+            console.log('Received Users:', data);
 
-        // Fetch locations too
-        const locUrl = overrideOrgId ? `/api/admin/locations?orgId=${overrideOrgId}` : '/api/admin/locations';
-        fetch(locUrl).then(r => r.json()).then(d => {
-            if (d.locations) setLocations(d.locations);
-        });
+            setUsers(data.users || []);
+        } catch (error: any) {
+            console.error('Error loading users:', error);
+            alert('Error loading users: ' + String(error));
+        } finally {
+            setLoading(false);
+        }
     };
+
+    // Fetch Settings info for Shifts & Locations
+    useEffect(() => {
+        // We need locations and shifts to populate the form
+        fetch('/api/user/locations').then(r => r.json()).then(d => setLocations(d.locations || []));
+        fetch('/api/admin/settings/shifts').then(r => r.json()).then(d => setShifts(d.shifts || []));
+    }, []);
 
     useEffect(() => {
         fetchUsers();
@@ -80,8 +97,10 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
 
         const permissions = [];
         if (canAddStock) permissions.push('add_stock');
+        if (canSubtractStock) permissions.push('subtract_stock');
         if (canAddItem) permissions.push('add_item_name');
         if (canAudit) permissions.push('audit');
+        if (canViewReports) permissions.push('view_reports');
 
         const role = isAdmin ? 'admin' : 'user';
 
@@ -102,7 +121,8 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
                 bio,
                 notes,
                 organizationId: overrideOrgId, // Pass explicit org if override
-                assignedLocations
+                assignedLocations,
+                assignedShifts
             };
 
             const res = await fetch(url, {
@@ -136,11 +156,14 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
         setBio('');
         setNotes('');
         setCanAddStock(false);
+        setCanSubtractStock(false);
         setCanAddItem(false);
         setCanAudit(false);
+        setCanViewReports(false);
         setIsAdmin(false);
         setEditingId(null);
         setAssignedLocations([]);
+        setAssignedShifts([]);
     };
 
     const handleDelete = async (id: number) => {
@@ -154,12 +177,20 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
         fetchUsers();
     };
 
-    const parsePerms = (json: string) => {
+    const parsePerms = (json: string | any[]) => {
         try {
-            const p = JSON.parse(json);
+            let p: any[] = [];
+            if (Array.isArray(json)) {
+                p = json;
+            } else if (typeof json === 'string') {
+                try { p = JSON.parse(json); } catch { return json; }
+            }
+
+            if (!Array.isArray(p)) return '';
+
             if (p.includes('all')) return 'Full Admin';
-            if (p.includes('all')) return 'Full Admin';
-            return p.map((perm: string) => perm === 'add_stock' ? 'Add Stock' : perm === 'add_item_name' ? 'Add Items' : perm === 'audit' ? 'Audit' : perm).join(', ');
+            const map: any = { 'add_stock': 'Add Stock', 'subtract_stock': 'Subtract Stock', 'add_item_name': 'Add Items', 'audit': 'Audit', 'view_reports': 'View Reports' };
+            return p.map((perm: string) => map[perm] || perm).join(', ');
         } catch { return ''; }
     };
 
@@ -174,14 +205,25 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
         setBio(u.bio || '');
         setNotes(u.notes || '');
 
-        const perms = [];
-        try { perms.push(...JSON.parse(u.permissions)); } catch { }
+        const perms: string[] = [];
+        try {
+            if (Array.isArray(u.permissions)) {
+                perms.push(...u.permissions);
+            } else if (typeof u.permissions === 'string') {
+                perms.push(...JSON.parse(u.permissions));
+            }
+        } catch { }
 
         setCanAddStock(perms.includes('add_stock') || perms.includes('all'));
+        setCanSubtractStock(perms.includes('subtract_stock') || perms.includes('all'));
         setCanAddItem(perms.includes('add_item_name') || perms.includes('all'));
         setCanAudit(perms.includes('audit') || perms.includes('all'));
+        setCanViewReports(perms.includes('view_reports') || perms.includes('all'));
         setIsAdmin(u.role === 'admin');
         setAssignedLocations(u.assigned_locations || []);
+
+        // The API now returns assigned_shifts
+        setAssignedShifts(u.assigned_shifts || []);
     };
 
     return (
@@ -253,25 +295,90 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
                             </div>
                         )}
 
+                        {shifts.length > 0 && (
+                            <div style={{ marginBottom: '1rem' }}>
+                                <div className={styles.statLabel}>Assigned Shifts</div>
+                                <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem', flexWrap: 'wrap' }}>
+                                    {shifts.map(shift => (
+                                        <label key={shift.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'white' }}>
+                                            <input
+                                                type="checkbox"
+                                                checked={assignedShifts.includes(shift.id)}
+                                                onChange={e => {
+                                                    if (e.target.checked) setAssignedShifts([...assignedShifts, shift.id]);
+                                                    else setAssignedShifts(assignedShifts.filter(id => id !== shift.id));
+                                                }}
+                                            />
+                                            {shift.label} ({shift.start_time}-{shift.end_time})
+                                        </label>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
                         <div style={{ marginBottom: '1rem' }}>
-                            <div className={styles.statLabel}>Permissions</div>
-                            <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem', flexWrap: 'wrap' }}>
-                                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'white' }}>
-                                    <input type="checkbox" checked={canAddStock} onChange={e => setCanAddStock(e.target.checked)} />
-                                    Can Add Stock
-                                </label>
-                                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'white' }}>
-                                    <input type="checkbox" checked={canAddItem} onChange={e => setCanAddItem(e.target.checked)} />
-                                    Can Create Items
-                                </label>
-                                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'white' }}>
-                                    <input type="checkbox" checked={canAudit} onChange={e => setCanAudit(e.target.checked)} />
-                                    Can Perform Audits
-                                </label>
-                                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#fbbf24', fontWeight: 'bold' }}>
-                                    <input type="checkbox" checked={isAdmin} onChange={e => setIsAdmin(e.target.checked)} />
-                                    Is Admin User
-                                </label>
+                            <div className={styles.statLabel} style={{ marginBottom: '0.5rem' }}>Permissions & Access</div>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '0.75rem' }}>
+                                <div
+                                    onClick={() => setCanAddStock(!canAddStock)}
+                                    style={{
+                                        background: canAddStock ? '#3b82f6' : '#374151', color: 'white',
+                                        padding: '0.75rem', borderRadius: '0.5rem', cursor: 'pointer',
+                                        display: 'flex', alignItems: 'center', gap: '0.75rem', transition: 'all 0.2s', border: '1px solid #4b5563'
+                                    }}>
+                                    <input type="checkbox" checked={canAddStock} readOnly style={{ width: '18px', height: '18px', accentColor: 'white', cursor: 'pointer' }} />
+                                    <span style={{ fontWeight: 500 }}>Add Stock (+)</span>
+                                </div>
+                                <div
+                                    onClick={() => setCanSubtractStock(!canSubtractStock)}
+                                    style={{
+                                        background: canSubtractStock ? '#3b82f6' : '#374151', color: 'white',
+                                        padding: '0.75rem', borderRadius: '0.5rem', cursor: 'pointer',
+                                        display: 'flex', alignItems: 'center', gap: '0.75rem', transition: 'all 0.2s', border: '1px solid #4b5563'
+                                    }}>
+                                    <input type="checkbox" checked={canSubtractStock} readOnly style={{ width: '18px', height: '18px', accentColor: 'white', cursor: 'pointer' }} />
+                                    <span style={{ fontWeight: 500 }}>Subtract Stock (-)</span>
+                                </div>
+                                <div
+                                    onClick={() => setCanAddItem(!canAddItem)}
+                                    style={{
+                                        background: canAddItem ? '#3b82f6' : '#374151', color: 'white',
+                                        padding: '0.75rem', borderRadius: '0.5rem', cursor: 'pointer',
+                                        display: 'flex', alignItems: 'center', gap: '0.75rem', transition: 'all 0.2s', border: '1px solid #4b5563'
+                                    }}>
+                                    <input type="checkbox" checked={canAddItem} readOnly style={{ width: '18px', height: '18px', accentColor: 'white', cursor: 'pointer' }} />
+                                    <span style={{ fontWeight: 500 }}>Create Products</span>
+                                </div>
+                                <div
+                                    onClick={() => setCanAudit(!canAudit)}
+                                    style={{
+                                        background: canAudit ? '#3b82f6' : '#374151', color: 'white',
+                                        padding: '0.75rem', borderRadius: '0.5rem', cursor: 'pointer',
+                                        display: 'flex', alignItems: 'center', gap: '0.75rem', transition: 'all 0.2s', border: '1px solid #4b5563'
+                                    }}>
+                                    <input type="checkbox" checked={canAudit} readOnly style={{ width: '18px', height: '18px', accentColor: 'white', cursor: 'pointer' }} />
+                                    <span style={{ fontWeight: 500 }}>Perform Audits</span>
+                                </div>
+                                <div
+                                    onClick={() => setCanViewReports(!canViewReports)}
+                                    style={{
+                                        background: canViewReports ? '#3b82f6' : '#374151', color: 'white',
+                                        padding: '0.75rem', borderRadius: '0.5rem', cursor: 'pointer',
+                                        display: 'flex', alignItems: 'center', gap: '0.75rem', transition: 'all 0.2s', border: '1px solid #4b5563'
+                                    }}>
+                                    <input type="checkbox" checked={canViewReports} readOnly style={{ width: '18px', height: '18px', accentColor: 'white', cursor: 'pointer' }} />
+                                    <span style={{ fontWeight: 500 }}>View Reporting</span>
+                                </div>
+                                <div
+                                    onClick={() => setIsAdmin(!isAdmin)}
+                                    style={{
+                                        background: isAdmin ? '#ef4444' : '#374151', color: 'white',
+                                        padding: '0.75rem', borderRadius: '0.5rem', cursor: 'pointer',
+                                        display: 'flex', alignItems: 'center', gap: '0.75rem', transition: 'all 0.2s', border: '1px solid #4b5563'
+                                    }}>
+                                    <input type="checkbox" checked={isAdmin} readOnly style={{ width: '18px', height: '18px', accentColor: 'white', cursor: 'pointer' }} />
+                                    <span style={{ fontWeight: 500 }}>Administrator</span>
+                                </div>
                             </div>
                         </div>
 
@@ -342,7 +449,7 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
                         </table>
                     </div>
                 </div>
-            </div>
+            </div >
         </>
     );
 }

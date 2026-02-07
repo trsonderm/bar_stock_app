@@ -158,9 +158,10 @@ export async function GET(req: NextRequest) {
         const burnRates: Record<number, number> = {};
 
         // 2. Fetch Current Inventory & Item Details
-        const inventory = await db.query(`
+        const rawInventory = await db.query(`
             SELECT 
                 i.id as item_id,
+                i.organization_id,
                 i.name as item_name,
                 COALESCE(SUM(inv.quantity), 0) as current_stock,
                 i.low_stock_threshold,
@@ -170,6 +171,26 @@ export async function GET(req: NextRequest) {
             WHERE i.organization_id = $1 OR i.organization_id IS NULL
             GROUP BY i.id
         `, [orgId]);
+
+        // Deduplicate: If same name exists, prefer the one with NOT NULL organization_id (Local)
+        const inventoryMap: Record<string, any> = {};
+        rawInventory.forEach((item: any) => {
+            const existing = inventoryMap[item.item_name];
+            // If no existing, or current is Local and existing is Global (null org_id), overwrite.
+            // (Assuming orgId matches current user's org if not null, per WHERE clause)
+            if (!existing) {
+                inventoryMap[item.item_name] = item;
+            } else {
+                // If we have an existing Global item, and this one is Local, take this one.
+                if (!existing.organization_id && item.organization_id) {
+                    inventoryMap[item.item_name] = item;
+                }
+                // If existing is Local, keep it.
+                // If both are Global (shouldn't happen due to unique constraint usually) or both Local (diff IDs?), keep first or overwrite?
+                // Let's assume Name uniqueness is desired.
+            }
+        });
+        const inventory = Object.values(inventoryMap);
 
         // Calculate Burn Rates for all items found (or with history)
         // Note: inventory list might miss items that have history but 0 stock? 

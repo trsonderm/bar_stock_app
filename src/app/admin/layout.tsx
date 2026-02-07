@@ -12,8 +12,11 @@ export default async function AdminLayout({
     return (
         <div className={styles.container}>
             <header className={styles.header}>
-                <h1 className={styles.title}>Admin Panel</h1>
-                {session && <AdminNav />}
+                <div>
+                    <h1 className={styles.title} style={{ fontSize: '1.2rem', marginBottom: '0.2rem' }}>Admin Panel</h1>
+                    <div style={{ fontSize: '0.8rem', color: '#9ca3af', fontWeight: 'normal' }}>Fosters Bars</div>
+                </div>
+                {session && <AdminNav user={session} />}
             </header>
             <main style={{ marginTop: '2rem' }}>
                 {children}

@@ -22,7 +22,7 @@ export default async function InventoryPage() {
     let trackBottleLevels = false;
     let bottleOptions: any[] = [];
     try {
-        const row = await db.one("SELECT value FROM settings WHERE key = 'track_bottle_levels'");
+        const row = await db.one("SELECT value FROM settings WHERE key = 'track_bottle_levels' AND organization_id = $1", [session.organizationId]);
         if (row && row.value === 'true') {
             trackBottleLevels = true;
             bottleOptions = await db.query('SELECT * FROM bottle_level_options ORDER BY display_order ASC, id ASC');

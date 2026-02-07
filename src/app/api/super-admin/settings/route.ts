@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { billing_enabled, maintenance_mode, smtp_host, smtp_port, smtp_user, smtp_pass, smtp_secure, quick_login_enabled } = await req.json();
+    const { billing_enabled, maintenance_mode, smtp_host, smtp_port, smtp_user, smtp_pass, smtp_secure, quick_login_enabled, chat_available } = await req.json();
 
     await db.execute('BEGIN');
     try {
@@ -44,6 +44,7 @@ export async function POST(req: NextRequest) {
         await updateSetting('smtp_pass', smtp_pass || '');
         await updateSetting('smtp_secure', smtp_secure);
         await updateSetting('quick_login_enabled', quick_login_enabled);
+        await updateSetting('chat_available', chat_available);
 
         await db.execute('COMMIT');
         return NextResponse.json({ success: true });

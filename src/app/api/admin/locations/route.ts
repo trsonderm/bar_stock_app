@@ -43,10 +43,15 @@ export async function PUT(req: NextRequest) {
         const { id, name, address } = await req.json();
         if (!id || !name) return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
 
-        await db.execute(
+        const result = await db.execute(
             'UPDATE locations SET name = $1, address = $2 WHERE id = $3 AND organization_id = $4',
             [name, address || '', id, session.organizationId]
         );
+
+        if (result.rowCount === 0) {
+            return NextResponse.json({ error: 'Location not found or no changes made' }, { status: 404 });
+        }
+
         return NextResponse.json({ success: true });
     } catch (e) {
         return NextResponse.json({ error: 'Internal Error' }, { status: 500 });
