@@ -35,6 +35,82 @@ interface Schedule {
     recurring_group_id?: string;
 }
 
+// --- Internal Date Range Component ---
+function DateRangePicker({ startDate, endDate, setStartDate, setEndDate }: { startDate: string, endDate: string, setStartDate: (d: string) => void, setEndDate: (d: string) => void }) {
+    const [viewDate, setViewDate] = useState(new Date());
+
+    const getDaysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
+    const getFirstDayOfMonth = (year: number, month: number) => new Date(year, month, 1).getDay();
+
+    const currentYear = viewDate.getFullYear();
+    const currentMonth = viewDate.getMonth();
+    const daysInMonth = getDaysInMonth(currentYear, currentMonth);
+    const firstDay = getFirstDayOfMonth(currentYear, currentMonth);
+
+    const prevMonth = () => setViewDate(new Date(currentYear, currentMonth - 1, 1));
+    const nextMonth = () => setViewDate(new Date(currentYear, currentMonth + 1, 1));
+
+    const handleDateClick = (day: number) => {
+        const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+
+        if (!startDate || (startDate && endDate)) {
+            // Click 1 or Click 3 (Reset)
+            setStartDate(dateStr);
+            setEndDate('');
+        } else {
+            // Click 2
+            if (dateStr < startDate) {
+                setEndDate(startDate);
+                setStartDate(dateStr);
+            } else {
+                setEndDate(dateStr);
+            }
+        }
+    };
+
+    const isSelected = (day: number) => {
+        const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        if (startDate && !endDate && dateStr === startDate) return true;
+        if (startDate && endDate && dateStr >= startDate && dateStr <= endDate) return true;
+        return false;
+    };
+
+    const days = [];
+    for (let i = 0; i < firstDay; i++) days.push(<div key={`empty-${i}`} className="p-2"></div>);
+    for (let i = 1; i <= daysInMonth; i++) {
+        const selected = isSelected(i);
+        days.push(
+            <div
+                key={i}
+                onClick={() => handleDateClick(i)}
+                className={`p-2 text-center text-sm cursor-pointer rounded transition-colors ${selected ? 'bg-blue-600 text-white font-bold' : 'text-gray-300 hover:bg-gray-700'}`}
+            >
+                {i}
+            </div>
+        );
+    }
+
+    return (
+        <div className="bg-gray-900 border border-gray-700 rounded p-4 select-none">
+            <div className="flex justify-between items-center mb-4">
+                <button onClick={(e) => { e.preventDefault(); prevMonth() }} className="text-gray-400 hover:text-white p-1"><ChevronLeft size={16} /></button>
+                <div className="text-white font-bold">{viewDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</div>
+                <button onClick={(e) => { e.preventDefault(); nextMonth() }} className="text-gray-400 hover:text-white p-1"><ChevronRight size={16} /></button>
+            </div>
+            <div className="grid grid-cols-7 gap-1 mb-2">
+                {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(d => <div key={d} className="text-center text-xs text-gray-500 font-bold">{d}</div>)}
+            </div>
+            <div className="grid grid-cols-7 gap-1">
+                {days}
+            </div>
+            <div className="mt-4 flex justify-between text-xs text-gray-400 border-t border-gray-800 pt-2">
+                <div>Start: <span className="text-white">{startDate || 'Select'}</span></div>
+                <div>End: <span className="text-white">{endDate || 'Select'}</span></div>
+            </div>
+        </div>
+    );
+}
+
 export default function UserSchedulerClient() {
     const [activeTab, setActiveTab] = useState<'weekly' | 'daily' | 'monthly' | 'shifts'>('weekly');
     const [viewMode, setViewMode] = useState<'employees' | 'shifts' | 'coverage'>('employees');
@@ -64,6 +140,10 @@ export default function UserSchedulerClient() {
     // New Recurring State
     const [isRecurring, setIsRecurring] = useState(false);
     const [recurringEndDate, setRecurringEndDate] = useState('');
+
+    // Edit Modal specific Make Repeating state
+    const [isEditRecurring, setIsEditRecurring] = useState(false);
+    const [editRecurringEndDate, setEditRecurringEndDate] = useState('');
 
     const [notifyOnAssign, setNotifyOnAssign] = useState(false);
 
@@ -122,12 +202,59 @@ export default function UserSchedulerClient() {
         setEditShiftId(schedule.shift_id.toString());
         setEditUserId(schedule.user_id.toString());
         setModifyStrategy('instance');
+        setIsEditRecurring(false);
+        setEditRecurringEndDate('');
         setEditModalOpen(true);
     };
 
     const handleUpdateSchedule = async () => {
         if (!editingSchedule || !editShiftId || !editUserId) return;
 
+        if (!editingSchedule.recurring_group_id && isEditRecurring && editRecurringEndDate) {
+            // Converting a single shift into a repeating series
+
+            // 1. Delete the old single shift
+            await fetch('/api/admin/schedule', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: editingSchedule.id })
+            });
+
+            // 2. Format dates for the API generator
+            const dates: string[] = [];
+            let curObj = new Date(editingSchedule.date + 'T12:00:00'); // Force midday to avoid timezone issues 
+            const endObj = new Date(editRecurringEndDate + 'T12:00:00');
+
+            // Push dates roughly 7 days apart
+            while (curObj <= endObj) {
+                dates.push(curObj.toISOString().split('T')[0]);
+                curObj.setDate(curObj.getDate() + 7);
+            }
+
+            // 3. Create the new repeating group via POST
+            const res = await fetch('/api/admin/schedule', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    userIds: [parseInt(editUserId)],
+                    shiftId: parseInt(editShiftId),
+                    dates,
+                    isRecurring: true
+                })
+            });
+
+            if (res.ok) {
+                setEditModalOpen(false);
+                if (activeTab === 'weekly') fetchSchedules(weekStart, 7);
+                else if (activeTab === 'monthly') fetchSchedules(currentDate, 35);
+                else fetchSchedules(currentDate, 1);
+            } else {
+                alert('Failed to update schedule');
+            }
+            return;
+        }
+
+        // Standard logic for single updates or existing recurring series
         const res = await fetch('/api/admin/schedule', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
@@ -262,8 +389,10 @@ export default function UserSchedulerClient() {
     };
 
     const handleAssign = async () => {
-        if (selectedUsers.length === 0 || !selectedShift || !startDate || !endDate) return alert('Please fill all fields');
+        if (selectedUsers.length === 0 || !selectedShift || !startDate) return alert('Please fill all fields');
         if (isRecurring && !recurringEndDate) return alert('Please select a recurring end date');
+
+        const finalEndDate = endDate || startDate; // Use start date if end date is not explicitly set (single day)
 
         // Helper to parse YYYY-MM-DD to Date object (Local Midnight)
         const parseDate = (dateStr: string) => {
@@ -284,7 +413,7 @@ export default function UserSchedulerClient() {
         // 1. Generate Base Block (The range user selected, e.g. Mon-Wed)
         const baseBlock: Date[] = [];
         let cur = parseDate(startDate);
-        const end = parseDate(endDate);
+        const end = parseDate(finalEndDate);
 
         while (cur <= end) {
             baseBlock.push(new Date(cur)); // Clone date
@@ -932,25 +1061,15 @@ export default function UserSchedulerClient() {
                                 </select>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-gray-400 text-sm mb-2">Start Date</label>
-                                    <input
-                                        type="date"
-                                        value={startDate}
-                                        onChange={e => setStartDate(e.target.value)}
-                                        className="w-full bg-gray-900 text-white rounded p-2 border border-gray-700"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-gray-400 text-sm mb-2">End Date</label>
-                                    <input
-                                        type="date"
-                                        value={endDate}
-                                        onChange={e => setEndDate(e.target.value)}
-                                        className="w-full bg-gray-900 text-white rounded p-2 border border-gray-700"
-                                    />
-                                </div>
+                            <div className="bg-gray-900 border border-gray-700 p-4 rounded mb-2">
+                                <label className="block text-gray-400 text-sm font-bold mb-4">Select Date(s)</label>
+                                <DateRangePicker
+                                    startDate={startDate}
+                                    endDate={endDate}
+                                    setStartDate={setStartDate}
+                                    setEndDate={setEndDate}
+                                />
+                                <p className="text-xs text-gray-500 mt-2">Click a date to select a single day. Click a second date to highlight a range. Click a third time to restart.</p>
                             </div>
 
                             <div>
@@ -1064,7 +1183,7 @@ export default function UserSchedulerClient() {
                                 </select>
                             </div>
 
-                            {editingSchedule.recurring_group_id && (
+                            {editingSchedule.recurring_group_id ? (
                                 <div className="mt-4 p-3 border border-blue-900/50 bg-blue-900/20 rounded">
                                     <h4 className="text-sm font-bold text-blue-400 mb-2">Repeating Shift</h4>
                                     <label className="flex items-center gap-2 cursor-pointer mb-2">
@@ -1097,6 +1216,30 @@ export default function UserSchedulerClient() {
                                         />
                                         <span className="text-white text-sm">Modify ALL occurrences in series</span>
                                     </label>
+                                </div>
+                            ) : (
+                                <div className="mt-4 p-3 border border-gray-700 bg-gray-900 rounded">
+                                    <label className="flex items-center gap-2 cursor-pointer mb-2">
+                                        <input
+                                            type="checkbox"
+                                            checked={isEditRecurring}
+                                            onChange={e => setIsEditRecurring(e.target.checked)}
+                                            className="rounded bg-gray-800 border-gray-600"
+                                        />
+                                        <span className="text-white font-bold text-sm">Make this a repeating shift</span>
+                                    </label>
+
+                                    {isEditRecurring && (
+                                        <div className="mt-2 pl-6">
+                                            <label className="block text-gray-400 text-xs mb-1">Repeat Weekly Until:</label>
+                                            <input
+                                                type="date"
+                                                value={editRecurringEndDate}
+                                                onChange={e => setEditRecurringEndDate(e.target.value)}
+                                                className="w-full bg-gray-800 text-white rounded p-2 border border-gray-600 text-sm"
+                                            />
+                                        </div>
+                                    )}
                                 </div>
                             )}
 
