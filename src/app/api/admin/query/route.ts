@@ -21,12 +21,13 @@ export async function GET(req: NextRequest) {
         // If end is 2024-01-04, we want up to 2024-01-04 23:59:59 or just strict string comparison if user passes full ISO.
         // Let's assume user passes simple dates, we'll append time.
         // Actually, easiest is letting client handle ISO strings, but for robustness:
-        const startDate = new Date(start);
-        const endDate = new Date(end);
-        // If input is YYYY-MM-DD, set end date to end of that day
-        if (end.length === 10) {
-            endDate.setHours(23, 59, 59, 999);
-        }
+        // Parse as LOCAL time string if standard date format
+        let startDateStr = start;
+        let endDateStr = end;
+
+        // If simple YYYY-MM-DD, append full day range
+        if (start.length === 10) startDateStr += 'T00:00:00';
+        if (end.length === 10) endDateStr += 'T23:59:59.999';
 
         const logs = await db.query(`
             SELECT 
@@ -36,9 +37,10 @@ export async function GET(req: NextRequest) {
             FROM activity_logs l
             LEFT JOIN users u ON l.user_id = u.id
             LEFT JOIN items i ON i.id = (l.details->>'itemId')::int
-            WHERE l.timestamp >= $1 AND l.timestamp <= $2
+            WHERE l.organization_id = $1 
+            AND l.timestamp >= $2 AND l.timestamp <= $3
             ORDER BY u.last_name ASC, l.timestamp ASC
-        `, [startDate.toISOString(), endDate.toISOString()]);
+        `, [session.organizationId, startDateStr, endDateStr]);
 
         // Aggregate by User -> Item
         const report: Record<string, any> = {};
@@ -55,7 +57,11 @@ export async function GET(req: NextRequest) {
             }
 
             let details: any = {};
-            try { details = JSON.parse(log.details); } catch { }
+            if (typeof log.details === 'string') {
+                try { details = JSON.parse(log.details); } catch { }
+            } else {
+                details = log.details || {};
+            }
             const itemName = details.itemName || log.db_item_name || 'Unknown Item';
             const qty = details.change || details.quantity || 0;
 

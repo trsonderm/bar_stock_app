@@ -103,6 +103,12 @@ export default function ReportsClient() {
                         Custom Builder
                     </button>
                     <Link
+                        href="/admin/reports/daily"
+                        className="px-4 py-2 rounded font-bold transition-all text-gray-400 hover:text-white flex items-center gap-2 text-sm whitespace-nowrap bg-indigo-900/50 border border-indigo-700 ml-2"
+                    >
+                        <span>📅</span> Daily Report
+                    </Link>
+                    <Link
                         href="/admin/settings/reporting"
                         className="px-4 py-2 rounded font-bold transition-all text-gray-400 hover:text-white flex items-center gap-2 text-sm whitespace-nowrap bg-gray-900 border border-gray-700 ml-2"
                     >

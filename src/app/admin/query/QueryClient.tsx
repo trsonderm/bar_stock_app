@@ -90,41 +90,59 @@ export default function QueryClient() {
                             <div style={{ color: '#9ca3af', textAlign: 'center', padding: '2rem' }}>No activity found for this period.</div>
                         ) : (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-                                {report.map(user => (
-                                    <div key={user.user} style={{ border: '1px solid #e5e7eb', borderRadius: '0.5rem', overflow: 'hidden' }}>
-                                        <div style={{ background: '#f3f4f6', padding: '1rem', borderBottom: '1px solid #e5e7eb', fontWeight: 'bold', fontSize: '1.1rem', color: '#111827' }}>
-                                            User: {user.user}
-                                        </div>
-                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
-                                            <div style={{ padding: '1rem', borderRight: '1px solid #e5e7eb' }}>
-                                                <h3 style={{ margin: '0 0 0.5rem 0', color: '#ef4444', fontSize: '0.9rem', textTransform: 'uppercase' }}>Removed</h3>
-                                                {user.removed.length === 0 ? <em style={{ color: '#9ca3af' }}>None</em> : (
-                                                    <table style={{ width: '100%', fontSize: '0.9rem' }}>
-                                                        {user.removed.map(item => (
-                                                            <tr key={item.name}>
-                                                                <td style={{ padding: '4px 0', color: '#374151' }}>{item.name}</td>
-                                                                <td style={{ padding: '4px 0', fontWeight: 'bold', textAlign: 'right' }}>{item.qty}</td>
+                                {report.map(user => {
+                                    // Merge items for unified table
+                                    const itemMap = new Map<string, { added: number, removed: number }>();
+
+                                    user.added.forEach(i => {
+                                        if (!itemMap.has(i.name)) itemMap.set(i.name, { added: 0, removed: 0 });
+                                        itemMap.get(i.name)!.added = i.qty;
+                                    });
+
+                                    user.removed.forEach(i => {
+                                        if (!itemMap.has(i.name)) itemMap.set(i.name, { added: 0, removed: 0 });
+                                        itemMap.get(i.name)!.removed = i.qty;
+                                    });
+
+                                    const sortedItems = Array.from(itemMap.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+
+                                    return (
+                                        <div key={user.user} style={{ border: '1px solid #e5e7eb', borderRadius: '0.5rem', overflow: 'hidden' }}>
+                                            <div style={{ background: '#f3f4f6', padding: '1rem', borderBottom: '1px solid #e5e7eb', fontWeight: 'bold', fontSize: '1.1rem', color: '#111827' }}>
+                                                User: {user.user}
+                                            </div>
+                                            <div style={{ padding: '0' }}>
+                                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
+                                                    <thead>
+                                                        <tr style={{ background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
+                                                            <th style={{ padding: '0.75rem 1rem', textAlign: 'left', color: '#4b5563', textTransform: 'uppercase', fontSize: '0.75rem' }}>Item Name</th>
+                                                            <th style={{ padding: '0.75rem 1rem', textAlign: 'center', color: '#10b981', textTransform: 'uppercase', fontSize: '0.75rem', width: '100px' }}>Added</th>
+                                                            <th style={{ padding: '0.75rem 1rem', textAlign: 'center', color: '#ef4444', textTransform: 'uppercase', fontSize: '0.75rem', width: '100px' }}>Removed</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {sortedItems.map(([name, counts], idx) => (
+                                                            <tr key={name} style={{ borderBottom: idx < sortedItems.length - 1 ? '1px solid #f3f4f6' : 'none' }}>
+                                                                <td style={{ padding: '0.75rem 1rem', color: '#374151', fontWeight: '500' }}>{name}</td>
+                                                                <td style={{ padding: '0.75rem 1rem', textAlign: 'center', color: counts.added > 0 ? '#059669' : '#d1d5db', fontWeight: counts.added > 0 ? 'bold' : 'normal' }}>
+                                                                    {counts.added > 0 ? `+${counts.added}` : '-'}
+                                                                </td>
+                                                                <td style={{ padding: '0.75rem 1rem', textAlign: 'center', color: counts.removed > 0 ? '#dc2626' : '#d1d5db', fontWeight: counts.removed > 0 ? 'bold' : 'normal' }}>
+                                                                    {counts.removed > 0 ? `-${counts.removed}` : '-'}
+                                                                </td>
                                                             </tr>
                                                         ))}
-                                                    </table>
-                                                )}
-                                            </div>
-                                            <div style={{ padding: '1rem' }}>
-                                                <h3 style={{ margin: '0 0 0.5rem 0', color: '#10b981', fontSize: '0.9rem', textTransform: 'uppercase' }}>Added</h3>
-                                                {user.added.length === 0 ? <em style={{ color: '#9ca3af' }}>None</em> : (
-                                                    <table style={{ width: '100%', fontSize: '0.9rem' }}>
-                                                        {user.added.map(item => (
-                                                            <tr key={item.name}>
-                                                                <td style={{ padding: '4px 0', color: '#374151' }}>{item.name}</td>
-                                                                <td style={{ padding: '4px 0', fontWeight: 'bold', textAlign: 'right' }}>{item.qty}</td>
+                                                        {sortedItems.length === 0 && (
+                                                            <tr>
+                                                                <td colSpan={3} style={{ padding: '1rem', textAlign: 'center', color: '#9ca3af' }}>No items recorded.</td>
                                                             </tr>
-                                                        ))}
-                                                    </table>
-                                                )}
+                                                        )}
+                                                    </tbody>
+                                                </table>
                                             </div>
                                         </div>
-                                    </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                         )}
                     </div>

@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
             // 1. Update Inventory
             // First get location (assuming default location for now as per app logic)
             // Ideally should be passed from frontend, but we default to org's first location
-            const locRes = await client.query('SELECT id FROM locations WHERE organization_id = $1 LIMIT 1', [session.organizationId]);
+            const locRes = await client.query('SELECT id FROM locations WHERE organization_id = $1 ORDER BY id ASC LIMIT 1', [session.organizationId]);
             const locationId = locRes.rows[0]?.id;
 
             if (!locationId) throw new Error('No location found');
@@ -57,7 +57,6 @@ export async function POST(req: NextRequest) {
                 session.id,
                 diff > 0 ? 'ADD_STOCK' : 'SUBTRACT_STOCK',
                 JSON.stringify({
-                    itemId: id,
                     itemId: id,
                     itemName: change.name,
                     quantity: Math.abs(diff),

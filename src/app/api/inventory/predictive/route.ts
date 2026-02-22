@@ -168,7 +168,7 @@ export async function GET(req: NextRequest) {
                 i.order_size
             FROM items i
             LEFT JOIN inventory inv ON i.id = inv.item_id
-            WHERE i.organization_id = $1 OR i.organization_id IS NULL
+            WHERE i.organization_id = $1
             GROUP BY i.id
         `, [orgId]);
 
@@ -242,7 +242,12 @@ export async function GET(req: NextRequest) {
         for (const item of inventory) {
             const burnRate = burnRates[item.item_id] || 0;
             const stock = parseFloat(item.current_stock);
-            const orderSize = item.order_size || 1;
+            let orderSize = 1;
+            if (Array.isArray(item.order_size) && item.order_size.length > 0) {
+                orderSize = item.order_size[0];
+            } else if (typeof item.order_size === 'number') {
+                orderSize = item.order_size;
+            }
             const pendingQty = pendingMap[item.item_id] || 0;
 
             // If we have a pending order that covers our needs, do we suppress?
@@ -316,14 +321,14 @@ export async function GET(req: NextRequest) {
                     suggestions.push({
                         item_id: item.item_id,
                         item_name: item.item_name,
-                        current_stock: stock,
+                        current_stock: Math.floor(stock),
                         pending_order: pendingQty,
                         burn_rate: burnRate.toFixed(2),
-                        days_until_empty: physicalDaysLeft.toFixed(1),
+                        days_until_empty: Math.floor(physicalDaysLeft), // Integer
                         supplier: supplier ? supplier.supplier_name : 'Unknown',
                         suggested_order: unitsToOrder,
                         estimated_cost: supplier ? (unitsToOrder * parseFloat(supplier.cost_per_unit || '0')).toFixed(2) : '0.00',
-                        reason: `Run out in ${physicalDaysLeft.toFixed(1)}d. Needs ${unitsToOrder} more.`,
+                        reason: `Run out in ${Math.floor(physicalDaysLeft)}d. Needs ${unitsToOrder} more.`,
                         priority: physicalDaysLeft < leadTime ? 'CRITICAL' : 'HIGH',
                         model: modelType
                     });
@@ -332,10 +337,10 @@ export async function GET(req: NextRequest) {
                     suggestions.push({
                         item_id: item.item_id,
                         item_name: item.item_name,
-                        current_stock: stock,
+                        current_stock: Math.floor(stock),
                         pending_order: pendingQty,
                         burn_rate: burnRate.toFixed(2),
-                        days_until_empty: physicalDaysLeft.toFixed(1),
+                        days_until_empty: Math.floor(physicalDaysLeft),
                         supplier: supplier ? supplier.supplier_name : 'Unknown',
                         suggested_order: 0,
                         estimated_cost: '0.00',
@@ -349,14 +354,14 @@ export async function GET(req: NextRequest) {
                 suggestions.push({
                     item_id: item.item_id,
                     item_name: item.item_name,
-                    current_stock: stock,
+                    current_stock: Math.floor(stock),
                     pending_order: pendingQty,
                     burn_rate: burnRate.toFixed(2),
-                    days_until_empty: physicalDaysLeft.toFixed(1),
+                    days_until_empty: Math.floor(physicalDaysLeft),
                     supplier: supplier ? supplier.supplier_name : 'Unknown',
                     suggested_order: 0,
                     estimated_cost: '0.00',
-                    reason: `Sufficient Stock (> ${daysUntilArrival + SAFETY_BUFFER_DAYS}d)`,
+                    reason: `Sufficient Stock (> ${Math.floor(daysUntilArrival + SAFETY_BUFFER_DAYS)}d)`,
                     priority: 'HEALTHY',
                     model: modelType
                 });
@@ -364,7 +369,7 @@ export async function GET(req: NextRequest) {
         }
 
         //Sort by priority (Critical first) then days until empty
-        suggestions.sort((a, b) => parseFloat(a.days_until_empty) - parseFloat(b.days_until_empty));
+        suggestions.sort((a, b) => Number(a.days_until_empty) - Number(b.days_until_empty));
 
         // 5. Generate Notifications (Missed Deliveries)
         const lateOrders = await db.query(`

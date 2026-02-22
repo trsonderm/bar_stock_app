@@ -8,15 +8,25 @@ import { checkAndTriggerSmartOrder } from '@/lib/smart-order';
 export async function GET(req: NextRequest) {
     try {
         const session = await getSession();
-        if (!session || !session.organizationId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
+        if (!session || !session.organizationId) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
         const organizationId = session.organizationId;
+
         const { searchParams } = new URL(req.url);
         const sort = searchParams.get('sort') || 'usage';
 
         // Determine Location Context
         const cookieLoc = req.cookies.get('current_location_id')?.value;
         let locationId = cookieLoc ? parseInt(cookieLoc) : null;
+
+        // Validate location belongs to org
+        if (locationId) {
+            const validLoc = await db.one('SELECT id FROM locations WHERE id = $1 AND organization_id = $2', [locationId, organizationId]);
+            if (!validLoc) {
+                locationId = null; // Reset if invalid
+            }
+        }
 
         if (!locationId) {
             const defaultLoc = await db.one('SELECT id FROM locations WHERE organization_id = $1 ORDER BY id ASC LIMIT 1', [organizationId]);
@@ -77,7 +87,7 @@ export async function POST(req: NextRequest) {
         }
 
         const body = await req.json();
-        const { name, type, secondary_type, supplier, supplier_id, low_stock_threshold, order_size, stock_options, include_in_audit } = body;
+        const { name, type, secondary_type, supplier, supplier_id, low_stock_threshold, order_size, stock_options, include_in_audit, quantity } = body;
 
         if (!name || !type) return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
 
@@ -96,7 +106,7 @@ export async function POST(req: NextRequest) {
         // Insert and Return ID
         const res = await db.one(
             'INSERT INTO items (name, type, secondary_type, supplier, organization_id, low_stock_threshold, order_size, stock_options, include_in_audit) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id',
-            [name, type, secondary_type || null, supplier || null, organizationId, low_stock_threshold !== undefined ? low_stock_threshold : 5, order_size || 1, stock_options ? JSON.stringify(stock_options) : null, include_in_audit !== undefined ? include_in_audit : true]
+            [name, type, secondary_type || null, supplier || null, organizationId, low_stock_threshold !== undefined ? low_stock_threshold : 5, JSON.stringify(Array.isArray(order_size) ? order_size : [order_size || 1]), stock_options ? JSON.stringify(stock_options) : null, include_in_audit !== undefined ? include_in_audit : true]
         );
         const itemId = res.id;
 
@@ -127,8 +137,8 @@ export async function POST(req: NextRequest) {
 
         if (location) {
             await db.execute(
-                'INSERT INTO inventory (item_id, location_id, quantity, organization_id) VALUES ($1, $2, 0, $3)',
-                [itemId, location.id, organizationId]
+                'INSERT INTO inventory (item_id, location_id, quantity, organization_id) VALUES ($1, $2, $3, $4)',
+                [itemId, location.id, quantity || 0, organizationId]
             );
         }
 
@@ -189,7 +199,7 @@ export async function PUT(req: NextRequest) {
             }
             if (order_size !== undefined) {
                 updates.push(`order_size = $${pIdx++} `);
-                params.push(order_size);
+                params.push(JSON.stringify(Array.isArray(order_size) ? order_size : [order_size]));
             }
             if (low_stock_threshold !== undefined) {
                 updates.push(`low_stock_threshold = $${pIdx++} `);
@@ -227,21 +237,51 @@ export async function PUT(req: NextRequest) {
 
         // update Quantity (Set Stock)
         if (quantity !== undefined && canStock) {
-            const location = await db.one('SELECT id FROM locations WHERE organization_id = $1 LIMIT 1', [organizationId]);
-            if (!location) throw new Error('No location found for org');
+            console.log(`[PUT Inventory] STOCK UPDATE START for item ${id}, qty: ${quantity}, org: ${organizationId}`);
+
+            // Determine Location (Match GET logic)
+            const cookieLoc = req.cookies.get('current_location_id')?.value;
+            let targetLocationId = cookieLoc ? parseInt(cookieLoc) : null;
+
+            if (!targetLocationId) {
+                const defaultLoc = await db.one('SELECT id FROM locations WHERE organization_id = $1 ORDER BY id ASC LIMIT 1', [organizationId]);
+                targetLocationId = defaultLoc ? defaultLoc.id : null;
+            }
+
+            if (!targetLocationId) {
+                console.error('[PUT Inventory] No location found for org', organizationId);
+                throw new Error('No location found for org');
+            }
+            console.log(`[PUT Inventory] Using location ${targetLocationId}`);
 
             // Get current quantity and threshold
             const itemOwner = await db.one('SELECT id, name, low_stock_threshold FROM items WHERE id = $1 AND organization_id = $2', [id, organizationId]);
-            if (!itemOwner) return NextResponse.json({ error: 'Item not found' }, { status: 404 });
+            if (!itemOwner) {
+                console.error('[PUT Inventory] Item not found for org', id, organizationId);
+                return NextResponse.json({ error: 'Item not found' }, { status: 404 });
+            }
 
-            const current = await db.one('SELECT quantity FROM inventory WHERE item_id = $1 AND location_id = $2', [id, location.id]);
+            let current = await db.one('SELECT quantity FROM inventory WHERE item_id = $1 AND location_id = $2', [id, targetLocationId]);
+            console.log(`[PUT Inventory] Current inventory found:`, current);
+
+            // Auto-create inventory record if missing (e.g. for new items)
+            if (!current) {
+                console.log('[PUT Inventory] Creating new inventory record...');
+                await db.one(
+                    'INSERT INTO inventory (item_id, location_id, organization_id, quantity) VALUES ($1, $2, $3, 0) RETURNING quantity',
+                    [id, targetLocationId, organizationId]
+                );
+                current = { quantity: 0 };
+            }
             const oldQty = current ? current.quantity : 0;
+
+            console.log(`[PUT Inventory] Executing Upsert. Old: ${oldQty}, New: ${quantity}`);
             // Upsert inventory
             await db.execute(
                 `INSERT INTO inventory(item_id, location_id, quantity, organization_id)
-        VALUES($1, $2, $3, $4) 
+                VALUES($1, $2, $3, $4) 
                  ON CONFLICT(item_id, location_id) DO UPDATE SET quantity = $3`,
-                [id, location.id, quantity, organizationId]
+                [id, targetLocationId, quantity, organizationId]
             );
 
             const diff = quantity - oldQty;

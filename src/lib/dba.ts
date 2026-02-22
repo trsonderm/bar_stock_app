@@ -56,6 +56,75 @@ export class OrgScope {
         `, [this.orgId, limit]);
     }
 
+    // --- Shifts ---
+    async getShifts(startTime: string, endTime: string) {
+        return await db.query(`
+            SELECT * FROM shifts 
+            WHERE organization_id = $1 
+            AND start_time >= $2 AND end_time <= $3
+            ORDER BY start_time ASC
+        `, [this.orgId, startTime, endTime]);
+    }
+
+    async createShift(label: string, startTime: string, endTime: string, assignedUserIds: number[] = []) {
+        return await db.one(`
+            INSERT INTO shifts (organization_id, label, start_time, end_time, assigned_user_ids)
+            VALUES ($1, $2, $3, $4, $5)
+            RETURNING *
+        `, [this.orgId, label, startTime, endTime, JSON.stringify(assignedUserIds)]);
+    }
+
+    async updateShift(id: number, label: string, startTime: string, endTime: string, assignedUserIds: number[]) {
+        return await db.one(`
+            UPDATE shifts 
+            SET label = $3, start_time = $4, end_time = $5, assigned_user_ids = $6
+            WHERE id = $1 AND organization_id = $2
+            RETURNING *
+        `, [id, this.orgId, label, startTime, endTime, JSON.stringify(assignedUserIds)]);
+    }
+
+    async deleteShift(id: number) {
+        return await db.execute('DELETE FROM shifts WHERE id = $1 AND organization_id = $2', [id, this.orgId]);
+    }
+
+    // --- Notifications ---
+    async getNotifications(userId: number, limit = 20) {
+        return await db.query(`
+            SELECT * FROM notifications 
+            WHERE organization_id = $1 AND user_id = $2
+            ORDER BY created_at DESC
+            LIMIT $3
+        `, [this.orgId, userId, limit]);
+    }
+
+    async createNotification(userId: number, type: string, title: string, message: string, data: any = {}) {
+        return await db.one(`
+            INSERT INTO notifications (organization_id, user_id, type, title, message, data)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING *
+        `, [this.orgId, userId, type, title, message, JSON.stringify(data)]);
+    }
+
+    async markNotificationRead(id: number) {
+        return await db.execute('UPDATE notifications SET is_read = TRUE WHERE id = $1 AND organization_id = $2', [id, this.orgId]);
+    }
+
+    // --- Purchase Orders ---
+    async getPurchaseOrders(status?: string) {
+        if (status) {
+            return await db.query('SELECT * FROM purchase_orders WHERE organization_id = $1 AND status = $2 ORDER BY created_at DESC', [this.orgId, status]);
+        }
+        return await db.query('SELECT * FROM purchase_orders WHERE organization_id = $1 ORDER BY created_at DESC', [this.orgId]);
+    }
+
+    async createPurchaseOrder(supplierId: number, expectedDate: string, details: any = {}) {
+        return await db.one(`
+            INSERT INTO purchase_orders (organization_id, supplier_id, expected_delivery_date, details)
+            VALUES ($1, $2, $3, $4)
+            RETURNING *
+        `, [this.orgId, supplierId, expectedDate, JSON.stringify(details)]);
+    }
+
     // --- Station Tokens ---
     async createStationToken(deviceName: string, days: number = 90) {
         const { v4: uuidv4 } = require('uuid');

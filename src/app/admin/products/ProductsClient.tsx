@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import styles from '../admin.module.css';
+import CsvMappingModal from './CsvMappingModal';
 
 interface Item {
     id: number;
@@ -13,7 +14,7 @@ interface Item {
     supplier?: string;
     supplier_id?: number;
     low_stock_threshold?: number;
-    order_size?: number;
+    order_size?: number | number[];
     stock_options?: number[];
     include_in_audit?: boolean;
 }
@@ -45,7 +46,7 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
         supplier_id: undefined as number | undefined,
         unit_cost: '',
         quantity: '',
-        order_size: '1',
+        order_size: [1] as number[],
         low_stock_threshold: '5' as string | null, // '5' or null (for global) or custom string
         track_quantity: true,
         include_in_audit: true,
@@ -54,6 +55,8 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
 
     // Temp input for stock options
     const [tempOptionInput, setTempOptionInput] = useState('');
+    // Temp input for order sizes
+    const [tempOrderInput, setTempOrderInput] = useState('');
 
     const [stockMode, setStockMode] = useState<string>('CATEGORY');
 
@@ -102,13 +105,14 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
             supplier_id: undefined,
             unit_cost: '',
             quantity: '',
-            order_size: '1',
+            order_size: [1],
             low_stock_threshold: '5',
             track_quantity: true,
             include_in_audit: true,
             stock_options: []
         });
         setTempOptionInput('');
+        setTempOrderInput('');
     };
 
     const handleCreateClick = () => {
@@ -127,8 +131,8 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
             supplier: item.supplier || '',
             supplier_id: item.supplier_id,
             unit_cost: item.unit_cost !== undefined ? item.unit_cost.toString() : '',
-            quantity: item.quantity !== undefined ? Math.floor(item.quantity).toString() : '',
-            order_size: item.order_size ? item.order_size.toString() : '1',
+            quantity: item.quantity !== undefined ? item.quantity.toString() : '',
+            order_size: Array.isArray(item.order_size) ? item.order_size : (item.order_size ? [item.order_size] : [1]),
             low_stock_threshold: item.low_stock_threshold === null || item.low_stock_threshold === undefined ? null : item.low_stock_threshold.toString(),
             track_quantity: true, // Assuming true if it exists, or check quantity
             include_in_audit: item.include_in_audit !== undefined ? item.include_in_audit : true,
@@ -149,8 +153,8 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                 supplier: formData.supplier || undefined,
                 supplier_id: formData.supplier_id,
                 unit_cost: formData.unit_cost ? parseFloat(formData.unit_cost) : 0,
-                quantity: formData.quantity ? parseInt(formData.quantity) : 0,
-                order_size: formData.order_size ? parseInt(formData.order_size) : 1,
+                quantity: formData.quantity ? parseFloat(formData.quantity) : 0,
+                order_size: formData.order_size.length > 0 ? formData.order_size : [1],
                 low_stock_threshold: formData.low_stock_threshold === null ? null : parseInt(formData.low_stock_threshold || '5'),
                 track_quantity: formData.track_quantity ? 1 : 0,
                 include_in_audit: formData.include_in_audit,
@@ -212,15 +216,25 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
         }
     };
 
-    const handleImportCSV = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
+    const [importFile, setImportFile] = useState<File | null>(null);
 
+    const handleImportClick = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            setImportFile(file);
+        }
+        e.target.value = ''; // Reset input
+    };
+
+    const handleConfirmImport = async (file: File, mapping: Record<string, number>) => {
         const formData = new FormData();
         formData.append('file', file);
+        formData.append('mapping', JSON.stringify(mapping));
 
         try {
             setLoading(true);
+            setImportFile(null); // Close modal
+
             const res = await fetch('/api/admin/products/import', {
                 method: 'POST',
                 body: formData
@@ -237,7 +251,6 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
             alert('Error importing CSV');
         } finally {
             setLoading(false);
-            e.target.value = ''; // Reset input
         }
     };
 
@@ -272,7 +285,7 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                             type="file"
                             accept=".csv"
                             style={{ display: 'none' }}
-                            onChange={handleImportCSV}
+                            onChange={handleImportClick}
                         />
                         <button
                             onClick={handleCreateClick}
@@ -326,15 +339,19 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                                     <td>{item.secondary_type || '-'}</td>
                                     <td>{item.supplier || '-'}</td>
                                     <td>${Number(item.unit_cost || 0).toFixed(2)}</td>
-                                    <td style={{ fontSize: '0.9em', color: '#cbd5e1' }}>{item.order_size ?? 1}</td>
+                                    <td style={{ fontSize: '0.9em', color: '#cbd5e1' }}>
+                                        {Array.isArray(item.order_size) ? item.order_size.map(os => <div key={os}>{os}</div>) : (item.order_size ?? 1)}
+                                    </td>
                                     {stockMode === 'PRODUCT' && (
                                         <td style={{ fontWeight: 'bold', color: item.quantity === 0 ? '#ef4444' : item.quantity < (item.low_stock_threshold ?? 5) ? '#f59e0b' : 'inherit' }}>
-                                            {Math.floor(item.quantity)}
+                                            {Number(item.quantity).toFixed(2).replace(/\.00$/, '')}
                                         </td>
                                     )}
                                     {stockMode === 'PRODUCT' && (
                                         <td style={{ fontSize: '0.8em', color: '#9ca3af' }}>
-                                            {Array.isArray(item.stock_options) && item.stock_options.length > 0 ? item.stock_options.join(', ') : 'Default'}
+                                            {Array.isArray(item.stock_options) && item.stock_options.length > 0 ?
+                                                item.stock_options.map(opt => <div key={opt}>{opt}</div>)
+                                                : 'Default'}
                                         </td>
                                     )}
                                     <td style={{ color: '#9ca3af', fontSize: '0.9em' }}>{item.low_stock_threshold === null ? 'Global' : item.low_stock_threshold}</td>
@@ -465,21 +482,68 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                                     />
                                 </div>
                                 <div>
-                                    <label className={styles.statLabel}>Order Size</label>
-                                    <input
-                                        style={{ width: '100%' }}
-                                        className={styles.input}
-                                        type="number" step="1" min="1"
-                                        value={formData.order_size}
-                                        onChange={e => setFormData({ ...formData, order_size: e.target.value })}
-                                    />
+                                    <label className={styles.statLabel}>Order Sizes</label>
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', background: '#374151', padding: '0.5rem', borderRadius: '0.5rem', minHeight: '42px' }}>
+                                        {formData.order_size.map((size) => (
+                                            <span key={size} style={{
+                                                background: '#d97706', color: 'white', padding: '2px 8px', borderRadius: '4px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '4px'
+                                            }}>
+                                                {size}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setFormData(prev => ({ ...prev, order_size: prev.order_size.filter(o => o !== size) }))}
+                                                    style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', padding: 0, fontSize: '0.85rem', fontWeight: 'bold' }}
+                                                >
+                                                    x
+                                                </button>
+                                            </span>
+                                        ))}
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                            <input
+                                                className={styles.input}
+                                                value={tempOrderInput}
+                                                onChange={e => setTempOrderInput(e.target.value)}
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') {
+                                                        e.preventDefault();
+                                                        const val = parseInt(tempOrderInput);
+                                                        if (!isNaN(val) && !formData.order_size.includes(val)) {
+                                                            setFormData(prev => ({
+                                                                ...prev,
+                                                                order_size: [...prev.order_size, val].sort((a, b) => a - b)
+                                                            }));
+                                                            setTempOrderInput('');
+                                                        }
+                                                    }
+                                                }}
+                                                placeholder="#"
+                                                style={{ width: '60px', padding: '2px 4px', fontSize: '0.9rem' }}
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    const val = parseInt(tempOrderInput);
+                                                    if (!isNaN(val) && !formData.order_size.includes(val)) {
+                                                        setFormData(prev => ({
+                                                            ...prev,
+                                                            order_size: [...prev.order_size, val].sort((a, b) => a - b)
+                                                        }));
+                                                        setTempOrderInput('');
+                                                    }
+                                                }}
+                                                style={{ background: '#10b981', color: 'white', border: 'none', borderRadius: '4px', padding: '2px 6px', cursor: 'pointer', fontSize: '0.9rem' }}
+                                            >
+                                                +
+                                            </button>
+                                        </div>
+                                    </div>
                                 </div>
                                 <div>
                                     <label className={styles.statLabel}>Inventory Qty</label>
                                     <input
                                         style={{ width: '100%' }}
                                         className={styles.input}
-                                        type="number" step="1"
+                                        type="number" step="any"
                                         value={formData.quantity}
                                         onChange={e => setFormData({ ...formData, quantity: e.target.value })}
                                     />
@@ -594,6 +658,14 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                         </form>
                     </div >
                 </div >
+            )}
+
+            {importFile && (
+                <CsvMappingModal
+                    file={importFile}
+                    onClose={() => setImportFile(null)}
+                    onImport={handleConfirmImport}
+                />
             )}
         </>
     );

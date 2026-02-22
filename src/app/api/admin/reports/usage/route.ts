@@ -12,6 +12,7 @@ export async function GET(req: NextRequest) {
         const { searchParams } = new URL(req.url);
         const start = searchParams.get('start');
         const end = searchParams.get('end');
+        const locationId = searchParams.get('locationId');
 
         let dateFilter = `AND al.timestamp > NOW() - INTERVAL '30 days'`;
         const params: any[] = [session.organizationId];
@@ -21,6 +22,19 @@ export async function GET(req: NextRequest) {
             dateFilter = `AND al.timestamp >= $${pIdx} AND al.timestamp <= $${pIdx + 1}`;
             params.push(start, end);
             pIdx += 2;
+        }
+
+        if (locationId) {
+            dateFilter += ` AND (al.details->>'locationId')::int = $${pIdx}`;
+            params.push(locationId);
+            pIdx++;
+        }
+
+        const categoryId = searchParams.get('categoryId');
+        if (categoryId) {
+            dateFilter += ` AND i.category_id = $${pIdx}`;
+            params.push(categoryId);
+            pIdx++;
         }
 
         // 1. Get Usage History by Date (for Line Chart)
@@ -54,12 +68,20 @@ export async function GET(req: NextRequest) {
         // 3. Build Projections (Requires Current Stock)
         // Need to fetch current stock for items in the ranking
         // Simplified: Fetch stock for all items
-        const stock = await db.query(`
+        // Filter stock by location if specified
+        let stockQuery = `
             SELECT item_id, SUM(quantity) as current_stock 
             FROM inventory 
             WHERE organization_id = $1 
-            GROUP BY item_id
-        `, [session.organizationId]);
+        `;
+        const stockParams: any[] = [session.organizationId];
+        if (locationId) {
+            stockQuery += ` AND location_id = $2`;
+            stockParams.push(locationId);
+        }
+        stockQuery += ` GROUP BY item_id`;
+
+        const stock = await db.query(stockQuery, stockParams);
 
         const stockMap = new Map(stock.map((s: any) => [s.item_id, s.current_stock]));
 
@@ -70,16 +92,6 @@ export async function GET(req: NextRequest) {
 
         const projections = [];
         const insights = [];
-
-        // Identify Top 5 Items to project
-        for (const item of ranking.slice(0, 5)) { // Top 5
-            // Find item ID? ranking query returned name only. Let's fix ranking query to include ID if needed, 
-            // or we might struggle to match with stockMap (which relies on ID).
-            // Actually ActivityLog stores ItemName, but Inventory stores ItemID. 
-            // We need to link by Name or ideally ID. 
-            // Let's rely on name for graph, but need ID for stock.
-            // Let's refetch items to get IDs or modify ranking query.
-        }
 
         // Revised Ranking Query with ID
         const rankingWithId = await db.query(`

@@ -32,11 +32,22 @@ export async function GET(req: NextRequest) {
 
             // If details has itemName, use it (historical accuracy). 
             // If not, use current db name (better than nothing).
-            const name = details.itemName || log.db_item_name || 'Unknown Item';
+            // Only force itemName if it's likely an item-related action or we found a name
+            let name = details.itemName || log.db_item_name;
+
+            // If it's a stock action, we really expect a name.
+            if (!name && (log.action === 'ADD_STOCK' || log.action === 'SUBTRACT_STOCK')) {
+                name = 'Unknown Item';
+            }
+
+            // Only add if we have a name, to avoid polluting non-item logs (like settings updates)
+            if (name) {
+                details = { ...details, itemName: name };
+            }
 
             return {
                 ...log,
-                details: JSON.stringify({ ...details, itemName: name })
+                details: JSON.stringify(details)
             };
         });
 

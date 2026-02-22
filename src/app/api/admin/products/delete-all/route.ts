@@ -15,8 +15,10 @@ export async function DELETE(req: NextRequest) {
         await db.execute('BEGIN');
 
         try {
-            await db.execute('DELETE FROM inventory');
-            await db.execute('DELETE FROM items');
+            // Delete inventory for this org
+            await db.execute('DELETE FROM inventory WHERE organization_id = $1', [session.organizationId]);
+            // Delete items for this org
+            await db.execute('DELETE FROM items WHERE organization_id = $1', [session.organizationId]);
 
             // Log the action
             await db.execute(

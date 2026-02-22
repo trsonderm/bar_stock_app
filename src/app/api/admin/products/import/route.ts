@@ -21,8 +21,16 @@ export async function POST(req: NextRequest) {
         const text = await file.text();
         const lines = text.split(/\r?\n/).filter(line => line.trim() !== '');
 
-        // Expected Header: Name,Type,Secondary Type,Cost,Quantity
-        const startIdx = lines[0].toLowerCase().startsWith('name') ? 1 : 0;
+        const mappingJson = formData.get('mapping') as string;
+        let mapping: Record<string, number> | null = null;
+        if (mappingJson) {
+            try {
+                mapping = JSON.parse(mappingJson);
+            } catch (e) { }
+        }
+
+        // Expected Header: Name,Type,Secondary Type,Cost,Quantity (Legacy fallback)
+        const startIdx = 1; // Always skip header if mapping provided, or assume header exists
 
         let successCount = 0;
         let skipCount = 0;
@@ -32,14 +40,47 @@ export async function POST(req: NextRequest) {
         try {
             for (let i = startIdx; i < lines.length; i++) {
                 const row = lines[i];
-                const cols = row.split(',').map((c: string) => c.trim());
+                // Simple parser matching frontend
+                const cols: string[] = [];
+                let current = '';
+                let inQuote = false;
+                for (let c = 0; c < row.length; c++) {
+                    const char = row[c];
+                    if (char === '"') inQuote = !inQuote;
+                    else if (char === ',' && !inQuote) {
+                        cols.push(current.trim().replace(/^"|"$/g, ''));
+                        current = '';
+                    } else current += char;
+                }
+                cols.push(current.trim().replace(/^"|"$/g, ''));
+
                 if (cols.length < 2) continue;
 
-                const name = cols[0];
-                const type = cols[1];
-                const secType = cols[2] || null;
-                const cost = parseFloat(cols[3]) || 0;
-                const qty = parseInt(cols[4]) || 0;
+                let name, type, secType, cost, qty, orderSize, threshold;
+
+                if (mapping) {
+                    name = mapping['name'] !== undefined ? cols[mapping['name']] : null;
+                    type = mapping['type'] !== undefined ? cols[mapping['type']] : null;
+                    secType = mapping['secondary_type'] !== undefined ? cols[mapping['secondary_type']] : null;
+                    const costVal = mapping['unit_cost'] !== undefined ? cols[mapping['unit_cost']] : '0';
+                    const qtyVal = mapping['quantity'] !== undefined ? cols[mapping['quantity']] : '0';
+                    const orderSizeVal = mapping['order_size'] !== undefined ? cols[mapping['order_size']] : '1';
+                    const thresholdVal = mapping['low_stock_threshold'] !== undefined ? cols[mapping['low_stock_threshold']] : '5';
+
+                    cost = parseFloat(costVal?.replace(/[^0-9.]/g, '') || '0');
+                    qty = parseInt(qtyVal?.replace(/[^0-9]/g, '') || '0');
+                    orderSize = parseInt(orderSizeVal?.replace(/[^0-9]/g, '') || '1');
+                    threshold = parseInt(thresholdVal?.replace(/[^0-9]/g, '') || '5');
+                } else {
+                    // Legacy Fallback
+                    name = cols[0];
+                    type = cols[1];
+                    secType = cols[2] || null;
+                    cost = parseFloat(cols[3]) || 0;
+                    qty = parseInt(cols[4]) || 0;
+                    orderSize = 1;
+                    threshold = 5;
+                }
 
                 if (!name || !type) continue;
 
@@ -52,8 +93,8 @@ export async function POST(req: NextRequest) {
 
                 // Insert Item
                 const res = await db.one(
-                    'INSERT INTO items (name, type, secondary_type, unit_cost) VALUES ($1, $2, $3, $4) RETURNING id',
-                    [name, type, secType, cost]
+                    'INSERT INTO items (name, type, secondary_type, unit_cost, order_size, low_stock_threshold) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
+                    [name, type, secType, cost, orderSize, threshold]
                 );
 
                 // Insert Stock (Location 1 default)

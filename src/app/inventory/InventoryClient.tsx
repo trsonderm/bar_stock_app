@@ -438,7 +438,7 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
                         </div>
                         <div className={styles.stockControls}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                                <span className={styles.quantity} style={{ fontSize: '1.5rem' }}>{Math.floor(item.quantity)}</span>
+                                <span className={styles.quantity} style={{ fontSize: '1.5rem' }}>{Number(item.quantity).toFixed(2).replace(/\.00$/, '')}</span>
                             </div>
 
                             <div style={{ display: 'flex', gap: '0.25rem' }}>
@@ -684,52 +684,46 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
                                 .filter(log => !user.iat || new Date(log.timestamp).getTime() > user.iat * 1000)
                                 .length === 0 ? <div style={{ color: '#9ca3af', textAlign: 'center' }}>No activity in this session.</div> : (
                                 <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-                                    {myActivity
-                                        .filter(log => !user.iat || new Date(log.timestamp).getTime() > user.iat * 1000)
-                                        .map(log => {
-                                            let content = null;
-                                            try {
-                                                const d = typeof log.details === 'string' ? JSON.parse(log.details) : log.details;
+                                    {(() => {
+                                        // 1. Filter & Aggregate
+                                        const aggregated: Record<string, number> = {};
 
+                                        myActivity
+                                            .filter(log => !user.iat || new Date(log.timestamp).getTime() > user.iat * 1000)
+                                            .forEach(log => {
+                                                let details: any = {};
+                                                try {
+                                                    details = typeof log.details === 'string' ? JSON.parse(log.details) : log.details;
+                                                } catch { return; }
+
+                                                // Only care about Stock Actions
                                                 if (log.action === 'ADD_STOCK' || log.action === 'SUBTRACT_STOCK') {
-                                                    content = (
-                                                        <>
-                                                            <span style={{ fontWeight: 'bold', color: log.action === 'ADD_STOCK' ? '#34d399' : '#f87171' }}>
-                                                                {log.action === 'ADD_STOCK' ? 'Added' : 'Removed'} {d.quantity || Math.abs(d.change || 0)}
-                                                            </span>
-                                                            <span style={{ marginLeft: '5px' }}>
-                                                                {d.itemName}
-                                                            </span>
-                                                            {d.bottleLevel && <div style={{ fontSize: '0.8em', color: '#fbbf24' }}>Level: {d.bottleLevel}</div>}
-                                                        </>
-                                                    );
-                                                } else if (log.action === 'CREATE_ITEM') {
-                                                    content = <span>Created Item: <strong>{d.name}</strong></span>;
-                                                } else {
-                                                    // Fallback for other objects
-                                                    content = (
-                                                        <div style={{ fontSize: '0.9rem' }}>
-                                                            {Object.entries(d).map(([k, v]) => (
-                                                                <span key={k} style={{ marginRight: '10px' }}>
-                                                                    <span style={{ opacity: 0.7, fontSize: '0.8em' }}>{k}:</span> {String(v)}
-                                                                </span>
-                                                            ))}
-                                                        </div>
-                                                    );
-                                                }
-                                            } catch {
-                                                content = typeof log.details === 'string' ? log.details : JSON.stringify(log.details);
-                                            }
+                                                    const name = details.itemName || 'Unknown Item';
+                                                    const qty = Number(details.quantity || Math.abs(details.change || 0));
 
-                                            return (
-                                                <li key={log.id} style={{ borderBottom: '1px solid #374151', padding: '0.75rem 0' }}>
-                                                    <div style={{ color: 'white' }}>{content}</div>
-                                                    <div style={{ fontSize: '0.8rem', color: '#9ca3af', marginTop: '0.25rem' }}>
-                                                        {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                                    </div>
-                                                </li>
-                                            );
-                                        })}
+                                                    if (!aggregated[name]) aggregated[name] = 0;
+
+                                                    if (log.action === 'ADD_STOCK') aggregated[name] += qty;
+                                                    else aggregated[name] -= qty;
+                                                }
+                                            });
+
+                                        const items = Object.entries(aggregated);
+
+                                        if (items.length === 0) return <div style={{ color: '#9ca3af', textAlign: 'center' }}>No stock changes in this session.</div>;
+
+                                        return items.map(([name, netChange], idx) => (
+                                            <li key={idx} style={{ borderBottom: '1px solid #374151', padding: '0.75rem 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                <div style={{ color: 'white', fontWeight: 'bold' }}>{name}</div>
+                                                <div style={{
+                                                    color: netChange > 0 ? '#34d399' : netChange < 0 ? '#f87171' : '#9ca3af',
+                                                    fontWeight: 'bold'
+                                                }}>
+                                                    {netChange > 0 ? '+' : ''}{netChange}
+                                                </div>
+                                            </li>
+                                        ));
+                                    })()}
                                 </ul>
                             )}
                         </div>

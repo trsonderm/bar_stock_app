@@ -97,6 +97,8 @@ export default function AdminNav({ user }: { user: NavUser }) {
                 <Link href="/admin/reports/smart-order" className={isActive('/admin/reports/smart-order') ? styles.navItemActive : styles.navItem}>Smart Order</Link>
             )}
 
+            <Link href="/admin/schedule" className={isActive('/admin/schedule') ? styles.navItemActive : styles.navItem}>Scheduler</Link>
+
             {/* Location Switcher */}
             {myLocations.length > 1 && (
                 <div

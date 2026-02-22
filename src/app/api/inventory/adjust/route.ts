@@ -8,7 +8,7 @@ export async function POST(req: NextRequest) {
         if (!session || !session.organizationId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
         const organizationId = session.organizationId;
-        const { itemId, change, locationId = 1, bottleLevel } = await req.json();
+        const { itemId, change, locationId, bottleLevel } = await req.json();
 
         if (!itemId || !change) return NextResponse.json({ error: 'Invalid data' }, { status: 400 });
 
@@ -26,27 +26,38 @@ export async function POST(req: NextRequest) {
         try {
             // 0. Verify Item/Location ownership
             const item = await db.one('SELECT name FROM items WHERE id = $1 AND organization_id = $2', [itemId, organizationId]);
-            if (!item) throw new Error('Item not found in this organization');
+            if (!item) {
+                console.error(`[Adjust Inventory] Item ${itemId} not found for org ${organizationId}`);
+                throw new Error('Item not found in this organization');
+            }
 
             // Determine Location Context
-            // Priority: Payload > Cookie > Default
+            // Priority: Payload > Cookie > Default (Sorted)
             let targetLocationId = locationId;
 
-            // If payload is default "1" (legacy) or undefined, try cookie
-            if (!targetLocationId || targetLocationId === 1) {
+            if (!targetLocationId) {
                 const cookieLoc = req.cookies.get('current_location_id')?.value;
                 if (cookieLoc) {
                     targetLocationId = parseInt(cookieLoc);
                 }
             }
 
-            const location = await db.one('SELECT id FROM locations WHERE id = $1 AND organization_id = $2', [targetLocationId, organizationId]);
+            let location = null;
+            if (targetLocationId) {
+                location = await db.one('SELECT id FROM locations WHERE id = $1 AND organization_id = $2', [targetLocationId, organizationId]);
+            }
 
             if (!location) {
-                // Try fallback to any location
-                const anyLoc = await db.one('SELECT id FROM locations WHERE organization_id = $1 LIMIT 1', [organizationId]);
-                if (anyLoc) targetLocationId = anyLoc.id;
-                else throw new Error('No location found for this organization');
+                // Try fallback to any location MATCHING GET LOGIC (ORDER BY ID ASC)
+                const anyLoc = await db.one('SELECT id FROM locations WHERE organization_id = $1 ORDER BY id ASC LIMIT 1', [organizationId]);
+                if (anyLoc) {
+                    targetLocationId = anyLoc.id;
+                    console.log(`[Adjust Inventory] Fallback to default location: ${targetLocationId}`);
+                } else {
+                    throw new Error('No location found for this organization');
+                }
+            } else {
+                console.log(`[Adjust Inventory] Using location: ${targetLocationId}`);
             }
 
             // Update Inventory
@@ -54,6 +65,7 @@ export async function POST(req: NextRequest) {
             const invExists = await db.one('SELECT id FROM inventory WHERE item_id = $1 AND location_id = $2', [itemId, targetLocationId]);
 
             if (!invExists) {
+                console.log(`[Adjust Inventory] Creating new inventory record for item ${itemId} at loc ${targetLocationId}`);
                 await db.execute(
                     'INSERT INTO inventory (item_id, location_id, quantity, organization_id) VALUES ($1, $2, 0, $3)',
                     [itemId, targetLocationId, organizationId]
@@ -61,7 +73,6 @@ export async function POST(req: NextRequest) {
             }
 
             // Perform Update
-            // Postgres has RETURNING.
             const updateRes = await db.one(`
                 UPDATE inventory 
                 SET quantity = GREATEST(0, quantity + $1) 

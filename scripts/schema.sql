@@ -9,7 +9,8 @@ CREATE TABLE IF NOT EXISTS organizations (
     trial_ends_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     ai_ordering_config JSONB,
-    sms_enabled BOOLEAN DEFAULT FALSE
+    sms_enabled BOOLEAN DEFAULT FALSE,
+    settings JSONB DEFAULT '{}'
 );
 
 CREATE TABLE IF NOT EXISTS users (
@@ -22,6 +23,10 @@ CREATE TABLE IF NOT EXISTS users (
     pin_hash TEXT NOT NULL,
     role TEXT CHECK(role IN ('admin', 'user')) NOT NULL DEFAULT 'user',
     permissions JSONB DEFAULT '[]',
+    phone TEXT,
+    bio TEXT,
+    notes TEXT,
+    notification_preferences JSONB DEFAULT '{}',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email) WHERE email IS NOT NULL;
@@ -56,7 +61,14 @@ CREATE TABLE IF NOT EXISTS items (
     description TEXT,
     unit_cost DECIMAL(10,2) DEFAULT 0,
     supplier TEXT,
+    unit_cost DECIMAL(10,2) DEFAULT 0,
+    supplier TEXT,
     track_quantity INTEGER DEFAULT 1, -- Could be Boolean, but keeping Integer 0/1 for easier migration if code relies on 1
+    order_size INTEGER DEFAULT 1,
+    low_stock_threshold INTEGER DEFAULT 5,
+    stock_options JSONB, -- For product-specific overrides (like Kegs)
+    include_in_audit BOOLEAN DEFAULT TRUE,
+    category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -78,6 +90,55 @@ CREATE TABLE IF NOT EXISTS suppliers (
     delivery_days_json JSONB DEFAULT '[]',
     order_days_json JSONB DEFAULT '[]',
     lead_time_days INTEGER DEFAULT 1,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS item_suppliers (
+    id SERIAL PRIMARY KEY,
+    item_id INTEGER REFERENCES items(id) ON DELETE CASCADE,
+    supplier_id INTEGER REFERENCES suppliers(id) ON DELETE CASCADE,
+    supplier_sku TEXT,
+    cost_per_unit NUMERIC(10,2),
+    is_preferred BOOLEAN DEFAULT FALSE,
+    UNIQUE(item_id, supplier_id)
+);
+
+CREATE TABLE IF NOT EXISTS purchase_orders (
+    id SERIAL PRIMARY KEY,
+    organization_id INTEGER REFERENCES organizations(id),
+    supplier_id INTEGER REFERENCES suppliers(id),
+    status TEXT DEFAULT 'PENDING',
+    expected_delivery_date TIMESTAMP,
+    details JSONB,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS purchase_order_items (
+    id SERIAL PRIMARY KEY,
+    purchase_order_id INTEGER REFERENCES purchase_orders(id) ON DELETE CASCADE,
+    item_id INTEGER REFERENCES items(id),
+    quantity INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS signatures (
+    id SERIAL PRIMARY KEY,
+    organization_id INTEGER REFERENCES organizations(id),
+    user_id INTEGER REFERENCES users(id),
+    label TEXT,
+    data TEXT,
+    is_active BOOLEAN DEFAULT FALSE,
+    is_shared BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS report_schedules (
+    id SERIAL PRIMARY KEY,
+    organization_id INTEGER REFERENCES organizations(id),
+    report_id TEXT,
+    frequency TEXT,
+    recipients TEXT,
+    active BOOLEAN DEFAULT TRUE,
+    next_run_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -163,4 +224,36 @@ CREATE TABLE IF NOT EXISTS pending_orders (
     status TEXT DEFAULT 'pending',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS shifts (
+    id SERIAL PRIMARY KEY,
+    organization_id INTEGER REFERENCES organizations(id),
+    label TEXT NOT NULL,
+    start_time TEXT NOT NULL,
+    end_time TEXT NOT NULL,
+    assigned_user_ids JSONB DEFAULT '[]',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS user_schedules (
+    id SERIAL PRIMARY KEY,
+    organization_id INTEGER REFERENCES organizations(id),
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    shift_id INTEGER REFERENCES shifts(id) ON DELETE CASCADE,
+    date DATE NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(organization_id, user_id, date)
+);
+
+CREATE TABLE IF NOT EXISTS notifications (
+    id SERIAL PRIMARY KEY,
+    organization_id INTEGER REFERENCES organizations(id),
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    type TEXT NOT NULL,
+    title TEXT NOT NULL,
+    message TEXT NOT NULL,
+    data JSONB DEFAULT '{}',
+    is_read BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import styles from '../admin.module.css';
-import { Plus, Trash2, Edit, FileText, Save, BarChart2, Calendar, Settings, AlertTriangle, Activity, UserCheck } from 'lucide-react';
+import { Plus, Trash2, Edit, FileText, Save, BarChart2, Calendar, Settings, AlertTriangle, Activity, UserCheck, Printer } from 'lucide-react';
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LabelList } from 'recharts';
 
 interface ReportSection {
@@ -61,9 +61,11 @@ export default function ReportingClient() {
         start: new Date(new Date().setDate(new Date().getDate() - 30)).toISOString().split('T')[0],
         end: new Date().toISOString().split('T')[0]
     });
+    const [selectedCategory, setSelectedCategory] = useState<string>(''); // For Usage Trends
 
     // Bottle Level State
     const [bottleData, setBottleData] = useState<any[]>([]);
+    const [bottleOptions, setBottleOptions] = useState<string[]>([]); // New state for dynamic columns
     const [blFilters, setBlFilters] = useState({
         userId: '',
         categoryId: '',
@@ -73,6 +75,7 @@ export default function ReportingClient() {
     const [users, setUsers] = useState<any[]>([]);
     const [categories, setCategories] = useState<any[]>([]);
     const [shifts, setShifts] = useState<any[]>([]);
+    const [locations, setLocations] = useState<any[]>([]); // Added locations
     const [showBottleLevels, setShowBottleLevels] = useState(true);
 
     // Low Stock State
@@ -107,13 +110,14 @@ export default function ReportingClient() {
     }, []);
 
     // Effect: Load Specific Report Data when selection changes
+
     useEffect(() => {
         if (selectedReportId === 'bottle_levels') fetchBottleData();
         if (selectedReportId === 'low_stock') fetchLowStock();
-        if (selectedReportId === 'daily_report') fetchDailyStats();
+        if (selectedReportId === 'daily_report') fetchDailyReport();
         if (selectedReportId === 'usage_trends') fetchUsageData();
         if (selectedReportId === 'employee_usage') fetchEmployeeUsage();
-    }, [selectedReportId, dateRange, blFilters, empFilters]); // Dependencies for refetching
+    }, [selectedReportId, dateRange, blFilters, empFilters, selectedCategory]); // Dependencies for refetching
 
     const fetchSettings = () => {
         fetch('/api/admin/settings').then(r => r.json()).then(d => {
@@ -126,7 +130,7 @@ export default function ReportingClient() {
     const fetchUsageData = async () => {
         setUsageLoading(true);
         try {
-            const query = `start=${dateRange.start}&end=${dateRange.end}`;
+            const query = `start=${dateRange.start}&end=${dateRange.end}&locationId=${reportConfig.locationId || ''}&categoryId=${selectedCategory}`;
             const res = await fetch(`/api/admin/reports/usage?${query}`);
             const d = await res.json();
             setUsageData(d.data || { history: [], ranking: [], projections: [], insights: [] });
@@ -139,6 +143,7 @@ export default function ReportingClient() {
         fetch('/api/admin/users').then(r => r.json()).then(d => setUsers(d.users || []));
         fetch('/api/admin/categories').then(r => r.json()).then(d => setCategories(d.categories || []));
         fetch('/api/admin/settings/shifts').then(r => r.json()).then(d => setShifts(d.shifts || []));
+        fetch('/api/admin/locations').then(r => r.json()).then(d => setLocations(d.locations || []));
     };
 
     const fetchReports = async () => {
@@ -159,7 +164,8 @@ export default function ReportingClient() {
                 body: JSON.stringify({
                     dateRange,
                     shiftId: empFilters.shiftId || undefined,
-                    userIds: empFilters.userIds.length > 0 ? empFilters.userIds : undefined
+                    userIds: empFilters.userIds.length > 0 ? empFilters.userIds : undefined,
+                    locationId: reportConfig.locationId || undefined // Pass location
                 })
             });
             const d = await res.json();
@@ -180,11 +186,13 @@ export default function ReportingClient() {
                     dateRange,
                     userId: blFilters.userId || undefined,
                     categoryId: blFilters.categoryId || undefined,
-                    shiftId: blFilters.shiftId || undefined
+                    shiftId: blFilters.shiftId || undefined,
+                    locationId: reportConfig.locationId || undefined // Pass location
                 })
             });
             const d = await res.json();
             setBottleData(d.data || []);
+            setBottleOptions(d.options || []);
         } catch (e) {
             console.error(e);
             // alert('Error loading bottle data');
@@ -192,6 +200,7 @@ export default function ReportingClient() {
             setBlLoading(false);
         }
     };
+
 
     const fetchLowStock = async () => {
         setLsLoading(true);
@@ -209,16 +218,59 @@ export default function ReportingClient() {
         } finally { setLsLoading(false); }
     };
 
-    const fetchDailyStats = async () => {
+    const fetchDailyReport = async () => {
         setDsLoading(true);
         try {
-            // This endpoint might need to be created too
-            const res = await fetch('/api/admin/reporting/daily-stats');
+            // Use the detailed endpoint
+            // Use 'end' date from range as the target date for 'Daily' report
+            const res = await fetch(`/api/admin/reporting/daily?date=${dateRange.end}`);
             if (res.ok) {
                 const d = await res.json();
-                setDailyStats(d.stats);
+                setDailyStats(d);
             }
-        } catch { } finally { setDsLoading(false); }
+        } catch (e) { console.error(e); } finally { setDsLoading(false); }
+    };
+
+    const loadDailyReportPreview = () => {
+        const mockData = {
+            is_preview: true,
+            date: new Date().toISOString().split('T')[0],
+            summary: {
+                total_usage_cost: 1240.50,
+                total_restock_cost: 850.00,
+                net_value_change: -390.50,
+                total_usage_items: 45,
+                total_restock_items: 24
+            },
+            alerts: {
+                low_stock: [
+                    { name: 'Grey Goose', quantity: 2, low_stock_threshold: 5, unit_cost: 32.0 },
+                    { name: 'Lime Juice', quantity: 1, low_stock_threshold: 10, unit_cost: 5.0 },
+                    { name: 'Napkins', quantity: 20, low_stock_threshold: 50, unit_cost: 0.05 }
+                ],
+                run_out: [
+                    { name: 'Titos Vodka', quantity: 3, reason: 'Usage spike (5 used today)', unit_cost: 22.0 }
+                ]
+            },
+            usage: {
+                by_user: [
+                    { name: 'Alice', items: 15, cost: 450.0 },
+                    { name: 'Bob', items: 12, cost: 380.5 },
+                    { name: 'Charlie', items: 18, cost: 410.0 }
+                ],
+                by_item: [
+                    { name: 'Titos Vodka', quantity: 5, cost: 110.0 },
+                    { name: 'Jack Daniels', quantity: 4, cost: 100.0 },
+                    { name: 'Bud Light', quantity: 20, cost: 24.0 },
+                    { name: 'Cabernet', quantity: 8, cost: 120.0 }
+                ]
+            },
+            restock: {
+                by_user: [{ name: 'Inventory Mgr', items: 24, cost: 850.0 }],
+                by_item: [{ name: 'Grey Goose', quantity: 12, cost: 400.0 }, { name: 'Patron', quantity: 12, cost: 450.0 }]
+            }
+        };
+        setDailyStats(mockData);
     };
 
 
@@ -273,11 +325,124 @@ export default function ReportingClient() {
         // This function needs to be implemented based on actual report logic
         console.log("Running report with current date range:", dateRange);
         // Trigger fetch functions based on selectedReportId
-        if (selectedReportId === 'daily_report') fetchDailyStats();
+        if (selectedReportId === 'daily_report') fetchDailyReport();
         if (selectedReportId === 'usage_trends') fetchUsageData();
         if (selectedReportId === 'employee_usage') fetchEmployeeUsage();
         if (selectedReportId === 'bottle_levels') fetchBottleData();
         if (selectedReportId === 'low_stock') fetchLowStock();
+    };
+
+    const handlePrint = () => {
+        if (selectedReportId === 'daily_report' && dailyStats) {
+            const printWindow = window.open('', '_blank');
+            if (!printWindow) return alert('Please allow popups to print');
+
+            const title = `Daily Report - ${dailyStats.date}`;
+            const styles = `
+                body { font-family: system-ui, -apple-system, sans-serif; color: #000; padding: 20px; }
+                h1 { border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 20px; }
+                h2 { margin-top: 30px; border-bottom: 1px solid #ccc; padding-bottom: 5px; }
+                table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+                th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+                th { background-color: #f3f4f6; font-weight: bold; }
+                .summary-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 30px; }
+                .card { border: 1px solid #ccc; padding: 15px; border-radius: 4px; }
+                .card-title { font-size: 0.875rem; color: #666; text-transform: uppercase; font-weight: bold; margin-bottom: 5px; }
+                .card-value { font-size: 1.5rem; font-weight: bold; }
+                .text-right { text-align: right; }
+                .text-center { text-align: center; }
+                @media print { .no-print { display: none; } }
+            `;
+
+            const html = `
+                <html>
+                <head>
+                    <title>${title}</title>
+                    <style>${styles}</style>
+                </head>
+                <body>
+                    <h1>Daily Closing Report</h1>
+                    <div style="margin-bottom: 20px;">
+                        <strong>Date:</strong> ${dailyStats.date}<br>
+                        <strong>Generated:</strong> ${new Date().toLocaleString()}
+                    </div>
+
+                    <div class="summary-grid">
+                        <div class="card">
+                            <div class="card-title">Total Cost</div>
+                            <div class="card-value">$${Number(dailyStats.summary.total_usage_cost || 0).toFixed(2)}</div>
+                        </div>
+                        <div class="card">
+                            <div class="card-title">Items Used</div>
+                            <div class="card-value">${dailyStats.summary.total_usage_items || 0}</div>
+                        </div>
+                        <div class="card">
+                            <div class="card-title">Restock Value</div>
+                            <div class="card-value">$${Number(dailyStats.summary.total_restock_cost || 0).toFixed(2)}</div>
+                        </div>
+                    </div>
+
+                    <h2>User Activity</h2>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>User</th>
+                                <th class="text-center">Items Used</th>
+                                <th class="text-right">Value Used</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${dailyStats.usage.by_user.length ? dailyStats.usage.by_user.map((u: any) => `
+                                <tr>
+                                    <td>${u.name}</td>
+                                    <td class="text-center">${u.items}</td>
+                                    <td class="text-right">$${Number(u.cost).toFixed(2)}</td>
+                                </tr>
+                            `).join('') : '<tr><td colspan="3" class="text-center">No Activity</td></tr>'}
+                        </tbody>
+                    </table>
+
+                    <h2>Item Usage (Top 20)</h2>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Item</th>
+                                <th class="text-center">Qty</th>
+                                <th class="text-right">Cost</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${dailyStats.usage.by_item.slice(0, 20).map((i: any) => `
+                                <tr>
+                                    <td>${i.name}</td>
+                                    <td class="text-center">${i.quantity}</td>
+                                    <td class="text-right">$${Number(i.cost).toFixed(2)}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+
+                    ${dailyStats.alerts.low_stock.length > 0 ? `
+                        <h2>⚠️ Low Stock Alerts</h2>
+                        <ul>
+                            ${dailyStats.alerts.low_stock.map((a: any) => `
+                                <li><strong>${a.name}</strong>: ${a.quantity} remaining (Threshold: ${a.low_stock_threshold})</li>
+                            `).join('')}
+                        </ul>
+                    ` : ''}
+
+                    <div class="no-print" style="margin-top: 40px; text-align: center;">
+                        <button onclick="window.print()" style="padding: 10px 20px; background: #2563eb; color: white; border: none; border-radius: 4px; cursor: pointer;">Print Report</button>
+                        <button onclick="window.close()" style="padding: 10px 20px; background: #ccc; border: none; border-radius: 4px; cursor: pointer; margin-left: 10px;">Close</button>
+                    </div>
+                </body>
+                </html>
+            `;
+            printWindow.document.write(html);
+            printWindow.document.close();
+        } else {
+            alert('Printing is currently only optimized for the Daily Report. Please select Daily Report and ensure data is loaded.');
+        }
     };
     const [previewDismissed, setPreviewDismissed] = useState(false); // Placeholder
     const [showPreview, setShowPreview] = useState(false); // Placeholder
@@ -292,7 +457,6 @@ export default function ReportingClient() {
         return (
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#1f2937', padding: '1rem', borderRadius: '0.5rem', marginBottom: '1rem', border: '1px solid #374151' }}>
                 <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-
                     {isSingleDate ? (
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                             <span style={{ color: '#9ca3af', fontSize: '0.875rem' }}>Date:</span>
@@ -335,27 +499,59 @@ export default function ReportingClient() {
                         </>
                     )}
 
-                    <button
-                        onClick={runReport}
-                        style={{
-                            background: '#2563eb', color: 'white', padding: '0.5rem 1.5rem', borderRadius: '0.25rem', border: 'none',
-                            cursor: 'pointer', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem'
-                        }}
-                    >
-                        Test
-                    </button>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <button
+                            onClick={runReport}
+                            style={{
+                                background: '#2563eb', color: 'white', padding: '0.5rem 1.5rem', borderRadius: '0.25rem', border: 'none',
+                                cursor: 'pointer', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem'
+                            }}
+                        >
+                            Run
+                        </button>
+                        <button
+                            onClick={handlePrint}
+                            style={{
+                                background: '#374151', color: 'white', padding: '0.5rem 1rem', borderRadius: '0.25rem', border: 'none',
+                                cursor: 'pointer', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem'
+                            }}
+                            title="Print Report"
+                        >
+                            <Printer size={18} />
+                            Print
+                        </button>
+                    </div>
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                     {!previewDismissed && !showPreview && (
                         <button
-                            onClick={() => setShowPreview(true)}
+                            onClick={togglePreview}
                             style={{ color: '#9ca3af', background: 'none', border: '1px solid #4b5563', padding: '0.25rem 0.75rem', borderRadius: '0.25rem', cursor: 'pointer', fontSize: '0.875rem' }}
                         >
                             Show Preview
                         </button>
                     )}
+                    {showPreview && (
+                        <button
+                            onClick={togglePreview}
+                            style={{ color: '#ef4444', background: 'none', border: '1px solid #ef4444', padding: '0.25rem 0.75rem', borderRadius: '0.25rem', cursor: 'pointer', fontSize: '0.875rem' }}
+                        >
+                            Exit Preview
+                        </button>
+                    )}
                 </div>
+            </div>
+        );
+    };
+
+    // Helper to render filters inline
+    const renderUsageFilters = () => {
+        if (selectedReportId !== 'usage_trends') return null;
+        return (
+            <div style={{ marginBottom: '1rem', display: 'flex', gap: '1rem' }}>
+                {renderCategoryFilterDropdown()}
+                {renderItemFilterDropdown()}
             </div>
         );
     };
@@ -376,7 +572,8 @@ export default function ReportingClient() {
         cc: '',
         bcc: '',
         subject: 'Report',
-        lookbackPeriod: '1_month' // Default for usage trends
+        lookbackPeriod: '1_month', // Default for usage trends
+        locationId: '' // Default 'All Locations'
     });
 
     const handleSaveConfig = () => {
@@ -533,6 +730,21 @@ export default function ReportingClient() {
                             </div>
                         )}
 
+                        {/* Location Selector (Available for all reports if org has locations) */}
+                        <div style={{ marginTop: '1rem', borderTop: '1px solid #374151', paddingTop: '1rem' }}>
+                            <label style={{ display: 'block', color: '#9ca3af', fontSize: '0.75rem', marginBottom: '0.25rem' }}>Location Filter</label>
+                            <select
+                                className={styles.input}
+                                value={reportConfig.locationId || ''}
+                                onChange={e => setReportConfig({ ...reportConfig, locationId: e.target.value })}
+                            >
+                                <option value="">All Locations</option>
+                                {locations.map(loc => (
+                                    <option key={loc.id} value={loc.id}>{loc.name}</option>
+                                ))}
+                            </select>
+                        </div>
+
                         <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'flex-end' }}>
                             <button onClick={handleSaveConfig} style={{ background: '#059669', color: 'white', padding: '0.5rem 1rem', borderRadius: '0.25rem', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}>
                                 Save Configuration
@@ -579,66 +791,34 @@ export default function ReportingClient() {
         );
     };
 
-    const MockPreviewOverlay = () => {
-        if (!showPreview) return null;
+    const renderCategoryFilterDropdown = () => (
+        <select
+            value={selectedCategory}
+            onChange={(e) => setSelectedCategory(e.target.value)}
+            className={styles.input}
+            style={{ width: 'auto' }}
+        >
+            <option value="">All Categories</option>
+            {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+    );
 
-        // Use report config subject if avail
-        const subj = reportConfig.subject || 'Daily Report';
-        const recp = reportConfig.recipients || 'user@example.com';
-
-        // Generate dummy data based on report type
-        const dummyRows = Array.from({ length: 5 }).map((_, i) => ({
-            col1: `Sample Item ${i + 1}`,
-            col2: Math.floor(Math.random() * 100),
-            col3: ['Low', 'OK', 'High'][i % 3],
-            col4: '$' + (Math.random() * 50).toFixed(2)
-        }));
-
-        return (
-            <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', zIndex: 100, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-                <div style={{ background: '#1f2937', padding: '2rem', borderRadius: '0.5rem', width: '90%', maxWidth: '800px', maxHeight: '90vh', overflowY: 'auto' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
-                        <h2 style={{ color: '#60a5fa' }}>Report Preview: {String(selectedReportId).toUpperCase()}</h2>
-                        <button onClick={() => setShowPreview(false)} style={{ background: 'none', border: 'none', color: '#9ca3af', fontSize: '1.5rem', cursor: 'pointer' }}>×</button>
-                    </div>
-
-                    <div style={{ border: '1px dashed #4b5563', padding: '1rem', marginBottom: '1rem' }}>
-                        <p style={{ color: '#d1d5db', marginBottom: '1rem' }}><strong>Subject:</strong> {subj}</p>
-                        <p style={{ color: '#d1d5db', marginBottom: '1rem' }}><strong>To:</strong> {recp}</p>
-                        <hr style={{ borderColor: '#374151', marginBottom: '1rem' }} />
-
-                        <div style={{ background: 'white', color: 'black', padding: '1rem', borderRadius: '4px' }}>
-                            <h3 style={{ borderBottom: '2px solid #000', paddingBottom: '0.5rem' }}>Report Content</h3>
-                            <table style={{ width: '100%', marginTop: '1rem', borderCollapse: 'collapse' }}>
-                                <thead>
-                                    <tr style={{ background: '#f3f4f6' }}>
-                                        <th style={{ padding: '8px', textAlign: 'left' }}>Item</th>
-                                        <th style={{ padding: '8px', textAlign: 'left' }}>Qty</th>
-                                        <th style={{ padding: '8px', textAlign: 'left' }}>Status</th>
-                                        <th style={{ padding: '8px', textAlign: 'left' }}>Value</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {dummyRows.map((r, idx) => (
-                                        <tr key={idx} style={{ borderBottom: '1px solid #e5e7eb' }}>
-                                            <td style={{ padding: '8px' }}>{r.col1}</td>
-                                            <td style={{ padding: '8px' }}>{r.col2}</td>
-                                            <td style={{ padding: '8px' }}>{r.col3}</td>
-                                            <td style={{ padding: '8px' }}>{r.col4}</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-
-                    <div style={{ textAlign: 'right' }}>
-                        <button onClick={() => { alert('Test Email Sent!'); setShowPreview(false); }} className="bg-blue-600 text-white px-4 py-2 rounded">Send Test Email</button>
-                    </div>
-                </div>
-            </div>
-        );
+    const togglePreview = () => {
+        if (!showPreview) {
+            // Turning ON preview
+            if (selectedReportId === 'daily_report') {
+                loadDailyReportPreview();
+            }
+        } else {
+            // Turning OFF - refresh real data
+            if (selectedReportId === 'daily_report') {
+                fetchDailyReport();
+            }
+        }
+        setShowPreview(!showPreview);
     };
+
+
 
     if (selectedReportId === 'builder') {
         return (
@@ -714,13 +894,11 @@ export default function ReportingClient() {
                 </div>
             </div>
 
-            {/* Config Panel - Always visible if a report is selected */}
-            {selectedReportId && typeof selectedReportId !== 'number' && selectedReportId !== 'builder' && (
-                renderReportConfigPanel()
-            )}
-
+            {/* Config Panel & Filters */}
             {selectedReportId && typeof selectedReportId !== 'number' && selectedReportId !== 'builder' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    {renderReportConfigPanel()}
+                    {renderUsageFilters()}
                     <DateFilterBar />
                     {/* Item Filter Dropdown (Only for relevant reports) */}
                     {(selectedReportId === 'usage_trends' || selectedReportId === 'bottle_levels') && (
@@ -782,56 +960,221 @@ export default function ReportingClient() {
 
                 {/* --- DAILY REPORT --- */}
                 {selectedReportId === 'daily_report' && (
-                    // Using same logic but potentially need to filter stats if they were item-specific. 
-                    // DailyStats is aggregate usually, so item filter might not apply well unless we fetch itemized daily stats.
-                    // For now, let's keep it as is, or hide if no match?
-                    // DailyReport usually shows 'items created', not specifics.
-                    // Filter might be irrelevant here unless we detail the items.
                     <div className={styles.grid}>
-                        <div className={styles.card} style={{ gridColumn: 'span 2' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                                <h3 className={styles.cardTitle} style={{ margin: 0 }}>Daily Summary</h3>
-                                <div style={{ display: 'flex', gap: '0.5rem', fontSize: '0.875rem' }}>
-                                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', cursor: 'pointer' }}>
-                                        <input type="checkbox" checked={dailyReportConfig.showItems} onChange={e => setDailyReportConfig(p => ({ ...p, showItems: e.target.checked }))} />
-                                        Items
-                                    </label>
-                                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', cursor: 'pointer' }}>
-                                        <input type="checkbox" checked={dailyReportConfig.showAudits} onChange={e => setDailyReportConfig(p => ({ ...p, showAudits: e.target.checked }))} />
-                                        Audits
-                                    </label>
-                                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', cursor: 'pointer' }}>
-                                        <input type="checkbox" checked={dailyReportConfig.showStaff} onChange={e => setDailyReportConfig(p => ({ ...p, showStaff: e.target.checked }))} />
-                                        Staff
-                                    </label>
-                                </div>
-                            </div>
-
-                            {dsLoading ? <p>Loading...</p> : (
-                                dailyStats ? (
-                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '1rem' }}>
-                                        {dailyReportConfig.showItems && (
-                                            <div style={{ background: '#111827', padding: '1rem', borderRadius: '0.5rem', textAlign: 'center' }}>
-                                                <div style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>{dailyStats.itemsCreated || 0}</div>
-                                                <div style={{ color: '#9ca3af' }}>Items Added</div>
+                        {dsLoading ? <div style={{ gridColumn: 'span 2', textAlign: 'center' }}>Loading Report...</div> : (
+                            dailyStats ? (
+                                <>
+                                    {/* Top Summary Cards */}
+                                    <div className={styles.card} style={{ gridColumn: 'span 2' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                                            <h3 className={styles.cardTitle}>{dailyStats.is_preview ? 'Daily Summary (PREVIEW DATA)' : 'Daily Summary'}</h3>
+                                            <span style={{ fontSize: '0.875rem', color: '#9ca3af' }}>{dailyStats.date}</span>
+                                        </div>
+                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
+                                            <div style={{ background: '#111827', padding: '1.5rem', borderRadius: '0.5rem', textAlign: 'center', border: '1px solid #374151' }}>
+                                                <div style={{ color: '#ef4444', fontSize: '1.5rem', fontWeight: 'bold' }}>-${dailyStats.summary?.total_usage_cost?.toFixed(2)}</div>
+                                                <div style={{ color: '#9ca3af', fontSize: '0.875rem' }}>Total Usage Value</div>
                                             </div>
-                                        )}
-                                        {dailyReportConfig.showAudits && (
-                                            <div style={{ background: '#111827', padding: '1rem', borderRadius: '0.5rem', textAlign: 'center' }}>
-                                                <div style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>{dailyStats.auditsPerformed || 0}</div>
-                                                <div style={{ color: '#9ca3af' }}>Audits</div>
+                                            <div style={{ background: '#111827', padding: '1.5rem', borderRadius: '0.5rem', textAlign: 'center', border: '1px solid #374151' }}>
+                                                <div style={{ color: '#10b981', fontSize: '1.5rem', fontWeight: 'bold' }}>+${dailyStats.summary?.total_restock_cost?.toFixed(2)}</div>
+                                                <div style={{ color: '#9ca3af', fontSize: '0.875rem' }}>Total Restock Value</div>
                                             </div>
-                                        )}
-                                        {dailyReportConfig.showStaff && (
-                                            <div style={{ background: '#111827', padding: '1rem', borderRadius: '0.5rem', textAlign: 'center' }}>
-                                                <div style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>{dailyStats.usersActive || 0}</div>
-                                                <div style={{ color: '#9ca3af' }}>Active Staff</div>
+                                            <div style={{ background: '#111827', padding: '1.5rem', borderRadius: '0.5rem', textAlign: 'center', border: '1px solid #374151' }}>
+                                                <div style={{ color: (dailyStats.summary?.net_value_change >= 0 ? '#10b981' : '#ef4444'), fontSize: '1.5rem', fontWeight: 'bold' }}>
+                                                    {dailyStats.summary?.net_value_change >= 0 ? '+' : ''}${dailyStats.summary?.net_value_change?.toFixed(2)}
+                                                </div>
+                                                <div style={{ color: '#9ca3af', fontSize: '0.875rem' }}>Net Inventory Change</div>
                                             </div>
-                                        )}
+                                        </div>
                                     </div>
-                                ) : <p style={{ color: '#9ca3af' }}>No activity data for this period.</p>
-                            )}
-                        </div>
+
+                                    {/* Alerts Section */}
+                                    {(dailyStats.alerts?.low_stock?.length > 0 || dailyStats.alerts?.run_out?.length > 0) && (
+                                        <div className={styles.card} style={{ gridColumn: 'span 2', borderColor: '#f59e0b' }}>
+                                            <h3 className={styles.cardTitle} style={{ color: '#f59e0b', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                <AlertTriangle size={20} /> Critical Alerts
+                                            </h3>
+                                            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '1rem' }}>
+                                                {/* Low Stock Table */}
+                                                {dailyStats.alerts.low_stock.length > 0 && (
+                                                    <div>
+                                                        <h4 style={{ color: '#ef4444', marginBottom: '0.5rem', fontSize: '0.875rem' }}>Low Stock Items</h4>
+                                                        <table className={styles.table} style={{ width: '100%' }}>
+                                                            <thead>
+                                                                <tr>
+                                                                    <th>Item</th>
+                                                                    <th>Quantity</th>
+                                                                    <th>Unit Cost</th>
+                                                                    <th>Threshold</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                {dailyStats.alerts.low_stock.map((item: any, i: number) => (
+                                                                    <tr key={i}>
+                                                                        <td>{item.name}</td>
+                                                                        <td style={{ color: '#ef4444', fontWeight: 'bold' }}>{item.quantity}</td>
+                                                                        <td>${item.unit_cost || '-'}</td>
+                                                                        <td>{item.low_stock_threshold}</td>
+                                                                    </tr>
+                                                                ))}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                )}
+
+                                                {/* Run Out Predictions Table */}
+                                                {dailyStats.alerts.run_out.length > 0 && (
+                                                    <div style={{ marginTop: '1rem' }}>
+                                                        <h4 style={{ color: '#f59e0b', marginBottom: '0.5rem', fontSize: '0.875rem' }}>Run-out Risks</h4>
+                                                        <table className={styles.table} style={{ width: '100%' }}>
+                                                            <thead>
+                                                                <tr>
+                                                                    <th>Item</th>
+                                                                    <th>Reason</th>
+                                                                    <th>Current Scale</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                {dailyStats.alerts.run_out.map((item: any, i: number) => (
+                                                                    <tr key={i}>
+                                                                        <td>{item.name}</td>
+                                                                        <td>{item.reason}</td>
+                                                                        <td>{item.quantity}</td>
+                                                                    </tr>
+                                                                ))}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* --- CHARTS SECTION --- */}
+                                    <div style={{ gridColumn: 'span 2', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                                        <div className={styles.card}>
+                                            <h3 className={styles.cardTitle}>Usage by User</h3>
+                                            <div style={{ height: '250px', width: '100%' }}>
+                                                {dailyStats.usage?.by_user?.length > 0 ? (
+                                                    <ResponsiveContainer>
+                                                        <BarChart data={dailyStats.usage.by_user} layout="vertical" margin={{ left: 10, right: 10 }}>
+                                                            <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                                                            <XAxis type="number" stroke="#9ca3af" hide />
+                                                            <YAxis dataKey="name" type="category" width={70} stroke="#9ca3af" fontSize={11} tick={{ fill: '#9ca3af' }} />
+                                                            <Tooltip
+                                                                cursor={{ fill: 'rgba(255,255,255,0.05)' }}
+                                                                contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151', color: '#fff' }}
+                                                            />
+                                                            <Bar dataKey="cost" name="Value ($)" fill="#8b5cf6" radius={[0, 4, 4, 0]} barSize={20} />
+                                                        </BarChart>
+                                                    </ResponsiveContainer>
+                                                ) : <div style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>No data</div>}
+                                            </div>
+                                        </div>
+
+                                        <div className={styles.card}>
+                                            <h3 className={styles.cardTitle}>Top Items (Qty)</h3>
+                                            <div style={{ height: '250px', width: '100%' }}>
+                                                {dailyStats.usage?.by_item?.length > 0 ? (
+                                                    <ResponsiveContainer>
+                                                        <BarChart data={dailyStats.usage.by_item.slice(0, 5)} layout="vertical" margin={{ left: 10, right: 10 }}>
+                                                            <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                                                            <XAxis type="number" stroke="#9ca3af" hide />
+                                                            <YAxis dataKey="name" type="category" width={70} stroke="#9ca3af" fontSize={11} tick={{ fill: '#9ca3af' }} />
+                                                            <Tooltip
+                                                                cursor={{ fill: 'rgba(255,255,255,0.05)' }}
+                                                                contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151', color: '#fff' }}
+                                                            />
+                                                            <Bar dataKey="quantity" name="Qty" fill="#10b981" radius={[0, 4, 4, 0]} barSize={20} />
+                                                        </BarChart>
+                                                    </ResponsiveContainer>
+                                                ) : <div style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>No data</div>}
+                                            </div>
+                                        </div>
+                                    </div>
+
+
+                                    {/* User Usage Table */}
+                                    <div className={styles.card} style={{ gridColumn: 'span 2' }}>
+                                        <h3 className={styles.cardTitle}>User Activity Summary</h3>
+                                        {dailyStats.usage?.by_user?.length > 0 ? (
+                                            <table className={styles.table} style={{ width: '100%' }}>
+                                                <thead>
+                                                    <tr>
+                                                        <th>User</th>
+                                                        <th>Items Used</th>
+                                                        <th>Total Cost</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {dailyStats.usage.by_user.map((user: any, idx: number) => (
+                                                        <tr key={idx}>
+                                                            <td>{user.name}</td>
+                                                            <td>{user.items}</td>
+                                                            <td>${user.cost.toFixed(2)}</td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        ) : <p style={{ color: '#9ca3af', padding: '1rem' }}>No user activity recorded.</p>}
+                                    </div>
+
+                                    {/* Item Usage Table */}
+                                    <div className={styles.card} style={{ gridColumn: 'span 2' }}>
+                                        <h3 className={styles.cardTitle}>Item Usage Summary</h3>
+                                        {dailyStats.usage?.by_item?.length > 0 ? (
+                                            <table className={styles.table} style={{ width: '100%' }}>
+                                                <thead>
+                                                    <tr>
+                                                        <th>Item</th>
+                                                        <th>Quantity Used</th>
+                                                        <th>Total Cost</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {dailyStats.usage.by_item.map((item: any, idx: number) => (
+                                                        <tr key={idx}>
+                                                            <td>{item.name}</td>
+                                                            <td>{item.quantity}</td>
+                                                            <td>${item.cost.toFixed(2)}</td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        ) : <p style={{ color: '#9ca3af', padding: '1rem' }}>No item usage recorded.</p>}
+                                    </div>
+
+                                    {/* Restock Activity Table */}
+                                    <div className={styles.card} style={{ gridColumn: 'span 2' }}>
+                                        <h3 className={styles.cardTitle}>Restock Activity Overview</h3>
+                                        {dailyStats.restock?.by_item?.length > 0 ? (
+                                            <table className={styles.table} style={{ width: '100%' }}>
+                                                <thead>
+                                                    <tr>
+                                                        <th>Item</th>
+                                                        <th>Qty Added</th>
+                                                        <th>Total Cost</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {dailyStats.restock.by_item.map((item: any, idx: number) => (
+                                                        <tr key={idx}>
+                                                            <td>{item.name}</td>
+                                                            <td style={{ color: '#10b981' }}>+{item.quantity}</td>
+                                                            <td>${item.cost.toFixed(2)}</td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        ) : <p style={{ color: '#9ca3af', padding: '1rem' }}>No restock activity today.</p>}
+                                    </div>
+                                </>
+                            ) : (
+                                <div style={{ gridColumn: 'span 2', textAlign: 'center', color: '#9ca3af' }}>
+                                    No report data loaded.
+                                </div>
+                            )
+                        )}
                     </div>
                 )}
 
@@ -889,20 +1232,32 @@ export default function ReportingClient() {
                         </div>
 
                         {blLoading ? <div style={{ color: '#9ca3af' }}>Loading Data...</div> : (
-                            <div style={{ height: '400px', width: '100%' }}>
+                            <div style={{ width: '100%', overflowX: 'auto', maxHeight: '400px', overflowY: 'auto' }}>
                                 {filteredBottleData.length > 0 ? (
-                                    <ResponsiveContainer>
-                                        <BarChart data={filteredBottleData}>
-                                            <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                                            <XAxis dataKey="name" stroke="#9ca3af" />
-                                            <YAxis stroke="#9ca3af" />
-                                            <Tooltip contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151', color: '#fff' }} />
-                                            <Legend />
-                                            <Bar dataKey="start_count" name="Start Count" fill="#3b82f6" />
-                                            <Bar dataKey="end_count" name="End Count" fill="#10b981" />
-                                            <Bar dataKey="usage" name="Usage" fill="#f59e0b" />
-                                        </BarChart>
-                                    </ResponsiveContainer>
+                                    <table className={styles.table} style={{ width: '100%', minWidth: '600px', borderCollapse: 'collapse' }}>
+                                        <thead style={{ position: 'sticky', top: 0, background: '#1f2937', zIndex: 10 }}>
+                                            <tr>
+                                                <th style={{ textAlign: 'left', minWidth: '150px', padding: '12px' }}>Item Name</th>
+                                                {bottleOptions.map((opt: string) => (
+                                                    <th key={opt} style={{ textAlign: 'center', padding: '12px' }}>{opt}</th>
+                                                ))}
+                                                <th style={{ textAlign: 'center', fontWeight: 'bold', padding: '12px' }}>Total Alerts</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {filteredBottleData.map((row: any) => (
+                                                <tr key={row.id} style={{ borderBottom: '1px solid #374151' }}>
+                                                    <td style={{ fontWeight: '500', padding: '12px' }}>{row.name}</td>
+                                                    {bottleOptions.map((opt: string) => (
+                                                        <td key={opt} style={{ textAlign: 'center', padding: '12px', color: row[opt] ? '#fbbf24' : '#4b5563', fontWeight: row[opt] ? 'bold' : 'normal' }}>
+                                                            {row[opt] || '-'}
+                                                        </td>
+                                                    ))}
+                                                    <td style={{ textAlign: 'center', padding: '12px', fontWeight: 'bold', color: '#10b981' }}>{row.total}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
                                 ) : (
                                     <div style={{ textAlign: 'center', paddingTop: '4rem', color: '#6b7280' }}>
                                         No filtered data available.
@@ -1085,9 +1440,8 @@ export default function ReportingClient() {
                         ))}
                     </div>
                 )}
-
-                {/* Mock Preview Overlay */}
-                <MockPreviewOverlay />
+                {/* Mock Preview Overlay - Only for other reports if needed, or remove completely if Daily Report handles it internally */}
+                {/* <MockPreviewOverlay /> */}
 
             </div>
         </div>

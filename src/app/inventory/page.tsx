@@ -25,7 +25,7 @@ export default async function InventoryPage() {
         const row = await db.one("SELECT value FROM settings WHERE key = 'track_bottle_levels' AND organization_id = $1", [session.organizationId]);
         if (row && row.value === 'true') {
             trackBottleLevels = true;
-            bottleOptions = await db.query('SELECT * FROM bottle_level_options ORDER BY display_order ASC, id ASC');
+            bottleOptions = await db.query('SELECT * FROM bottle_level_options WHERE organization_id = $1 ORDER BY display_order ASC, id ASC', [session.organizationId]);
         }
     } catch (e) {
         console.error("Failed to load settings in inventory page", e);

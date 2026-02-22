@@ -9,7 +9,7 @@ export async function POST(req: NextRequest) {
     }
 
     try {
-        const { dateRange, shiftId, userIds } = await req.json();
+        const { dateRange, shiftId, userIds, locationId } = await req.json();
         const orgId = session.organizationId;
 
         let targetUserIds = userIds || [];
@@ -48,17 +48,9 @@ export async function POST(req: NextRequest) {
         // Adjust action filter as needed. Assuming 'SUBTRACT_STOCK' is main usage.
 
         let userFilter = '';
-        let userParams: any[] = [];
         if (targetUserIds.length > 0) {
-            userFilter = `AND user_id = ANY($${userParams.length + timeParams.length + 3})`;
-            userParams.push(targetUserIds);
+            // Placeholder logic replaced below
         }
-
-        const params = [orgId, dateRange.start, ...timeParams, ...userParams];
-
-        // Note: Params index management needs care.
-        // $1 = orgId
-        // $2 = dateRange.start (Actually we need end too)
 
         // Re-building query with cleaner param indexing
         const values = [orgId, dateRange.start, dateRange.end];
@@ -79,6 +71,12 @@ export async function POST(req: NextRequest) {
             values.push(targetUserIds);
         }
 
+        let lFilter = '';
+        if (locationId) {
+            lFilter = `AND (details->>'locationId')::int = $${paramIdx++}`;
+            values.push(locationId);
+        }
+
         const query = `
             SELECT 
                 u.first_name, u.last_name,
@@ -92,6 +90,7 @@ export async function POST(req: NextRequest) {
               AND al.timestamp <= ($3::date + INTERVAL '1 day')
               ${tFilter}
               ${uFilter}
+              ${lFilter}
             ORDER BY al.timestamp DESC
         `;
 

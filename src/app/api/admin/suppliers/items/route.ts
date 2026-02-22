@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
             FROM items i
             LEFT JOIN item_suppliers is_sup ON i.id = is_sup.item_id
             LEFT JOIN suppliers s ON is_sup.supplier_id = s.id
-            WHERE i.Organization_id IS NULL OR i.organization_id = $1
+            WHERE i.organization_id = $1
             ORDER BY i.name ASC
         `, [session.organizationId]);
 
@@ -68,6 +68,10 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
         }
 
+        // Check item ownership
+        const item = await db.one('SELECT id FROM items WHERE id = $1 AND organization_id = $2', [item_id, session.organizationId]);
+        if (!item) return NextResponse.json({ error: 'Item not found' }, { status: 404 });
+
         await db.execute('BEGIN');
 
         // If preferred, unset others for this item (logic: only one preferred?)
@@ -101,6 +105,11 @@ export async function DELETE(req: NextRequest) {
 
     try {
         const { item_id, supplier_id } = await req.json();
+
+        // Check item ownership
+        const item = await db.one('SELECT id FROM items WHERE id = $1 AND organization_id = $2', [item_id, session.organizationId]);
+        if (!item) return NextResponse.json({ error: 'Item not found' }, { status: 404 });
+
         await db.execute('DELETE FROM item_suppliers WHERE item_id = $1 AND supplier_id = $2', [item_id, supplier_id]);
         return NextResponse.json({ success: true });
     } catch (e) {

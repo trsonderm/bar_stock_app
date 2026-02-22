@@ -68,6 +68,16 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
         }
     };
 
+    useEffect(() => {
+        const handler = (event: ErrorEvent) => {
+            if (event.message.includes('expected pattern')) {
+                alert('CAUGHT SYNTAX ERROR: ' + event.error?.stack);
+            }
+        };
+        window.addEventListener('error', handler);
+        return () => window.removeEventListener('error', handler);
+    }, []);
+
     // Fetch Settings info for Shifts & Locations
     useEffect(() => {
         // We need locations and shifts to populate the form
@@ -183,7 +193,15 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
             if (Array.isArray(json)) {
                 p = json;
             } else if (typeof json === 'string') {
-                try { p = JSON.parse(json); } catch { return json; }
+                try {
+                    p = JSON.parse(json);
+                } catch (e) {
+                    console.error('JSON Parse Error for permissions:', json, e);
+                    return json;
+                }
+            } else {
+                console.warn('Unknown permissions format:', json);
+                return '';
             }
 
             if (!Array.isArray(p)) return '';
@@ -191,7 +209,10 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
             if (p.includes('all')) return 'Full Admin';
             const map: any = { 'add_stock': 'Add Stock', 'subtract_stock': 'Subtract Stock', 'add_item_name': 'Add Items', 'audit': 'Audit', 'view_reports': 'View Reports' };
             return p.map((perm: string) => map[perm] || perm).join(', ');
-        } catch { return ''; }
+        } catch (e) {
+            console.error('parsePerms fatal:', e);
+            return '';
+        }
     };
 
     const handleEdit = (u: any) => {
@@ -260,17 +281,17 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
 
                         <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
                             <div style={{ flex: 1 }}>
-                                <label className={styles.statLabel}>Phone</label>
+                                <label className={styles.statLabel}>Phone (Optional)</label>
                                 <input className={styles.table} style={{ background: '#1f2937', color: 'white', padding: '0.5rem', border: '1px solid #374151', borderRadius: '0.25rem', width: '100%' }} value={phone} onChange={e => setPhone(e.target.value)} />
                             </div>
                             <div style={{ flex: 1 }}>
-                                <label className={styles.statLabel}>Notes</label>
+                                <label className={styles.statLabel}>Notes (Optional)</label>
                                 <input className={styles.table} style={{ background: '#1f2937', color: 'white', padding: '0.5rem', border: '1px solid #374151', borderRadius: '0.25rem', width: '100%' }} value={notes} onChange={e => setNotes(e.target.value)} />
                             </div>
                         </div>
 
                         <div style={{ marginBottom: '1rem' }}>
-                            <label className={styles.statLabel}>Bio</label>
+                            <label className={styles.statLabel}>Bio (Optional)</label>
                             <textarea className={styles.table} style={{ background: '#1f2937', color: 'white', padding: '0.5rem', border: '1px solid #374151', borderRadius: '0.25rem', width: '100%' }} rows={2} value={bio} onChange={e => setBio(e.target.value)} />
                         </div>
 

@@ -27,11 +27,12 @@ export default function StockControls({ item, options, canAddStock, canSubtractS
                 <div className={styles.stockGroup} style={{ borderLeft: '1px solid #374151', paddingLeft: '1rem' }}>
                     <input
                         type="number"
-                        min="1"
+                        min="0.01"
+                        step="any"
                         placeholder="#"
                         value={customAmount}
                         onChange={(e) => setCustomAmount(e.target.value)}
-                        style={{ width: '50px', background: '#111827', border: '1px solid #374151', color: 'white', padding: '0.25rem', borderRadius: '0.25rem', marginRight: '0.5rem' }}
+                        style={{ width: '60px', background: '#111827', border: '1px solid #374151', color: 'white', padding: '0.25rem', borderRadius: '0.25rem', marginRight: '0.5rem' }}
                     />
                     <button
                         className={`${styles.stockBtn} ${styles.minusBtn}`}

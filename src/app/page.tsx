@@ -121,28 +121,40 @@ export default function LandingPage() {
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        {/* Feature 1: AI Smart Ordering */}
                         <div className="p-8 bg-gray-800 rounded-2xl border border-gray-700 hover:border-amber-500/50 transition-colors group">
                             <div className="w-12 h-12 bg-amber-500/10 rounded-xl flex items-center justify-center mb-6 group-hover:bg-amber-500/20 transition-colors">
                                 <BarChart3 className="text-amber-500 h-6 w-6" />
                             </div>
                             <h3 className="text-xl font-bold text-white mb-3">AI Smart Ordering</h3>
-                            <p className="text-gray-400">Predictive algorithms analyze your stock movement to generate smart orders. Never over-order or run dry again.</p>
+                            <p className="text-gray-400">Predictive algorithms analyze your stock movement to generate automatic smart orders. We track supplier days, par levels, and average usage to tell you exactly what you need to order and when, so you never over-order or run dry again.</p>
                         </div>
 
+                        {/* Feature 2: Advanced Reporting */}
                         <div className="p-8 bg-gray-800 rounded-2xl border border-gray-700 hover:border-amber-500/50 transition-colors group">
                             <div className="w-12 h-12 bg-amber-500/10 rounded-xl flex items-center justify-center mb-6 group-hover:bg-amber-500/20 transition-colors">
                                 <ShieldCheck className="text-amber-500 h-6 w-6" />
                             </div>
-                            <h3 className="text-xl font-bold text-white mb-3">POS Independent</h3>
-                            <p className="text-gray-400">Completely separated from your POS system. No expensive integration fees, no "per terminal" charges. pure inventory control.</p>
+                            <h3 className="text-xl font-bold text-white mb-3">Advanced Analytics</h3>
+                            <p className="text-gray-400">Generate end-of-day closing reports with a single click. See real-time run-out predictions, employee usage breakdowns, low stock alerts, and 30-day historical trend graphs tracking your most profitable stock.</p>
                         </div>
 
+                        {/* Feature 3: Employee Scheduling */}
                         <div className="p-8 bg-gray-800 rounded-2xl border border-gray-700 hover:border-amber-500/50 transition-colors group">
                             <div className="w-12 h-12 bg-amber-500/10 rounded-xl flex items-center justify-center mb-6 group-hover:bg-amber-500/20 transition-colors">
                                 <Users className="text-amber-500 h-6 w-6" />
                             </div>
-                            <h3 className="text-xl font-bold text-white mb-3">Multi-Location</h3>
-                            <p className="text-gray-400">Manage multiple bars, clubs, or venues from a single powerful admin dashboard with granular permissions.</p>
+                            <h3 className="text-xl font-bold text-white mb-3">Interactive Scheduling</h3>
+                            <p className="text-gray-400">A best-in-class drag-and-drop employee scheduler built right in. Manage repeating shifts, substitute bartenders instantly, view flattened coverage gaps, and automatically email staff their upcoming assignments.</p>
+                        </div>
+
+                        {/* Feature 4: Station Mode & Multi-Location */}
+                        <div className="p-8 bg-gray-800 rounded-2xl border border-gray-700 hover:border-amber-500/50 transition-colors group">
+                            <div className="w-12 h-12 bg-amber-500/10 rounded-xl flex items-center justify-center mb-6 group-hover:bg-amber-500/20 transition-colors">
+                                <Smartphone className="text-amber-500 h-6 w-6" />
+                            </div>
+                            <h3 className="text-xl font-bold text-white mb-3">Multi-Location Control</h3>
+                            <p className="text-gray-400">Manage multiple bars or venues from a single admin dashboard. Use POS-independent Station Mode with persistent PIN-based login to secure access for your bartenders.</p>
                         </div>
 
                         <div className="p-8 bg-gray-800 rounded-2xl border border-gray-700 hover:border-amber-500/50 transition-colors group">

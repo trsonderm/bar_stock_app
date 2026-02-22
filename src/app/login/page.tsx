@@ -64,7 +64,7 @@ function LoginContent() {
     await executeLogin(payload);
   };
 
-  const quickLogin = (type: 'admin' | 'orgA_admin' | 'orgA_staff' | 'orgB_admin' | 'orgB_staff') => {
+  const quickLogin = (type: 'admin' | 'orgA_admin' | 'orgA_staff' | 'orgB_admin' | 'orgB_staff' | 'fosters_admin') => {
     if (type === 'admin') {
       setEmail('admin@topshelf.com');
       setPassword('password');
@@ -85,6 +85,10 @@ function LoginContent() {
       setEmail('user@uptown.com');
       setPassword('password');
       executeLogin({ email: 'user@uptown.com', password: 'password' });
+    } else if (type === 'fosters_admin') {
+      setEmail('tammy@fosters.com');
+      setPassword('password');
+      executeLogin({ email: 'tammy@fosters.com', password: 'password' });
     }
   };
 
@@ -257,6 +261,17 @@ function LoginContent() {
                     Staff
                   </button>
                 </div>
+              </div>
+
+              {/* Fosters (Org 3) */}
+              <div className="border border-gray-700 p-2 rounded">
+                <p className="text-xs text-gray-400 mb-2 font-bold">Fosters (Org 3)</p>
+                <button
+                  onClick={() => quickLogin('fosters_admin')}
+                  style={{ padding: '0.4rem', background: '#d97706', border: 'none', borderRadius: '4px', color: 'white', cursor: 'pointer', fontSize: '0.75rem', width: '100%' }}
+                >
+                  Admin (Tammy)
+                </button>
               </div>
 
             </div>
