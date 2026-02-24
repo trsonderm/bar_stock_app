@@ -129,8 +129,8 @@ export default function LandingPage() {
                             <div className="w-12 h-12 bg-amber-500/10 rounded-xl flex items-center justify-center mb-6 group-hover:bg-amber-500/20 transition-colors">
                                 <ShieldCheck className="text-amber-500 h-6 w-6" />
                             </div>
-                            <h3 className="text-xl font-bold text-white mb-3">Daily Reports & Trends</h3>
-                            <p className="text-gray-400 text-sm">Generate end-of-day closing reports with a single click. See real-time run-out predictions, employee usage breakdowns, low stock alerts, and 30-day historical trend graphs tracking your most profitable stock.</p>
+                            <h3 className="text-xl font-bold text-white mb-3">Automated Daily Reports</h3>
+                            <p className="text-gray-400 text-sm">Set up scheduled reporting to automatically receive end-of-day closing reports right in your inbox. See real-time run-out predictions, employee usage breakdowns, low stock alerts, and 30-day historical trend graphs tracking your most profitable stock.</p>
                         </div>
 
                         {/* Feature 3: Employee Scheduling */}
@@ -147,8 +147,8 @@ export default function LandingPage() {
                             <div className="w-12 h-12 bg-amber-500/10 rounded-xl flex items-center justify-center mb-6 group-hover:bg-amber-500/20 transition-colors">
                                 <TrendingUp className="text-amber-500 h-6 w-6" />
                             </div>
-                            <h3 className="text-xl font-bold text-white mb-3">Variance Tracking</h3>
-                            <p className="text-gray-400 text-sm">Log POS sales alongside your physical inventory counts to automatically generate variance reports. Catch over-pours, theft, and forgotten waste immediately with pinpoint accuracy across all your locations.</p>
+                            <h3 className="text-xl font-bold text-white mb-3">Auditing & Variance</h3>
+                            <p className="text-gray-400 text-sm">Perform physical inventory audits and log POS sales to automatically generate variance reports. Catch over-pours, theft, and forgotten waste immediately with pinpoint accuracy across all your locations.</p>
                         </div>
 
                         {/* Feature 5: Shift Accountability */}
