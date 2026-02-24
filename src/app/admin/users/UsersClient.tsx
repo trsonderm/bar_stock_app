@@ -34,6 +34,7 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
     const [canAddItem, setCanAddItem] = useState(false);
     const [canAudit, setCanAudit] = useState(false);
     const [canViewReports, setCanViewReports] = useState(false);
+    const [canManageProducts, setCanManageProducts] = useState(false);
     const [isAdmin, setIsAdmin] = useState(false);
     const [submitting, setSubmitting] = useState(false);
 
@@ -111,6 +112,7 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
         if (canAddItem) permissions.push('add_item_name');
         if (canAudit) permissions.push('audit');
         if (canViewReports) permissions.push('view_reports');
+        if (canManageProducts) permissions.push('manage_products');
 
         const role = isAdmin ? 'admin' : 'user';
 
@@ -170,6 +172,7 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
         setCanAddItem(false);
         setCanAudit(false);
         setCanViewReports(false);
+        setCanManageProducts(false);
         setIsAdmin(false);
         setEditingId(null);
         setAssignedLocations([]);
@@ -207,7 +210,7 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
             if (!Array.isArray(p)) return '';
 
             if (p.includes('all')) return 'Full Admin';
-            const map: any = { 'add_stock': 'Add Stock', 'subtract_stock': 'Subtract Stock', 'add_item_name': 'Add Items', 'audit': 'Audit', 'view_reports': 'View Reports' };
+            const map: any = { 'add_stock': 'Add Stock', 'subtract_stock': 'Subtract Stock', 'add_item_name': 'Add Items', 'audit': 'Audit', 'view_reports': 'View Reports', 'manage_products': 'Manage Products' };
             return p.map((perm: string) => map[perm] || perm).join(', ');
         } catch (e) {
             console.error('parsePerms fatal:', e);
@@ -240,6 +243,7 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
         setCanAddItem(perms.includes('add_item_name') || perms.includes('all'));
         setCanAudit(perms.includes('audit') || perms.includes('all'));
         setCanViewReports(perms.includes('view_reports') || perms.includes('all'));
+        setCanManageProducts(perms.includes('manage_products') || perms.includes('all'));
         setIsAdmin(u.role === 'admin');
         setAssignedLocations(u.assigned_locations || []);
 
@@ -389,6 +393,16 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
                                     }}>
                                     <input type="checkbox" checked={canViewReports} readOnly style={{ width: '18px', height: '18px', accentColor: 'white', cursor: 'pointer' }} />
                                     <span style={{ fontWeight: 500 }}>View Reporting</span>
+                                </div>
+                                <div
+                                    onClick={() => setCanManageProducts(!canManageProducts)}
+                                    style={{
+                                        background: canManageProducts ? '#3b82f6' : '#374151', color: 'white',
+                                        padding: '0.75rem', borderRadius: '0.5rem', cursor: 'pointer',
+                                        display: 'flex', alignItems: 'center', gap: '0.75rem', transition: 'all 0.2s', border: '1px solid #4b5563'
+                                    }}>
+                                    <input type="checkbox" checked={canManageProducts} readOnly style={{ width: '18px', height: '18px', accentColor: 'white', cursor: 'pointer' }} />
+                                    <span style={{ fontWeight: 500 }}>Manage Products</span>
                                 </div>
                                 <div
                                     onClick={() => setIsAdmin(!isAdmin)}

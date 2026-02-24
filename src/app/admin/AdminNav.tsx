@@ -34,6 +34,7 @@ export default function AdminNav({ user }: { user: NavUser }) {
     const [showBottleLevels, setShowBottleLevels] = useState(true);
 
     const canAudit = user?.role === 'admin' || user?.permissions?.includes('audit') || user?.permissions?.includes('all');
+    const canManageProducts = user?.role === 'admin' || user?.permissions?.includes('manage_products') || user?.permissions?.includes('all');
     const isPro = user?.subscriptionPlan === 'pro' || user?.subscriptionPlan === 'free_trial' || user?.role === 'super_admin'; // Super admin bypass or logic if needed
 
     useEffect(() => {
@@ -85,7 +86,9 @@ export default function AdminNav({ user }: { user: NavUser }) {
                 <Link href="/admin/reports" className={isActive('/admin/reports') ? styles.navItemActive : styles.navItem}>Reporting</Link>
             )}
             <Link href="/admin/prices" className={isActive('/admin/prices') ? styles.navItemActive : styles.navItem}>Prices</Link>
-            <Link href="/admin/products" className={isActive('/admin/products') ? styles.navItemActive : styles.navItem}>Product List</Link>
+            {canManageProducts && (
+                <Link href="/admin/products" className={isActive('/admin/products') ? styles.navItemActive : styles.navItem}>Product List</Link>
+            )}
             <Link href="/admin/query" className={isActive('/admin/query') ? styles.navItemActive : styles.navItem}>Activity Search</Link>
             {canAudit && (
                 <Link href="/admin/audit" className={isActive('/admin/audit') ? styles.navItemActive : styles.navItem} style={{ color: '#ec4899' }}>Audit</Link>

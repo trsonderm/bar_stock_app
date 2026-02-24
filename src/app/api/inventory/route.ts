@@ -85,14 +85,14 @@ export async function POST(req: NextRequest) {
         if (!session || !session.organizationId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
         const organizationId = session.organizationId;
-        const canAddName = session.role === 'admin' || session.permissions.includes('add_item_name') || session.permissions.includes('all');
+        const canAddName = session.role === 'admin' || session.permissions.includes('add_item_name') || session.permissions.includes('manage_products') || session.permissions.includes('all');
 
         if (!canAddName) {
             return NextResponse.json({ error: 'Permission denied' }, { status: 403 });
         }
 
         const body = await req.json();
-        const { name, type, secondary_type, supplier, supplier_id, low_stock_threshold, order_size, stock_options, include_in_audit, quantity } = body;
+        const { name, type, secondary_type, supplier, supplier_id, low_stock_threshold, order_size, stock_options, include_in_audit, quantity, add_to_all_locations } = body;
 
         if (!name || !type) return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
 
@@ -126,24 +126,48 @@ export async function POST(req: NextRequest) {
             `, [itemId, supplier_id]);
         }
 
-        // Also init inventory for current location (or default)
-        let initialLocId = 0;
-        const cookieLoc = req.cookies.get('current_location_id')?.value;
-        if (cookieLoc) initialLocId = parseInt(cookieLoc);
+        // Determine locations to init inventory
+        let locationsToInit: { id: number }[] = [];
 
-        let location = null;
-        if (initialLocId) {
-            location = await db.one('SELECT id FROM locations WHERE id = $1 AND organization_id = $2', [initialLocId, organizationId]);
+        if (add_to_all_locations) {
+            const assigned = await db.query(`
+                SELECT l.id 
+                FROM locations l
+                JOIN user_locations ul ON l.id = ul.location_id
+                WHERE ul.user_id = $1 AND l.organization_id = $2
+            `, [session.id, organizationId]);
+
+            if (assigned.length === 0 && session.role === 'admin') {
+                const all = await db.query('SELECT id FROM locations WHERE organization_id = $1', [organizationId]);
+                locationsToInit = all;
+            } else {
+                locationsToInit = assigned;
+            }
+        } else {
+            // Also init inventory for current location (or default)
+            let initialLocId = 0;
+            const cookieLoc = req.cookies.get('current_location_id')?.value;
+            if (cookieLoc) initialLocId = parseInt(cookieLoc);
+
+            let location = null;
+            if (initialLocId) {
+                location = await db.one('SELECT id FROM locations WHERE id = $1 AND organization_id = $2', [initialLocId, organizationId]);
+            }
+
+            if (!location) {
+                location = await db.one('SELECT id FROM locations WHERE organization_id = $1 LIMIT 1', [organizationId]);
+            }
+
+            if (location) {
+                locationsToInit.push({ id: location.id });
+            }
         }
 
-        if (!location) {
-            location = await db.one('SELECT id FROM locations WHERE organization_id = $1 LIMIT 1', [organizationId]);
-        }
-
-        if (location) {
+        // Insert inventory records
+        for (const loc of locationsToInit) {
             await db.execute(
                 'INSERT INTO inventory (item_id, location_id, quantity, organization_id) VALUES ($1, $2, $3, $4)',
-                [itemId, location.id, quantity || 0, organizationId]
+                [itemId, loc.id, quantity || 0, organizationId]
             );
         }
 
@@ -167,7 +191,7 @@ export async function PUT(req: NextRequest) {
         if (!session || !session.organizationId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
         const organizationId = session.organizationId;
-        const canEdit = session.role === 'admin' || session.permissions.includes('add_item_name') || session.permissions.includes('all');
+        const canEdit = session.role === 'admin' || session.permissions.includes('add_item_name') || session.permissions.includes('manage_products') || session.permissions.includes('all');
         const canStock = session.role === 'admin' || session.permissions.includes('add_stock') || session.permissions.includes('all');
 
         if (!canEdit && !canStock) return NextResponse.json({ error: 'Permission denied' }, { status: 403 });
@@ -322,7 +346,8 @@ export async function DELETE(req: NextRequest) {
         const session = await getSession();
         if (!session || !session.organizationId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-        if (session.role !== 'admin') {
+        const canDelete = session.role === 'admin' || session.permissions.includes('manage_products') || session.permissions.includes('all');
+        if (!canDelete) {
             return NextResponse.json({ error: 'Permission denied' }, { status: 403 });
         }
 

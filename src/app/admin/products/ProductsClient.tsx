@@ -60,10 +60,17 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
 
     const [stockMode, setStockMode] = useState<string>('CATEGORY');
 
+    // Multi-location Logic
+    const [myLocations, setMyLocations] = useState<{ id: number, name: string }[]>([]);
+    const [addToAllLocations, setAddToAllLocations] = useState(false);
+
     useEffect(() => {
         fetchData();
         fetch('/api/admin/settings').then(r => r.json()).then(d => {
             if (d.settings?.stock_count_mode) setStockMode(d.settings.stock_count_mode);
+        });
+        fetch('/api/user/locations').then(r => r.json()).then(d => {
+            if (d.locations) setMyLocations(d.locations);
         });
     }, [overrideOrgId]);
 
@@ -113,6 +120,7 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
         });
         setTempOptionInput('');
         setTempOrderInput('');
+        setAddToAllLocations(false);
     };
 
     const handleCreateClick = () => {
@@ -158,7 +166,8 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                 low_stock_threshold: formData.low_stock_threshold === null ? null : parseInt(formData.low_stock_threshold || '5'),
                 track_quantity: formData.track_quantity ? 1 : 0,
                 include_in_audit: formData.include_in_audit,
-                stock_options: formData.stock_options.length > 0 ? formData.stock_options : null
+                stock_options: formData.stock_options.length > 0 ? formData.stock_options : null,
+                add_to_all_locations: addToAllLocations
             };
 
             const url = '/api/inventory' + (overrideOrgId ? `?orgId=${overrideOrgId}` : '');
@@ -648,6 +657,23 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                                     />
                                 )}
                             </div>
+
+                            {!editingId && myLocations.length > 1 && (
+                                <div style={{ marginBottom: '1rem', padding: '1rem', background: '#1e293b', borderRadius: '0.5rem', border: '1px solid #3b82f6' }}>
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', color: 'white', fontWeight: 'bold' }}>
+                                        <input
+                                            type="checkbox"
+                                            checked={addToAllLocations}
+                                            onChange={e => setAddToAllLocations(e.target.checked)}
+                                            style={{ width: '18px', height: '18px', accentColor: '#3b82f6' }}
+                                        />
+                                        Add to all my locations
+                                    </label>
+                                    <p className="text-xs text-gray-400 mt-1" style={{ marginLeft: '26px' }}>
+                                        If checked, this product will be created and tracked at all {myLocations.length} locations you have access to.
+                                    </p>
+                                </div>
+                            )}
 
                             <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end', marginTop: '1rem' }}>
                                 <button type="button" onClick={() => setShowModal(false)} style={{ padding: '0.5rem 1rem', background: 'transparent', color: '#9ca3af', border: '1px solid #374151', borderRadius: '0.5rem', cursor: 'pointer' }}>Cancel</button>
