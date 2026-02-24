@@ -30,7 +30,8 @@ export const COOKIE_OPTIONS = {
 };
 
 export async function createSessionToken(user: { id: number; role: UserRole; permissions: string | string[]; firstName: string; lastName: string; email?: string; organizationId: number; isSuperAdmin?: boolean; isImpersonating?: boolean; subscriptionPlan?: string }) {
-    const permissions = typeof user.permissions === 'string' ? JSON.parse(user.permissions) : user.permissions;
+    let permissions = typeof user.permissions === 'string' ? JSON.parse(user.permissions) : user.permissions;
+    if (!permissions) permissions = [];
 
     const token = await new SignJWT({
         id: user.id,
@@ -60,7 +61,9 @@ export async function getSession(): Promise<UserSession | null> {
 
     try {
         const { payload } = await jwtVerify(token, SECRET_KEY, { algorithms: [ALG] });
-        return payload as unknown as UserSession;
+        const session = payload as unknown as UserSession;
+        if (!session.permissions) session.permissions = [];
+        return session;
     } catch (error) {
         return null;
     }
