@@ -2,8 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
-import { ArrowRight, BarChart3, ShieldCheck, Smartphone, Users } from 'lucide-react';
+import { ArrowRight, BarChart3, ShieldCheck, Smartphone, Users, Clock, TrendingUp } from 'lucide-react';
 
 export default function LandingPage() {
 
@@ -80,14 +79,11 @@ export default function LandingPage() {
                         <div className="flex-1 space-y-8">
                             <div className="relative group">
                                 <div className="absolute -inset-1 bg-gradient-to-r from-amber-600 to-amber-400 rounded-2xl blur opacity-25 group-hover:opacity-50 transition duration-1000"></div>
-                                <div className="relative rounded-2xl overflow-hidden border border-gray-700 shadow-2xl">
-                                    <Image
+                                <div className="relative rounded-2xl overflow-hidden border border-gray-700 shadow-2xl h-[400px]">
+                                    <img
                                         src="/dashboard-mockup.png"
                                         alt="TopShelf Dashboard"
-                                        width={1200}
-                                        height={675}
-                                        unoptimized={true}
-                                        className="w-full h-auto transform group-hover:scale-105 transition duration-700"
+                                        className="w-full h-full object-cover transform group-hover:scale-105 transition duration-700"
                                     />
                                 </div>
                                 <p className="mt-4 text-center text-sm text-gray-400 font-medium tracking-wide uppercase">Powerful Desktop Command Center</p>
@@ -96,14 +92,11 @@ export default function LandingPage() {
                         <div className="flex-1 space-y-8">
                             <div className="relative group max-w-sm mx-auto">
                                 <div className="absolute -inset-1 bg-gradient-to-r from-blue-600 to-cyan-400 rounded-3xl blur opacity-25 group-hover:opacity-50 transition duration-1000"></div>
-                                <div className="relative rounded-3xl overflow-hidden border border-gray-700 shadow-2xl">
-                                    <Image
+                                <div className="relative rounded-3xl overflow-hidden border border-gray-700 shadow-2xl h-[400px]">
+                                    <img
                                         src="/mobile-app.png"
                                         alt="Mobile Scanning App"
-                                        width={360}
-                                        height={640}
-                                        unoptimized={true}
-                                        className="w-full h-auto transform group-hover:scale-105 transition duration-700"
+                                        className="w-full h-full object-cover transform group-hover:scale-105 transition duration-700"
                                     />
                                 </div>
                                 <p className="mt-4 text-center text-sm text-gray-400 font-medium tracking-wide uppercase">Fast Mobile Barcode Scanning</p>
@@ -121,14 +114,14 @@ export default function LandingPage() {
                         <p className="text-gray-400">Everything you need to run a profitable bar program.</p>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                         {/* Feature 1: AI Smart Ordering */}
                         <div className="p-8 bg-gray-800 rounded-2xl border border-gray-700 hover:border-amber-500/50 transition-colors group">
                             <div className="w-12 h-12 bg-amber-500/10 rounded-xl flex items-center justify-center mb-6 group-hover:bg-amber-500/20 transition-colors">
                                 <BarChart3 className="text-amber-500 h-6 w-6" />
                             </div>
                             <h3 className="text-xl font-bold text-white mb-3">AI Smart Ordering</h3>
-                            <p className="text-gray-400">Predictive algorithms analyze your stock movement to generate automatic smart orders. We track supplier days, par levels, and average usage to tell you exactly what you need to order and when, so you never over-order or run dry again.</p>
+                            <p className="text-gray-400 text-sm">Predictive algorithms analyze stock movement to generate automatic smart orders. We track supplier days, par levels, and average usage to tell you exactly what you need to order and when, preventing over-ordering.</p>
                         </div>
 
                         {/* Feature 2: Advanced Reporting */}
@@ -136,8 +129,8 @@ export default function LandingPage() {
                             <div className="w-12 h-12 bg-amber-500/10 rounded-xl flex items-center justify-center mb-6 group-hover:bg-amber-500/20 transition-colors">
                                 <ShieldCheck className="text-amber-500 h-6 w-6" />
                             </div>
-                            <h3 className="text-xl font-bold text-white mb-3">Advanced Analytics</h3>
-                            <p className="text-gray-400">Generate end-of-day closing reports with a single click. See real-time run-out predictions, employee usage breakdowns, low stock alerts, and 30-day historical trend graphs tracking your most profitable stock.</p>
+                            <h3 className="text-xl font-bold text-white mb-3">Daily Reports & Trends</h3>
+                            <p className="text-gray-400 text-sm">Generate end-of-day closing reports with a single click. See real-time run-out predictions, employee usage breakdowns, low stock alerts, and 30-day historical trend graphs tracking your most profitable stock.</p>
                         </div>
 
                         {/* Feature 3: Employee Scheduling */}
@@ -146,24 +139,34 @@ export default function LandingPage() {
                                 <Users className="text-amber-500 h-6 w-6" />
                             </div>
                             <h3 className="text-xl font-bold text-white mb-3">Interactive Scheduling</h3>
-                            <p className="text-gray-400">A best-in-class drag-and-drop employee scheduler built right in. Manage repeating shifts, substitute bartenders instantly, view flattened coverage gaps, and automatically email staff their upcoming assignments.</p>
+                            <p className="text-gray-400 text-sm">A best-in-class drag-and-drop employee scheduler built right in. Manage repeating shifts, substitute bartenders instantly, view flattened coverage gaps, and accurately track your weekly roster.</p>
                         </div>
 
-                        {/* Feature 4: Station Mode & Multi-Location */}
+                        {/* Feature 4: Usage & Variances */}
+                        <div className="p-8 bg-gray-800 rounded-2xl border border-gray-700 hover:border-amber-500/50 transition-colors group">
+                            <div className="w-12 h-12 bg-amber-500/10 rounded-xl flex items-center justify-center mb-6 group-hover:bg-amber-500/20 transition-colors">
+                                <TrendingUp className="text-amber-500 h-6 w-6" />
+                            </div>
+                            <h3 className="text-xl font-bold text-white mb-3">Variance Tracking</h3>
+                            <p className="text-gray-400 text-sm">Log POS sales alongside your physical inventory counts to automatically generate variance reports. Catch over-pours, theft, and forgotten waste immediately with pinpoint accuracy across all your locations.</p>
+                        </div>
+
+                        {/* Feature 5: Shift Accountability */}
+                        <div className="p-8 bg-gray-800 rounded-2xl border border-gray-700 hover:border-amber-500/50 transition-colors group">
+                            <div className="w-12 h-12 bg-amber-500/10 rounded-xl flex items-center justify-center mb-6 group-hover:bg-amber-500/20 transition-colors">
+                                <Clock className="text-amber-500 h-6 w-6" />
+                            </div>
+                            <h3 className="text-xl font-bold text-white mb-3">Shift Accountability</h3>
+                            <p className="text-gray-400 text-sm">Track exactly who poured what and when. The system links inventory transactions to the specific employee on duty, creating a transparent audit trail that improves accountability.</p>
+                        </div>
+
+                        {/* Feature 6: Terminal Operations */}
                         <div className="p-8 bg-gray-800 rounded-2xl border border-gray-700 hover:border-amber-500/50 transition-colors group">
                             <div className="w-12 h-12 bg-amber-500/10 rounded-xl flex items-center justify-center mb-6 group-hover:bg-amber-500/20 transition-colors">
                                 <Smartphone className="text-amber-500 h-6 w-6" />
                             </div>
-                            <h3 className="text-xl font-bold text-white mb-3">Multi-Location Control</h3>
-                            <p className="text-gray-400">Manage multiple bars or venues from a single admin dashboard. Use POS-independent Station Mode with persistent PIN-based login to secure access for your bartenders.</p>
-                        </div>
-
-                        <div className="p-8 bg-gray-800 rounded-2xl border border-gray-700 hover:border-amber-500/50 transition-colors group">
-                            <div className="w-12 h-12 bg-amber-500/10 rounded-xl flex items-center justify-center mb-6 group-hover:bg-amber-500/20 transition-colors">
-                                <Smartphone className="text-amber-500 h-6 w-6" />
-                            </div>
-                            <h3 className="text-xl font-bold text-white mb-3">Station Mode</h3>
-                            <p className="text-gray-400">Secure, persistent PIN-based login for bar terminals. Enable 90-day station sessions for rapid access.</p>
+                            <h3 className="text-xl font-bold text-white mb-3">Station Mode & Multi-Venue</h3>
+                            <p className="text-gray-400 text-sm">Manage multiple bars from one dashboard. Secure, persistent PIN-based login for bar terminals allows fast bartender access while locking down admin capabilities.</p>
                         </div>
                     </div>
                 </div>
