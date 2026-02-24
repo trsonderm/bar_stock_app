@@ -55,7 +55,12 @@ export async function GET(req: NextRequest) {
         WHERE action = 'SUBTRACT_STOCK' AND organization_id = $1
         GROUP BY (details->>'itemId')::int
       ) usage_stats ON i.id = usage_stats.item_id
-      WHERE (i.organization_id = $1 OR i.organization_id IS NULL)
+      WHERE (
+        i.organization_id = $1 
+        OR (i.organization_id IS NULL AND NOT EXISTS (
+            SELECT 1 FROM items i2 WHERE i2.name = i.name AND i2.organization_id = $1
+        ))
+      )
       GROUP BY i.id, usage_stats.usage_count
     `;
 
