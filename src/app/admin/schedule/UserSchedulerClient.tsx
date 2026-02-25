@@ -38,6 +38,13 @@ interface Schedule {
 import DateRangePicker from '@/components/DateRangePicker';
 
 export default function UserSchedulerClient() {
+    const formatLocalDate = (date: Date) => {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    };
+
     const [activeTab, setActiveTab] = useState<'weekly' | 'daily' | 'monthly' | 'shifts'>('weekly');
     const [viewMode, setViewMode] = useState<'employees' | 'shifts' | 'coverage'>('employees');
     const [currentDate, setCurrentDate] = useState(new Date());
@@ -101,8 +108,8 @@ export default function UserSchedulerClient() {
     // --- Bulk Actions ---
     const handleClearWeek = async () => {
         if (!confirm('Are you sure you want to clear ALL schedules for this week view?')) return;
-        const start = weekDays[0].toISOString().split('T')[0];
-        const end = weekDays[6].toISOString().split('T')[0];
+        const start = formatLocalDate(weekDays[0]);
+        const end = formatLocalDate(weekDays[6]);
 
         await fetch('/api/admin/schedule/bulk', {
             method: 'POST',
@@ -153,7 +160,7 @@ export default function UserSchedulerClient() {
 
             // Push dates roughly 7 days apart
             while (curObj <= endObj) {
-                dates.push(curObj.toISOString().split('T')[0]);
+                dates.push(formatLocalDate(curObj));
                 curObj.setDate(curObj.getDate() + 7);
             }
 
@@ -286,15 +293,15 @@ export default function UserSchedulerClient() {
             // For monthly, get the whole month + padding
             const year = startDate.getFullYear();
             const month = startDate.getMonth();
-            start = new Date(year, month, 1).toISOString().split('T')[0];
-            end = new Date(year, month + 1, 0).toISOString().split('T')[0];
+            start = formatLocalDate(new Date(year, month, 1));
+            end = formatLocalDate(new Date(year, month + 1, 0));
         } else {
             // Fetch 1 extra day BEFORE start to catch spillover overnight shifts
             const s = new Date(startDate);
             s.setDate(s.getDate() - 1);
-            start = s.toISOString().split('T')[0];
+            start = formatLocalDate(s);
 
-            end = new Date(startDate.getTime() + (days - 1) * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+            end = formatLocalDate(new Date(startDate.getTime() + (days - 1) * 24 * 60 * 60 * 1000));
         }
 
         const res = await fetch(`/api/admin/schedule?start=${start}&end=${end}`);
@@ -651,12 +658,12 @@ export default function UserSchedulerClient() {
                                             {user.first_name} {user.last_name}
                                         </td>
                                         {weekDays.map(d => {
-                                            const dateStr = d.toISOString().split('T')[0];
+                                            const dateStr = formatLocalDate(d);
 
                                             // Previous Day for spillover
                                             const prevDate = new Date(d);
                                             prevDate.setDate(d.getDate() - 1);
-                                            const prevDateStr = prevDate.toISOString().split('T')[0];
+                                            const prevDateStr = formatLocalDate(prevDate);
 
                                             // Shifts starting today
                                             const todaysSchedules = schedules.filter(s => s.user_id === user.id && s.date.split('T')[0] === dateStr);
@@ -775,7 +782,7 @@ export default function UserSchedulerClient() {
                                             </div>
                                         </td>
                                         {weekDays.map(d => {
-                                            const dateStr = d.toISOString().split('T')[0];
+                                            const dateStr = formatLocalDate(d);
                                             const assignedSchedules = schedules.filter(s => s.shift_id === shift.id && s.date.split('T')[0] === dateStr);
 
                                             return (
@@ -820,7 +827,7 @@ export default function UserSchedulerClient() {
                                             </div>
                                         </td>
                                         {weekDays.map(d => {
-                                            const dateStr = d.toISOString().split('T')[0];
+                                            const dateStr = formatLocalDate(d);
                                             const assignedSchedules = schedules.filter(s => s.shift_id === shift.id && s.date.split('T')[0] === dateStr);
 
                                             return (
@@ -1014,13 +1021,38 @@ export default function UserSchedulerClient() {
                                 </label>
 
                                 {isRecurring && (
-                                    <div>
+                                    <div className="bg-gray-900 border border-gray-700 p-4 rounded mt-4">
                                         <label className="block text-gray-400 text-sm mb-2">Repeat Until</label>
-                                        <input
-                                            type="date"
-                                            value={recurringEndDate}
-                                            onChange={e => setRecurringEndDate(e.target.value)}
-                                            className="w-full bg-gray-900 text-white rounded p-2 border border-gray-700"
+                                        <div className="flex gap-2 mb-4">
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    const d = new Date(startDate ? startDate + "T12:00:00" : new Date());
+                                                    d.setFullYear(d.getFullYear() + 1);
+                                                    setRecurringEndDate(formatLocalDate(d));
+                                                }}
+                                                className="px-3 py-1 bg-gray-800 hover:bg-gray-700 text-white rounded text-sm border border-gray-600 transition-colors"
+                                            >
+                                                1 Year
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    const d = new Date(startDate ? startDate + "T12:00:00" : new Date());
+                                                    d.setFullYear(d.getFullYear() + 2);
+                                                    setRecurringEndDate(formatLocalDate(d));
+                                                }}
+                                                className="px-3 py-1 bg-gray-800 hover:bg-gray-700 text-white rounded text-sm border border-gray-600 transition-colors"
+                                            >
+                                                2 Years
+                                            </button>
+                                        </div>
+                                        <DateRangePicker
+                                            startDate={recurringEndDate}
+                                            endDate={recurringEndDate}
+                                            setStartDate={setRecurringEndDate}
+                                            setEndDate={() => { }}
+                                            singleDayOnly={true}
                                         />
                                     </div>
                                 )}
@@ -1160,13 +1192,38 @@ export default function UserSchedulerClient() {
                                     </label>
 
                                     {isEditRecurring && (
-                                        <div className="mt-2 pl-6">
-                                            <label className="block text-gray-400 text-xs mb-1">Repeat Weekly Until:</label>
-                                            <input
-                                                type="date"
-                                                value={editRecurringEndDate}
-                                                onChange={e => setEditRecurringEndDate(e.target.value)}
-                                                className="w-full bg-gray-800 text-white rounded p-2 border border-gray-600 text-sm"
+                                        <div className="mt-4 pl-6">
+                                            <label className="block text-gray-400 text-sm mb-2">Repeat Weekly Until:</label>
+                                            <div className="flex gap-2 mb-4">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const d = new Date(editingSchedule.date + "T12:00:00");
+                                                        d.setFullYear(d.getFullYear() + 1);
+                                                        setEditRecurringEndDate(formatLocalDate(d));
+                                                    }}
+                                                    className="px-3 py-1 bg-gray-800 hover:bg-gray-700 text-white rounded text-sm border border-gray-600 transition-colors"
+                                                >
+                                                    1 Year
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const d = new Date(editingSchedule.date + "T12:00:00");
+                                                        d.setFullYear(d.getFullYear() + 2);
+                                                        setEditRecurringEndDate(formatLocalDate(d));
+                                                    }}
+                                                    className="px-3 py-1 bg-gray-800 hover:bg-gray-700 text-white rounded text-sm border border-gray-600 transition-colors"
+                                                >
+                                                    2 Years
+                                                </button>
+                                            </div>
+                                            <DateRangePicker
+                                                startDate={editRecurringEndDate}
+                                                endDate={editRecurringEndDate}
+                                                setStartDate={setEditRecurringEndDate}
+                                                setEndDate={() => { }}
+                                                singleDayOnly={true}
                                             />
                                         </div>
                                     )}

@@ -73,7 +73,7 @@ export default function MonthScheduler({ currentDate, users, shifts, schedules, 
                     week.map((date, dIdx) => {
                         if (!date) return <div key={`${wIdx}-${dIdx}`} className="bg-gray-900/50 border border-gray-800 min-h-[120px]"></div>;
 
-                        const dateStr = date.toISOString().split('T')[0];
+                        const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
                         const daySchedules = schedules.filter(s => s.date.startsWith(dateStr));
 
                         return (
