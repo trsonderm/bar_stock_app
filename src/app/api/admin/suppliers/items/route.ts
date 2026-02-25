@@ -69,7 +69,7 @@ export async function POST(req: NextRequest) {
         }
 
         // Check item ownership
-        const item = await db.one('SELECT id FROM items WHERE id = $1 AND organization_id = $2', [item_id, session.organizationId]);
+        const item = await db.one('SELECT id FROM items WHERE id = $1 AND (organization_id = $2 OR organization_id IS NULL)', [item_id, session.organizationId]);
         if (!item) return NextResponse.json({ error: 'Item not found' }, { status: 404 });
 
         await db.execute('BEGIN');
@@ -107,7 +107,7 @@ export async function DELETE(req: NextRequest) {
         const { item_id, supplier_id } = await req.json();
 
         // Check item ownership
-        const item = await db.one('SELECT id FROM items WHERE id = $1 AND organization_id = $2', [item_id, session.organizationId]);
+        const item = await db.one('SELECT id FROM items WHERE id = $1 AND (organization_id = $2 OR organization_id IS NULL)', [item_id, session.organizationId]);
         if (!item) return NextResponse.json({ error: 'Item not found' }, { status: 404 });
 
         await db.execute('DELETE FROM item_suppliers WHERE item_id = $1 AND supplier_id = $2', [item_id, supplier_id]);
