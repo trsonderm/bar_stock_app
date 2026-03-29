@@ -2,9 +2,38 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import styles from './inventory.module.css';
 import NotificationBell from '@/components/NotificationBell';
 import StockControls from './StockControls';
+
+// MUI Imports
+import Container from '@mui/material/Container';
+import Box from '@mui/material/Box';
+import Typography from '@mui/material/Typography';
+import Button from '@mui/material/Button';
+import TextField from '@mui/material/TextField';
+import Card from '@mui/material/Card';
+import Dialog from '@mui/material/Dialog';
+import DialogTitle from '@mui/material/DialogTitle';
+import DialogContent from '@mui/material/DialogContent';
+import DialogActions from '@mui/material/DialogActions';
+import Select from '@mui/material/Select';
+import MenuItem from '@mui/material/MenuItem';
+import FormControl from '@mui/material/FormControl';
+import InputLabel from '@mui/material/InputLabel';
+import Grid from '@mui/material/Grid';
+import Radio from '@mui/material/Radio';
+import RadioGroup from '@mui/material/RadioGroup';
+import FormControlLabel from '@mui/material/FormControlLabel';
+import IconButton from '@mui/material/IconButton';
+import AddIcon from '@mui/icons-material/Add';
+import ClearIcon from '@mui/icons-material/Clear';
+import SearchIcon from '@mui/icons-material/Search';
+import Tooltip from '@mui/material/Tooltip';
+import Chip from '@mui/material/Chip';
+import InputAdornment from '@mui/material/InputAdornment';
+
+// TopNav for header
+import TopNav from '@/components/TopNav';
 
 interface Item {
     id: number;
@@ -30,7 +59,6 @@ interface UserSession {
     iat?: number;
 }
 
-// ... imports
 interface InventoryClientProps {
     user: UserSession;
     trackBottleLevels: boolean;
@@ -111,8 +139,6 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
         } catch { }
     };
 
-
-
     useEffect(() => {
         fetchItems();
         fetchActivity();
@@ -150,7 +176,6 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
     };
 
     const handleAdjust = async (itemId: number, change: number, bottleLevel?: string) => {
-
         // Intercept for Bottle Level Tracking
         if (change < 0 && trackBottleLevels && !bottleLevel) {
             const item = items.find(i => i.id === itemId);
@@ -169,8 +194,9 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
                 body: JSON.stringify({ itemId, change, bottleLevel })
             });
             if (!res.ok) {
+                const errData = await res.json().catch(() => ({}));
                 fetchItems(); // Sync back
-                alert('Failed to update stock');
+                alert(`Failed to update stock: ${errData.error || res.statusText}`);
             } else {
                 fetchActivity();
             }
@@ -309,329 +335,312 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
     const subCats = currentCat?.sub_categories || [];
 
     return (
-        <div className={styles.container}>
-            <header className={styles.header}>
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
-                    <h1 style={{ margin: 0, fontSize: '2.5rem', fontWeight: 'bold', color: '#fbbf24', lineHeight: 1.2 }}>{user.firstName}</h1>
-                    <div className={styles.title} style={{ fontSize: '1rem', opacity: 0.7, margin: 0 }}>Foster's Stock</div>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <div style={{ marginRight: '0.5rem', display: 'flex', alignItems: 'center' }}>
-                        <NotificationBell />
-                    </div>
+        <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
+            <TopNav user={user}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <NotificationBell />
                     {canAddItem && (
-                        <button
+                        <Button
+                            variant="contained"
+                            color="primary"
+                            startIcon={<AddIcon />}
                             onClick={() => setShowModal(true)}
-                            className={styles.newItemBtn}
-                            style={{ height: 'auto', padding: '0.5rem 1rem', fontSize: '0.9rem', margin: 0 }}
+                            size="small"
                         >
-                            + Add Item
-                        </button>
+                            Add Item
+                        </Button>
                     )}
-                    <button
+                    <Button
+                        variant="outlined"
                         onClick={() => { fetchActivity(); setShowActivityModal(true); }}
-                        className={styles.completedBtn}
+                        size="small"
                     >
-                        Completed / Return to Dashboard
-                    </button>
-                    <button onClick={handleLogout} className={styles.logoutBtn}>Logout</button>
-                </div>
-            </header>
+                        Activity
+                    </Button>
+                    <Button variant="text" color="error" onClick={handleLogout} size="small">
+                        Logout
+                    </Button>
+                </Box>
+            </TopNav>
 
+            <Container maxWidth="xl" sx={{ pb: 6 }}>
+                {/* Header Welcome Title */}
+                <Box sx={{ mb: 4 }}>
+                    <Typography variant="h4" fontWeight="bold" color="primary">{user.firstName}</Typography>
+                    <Typography variant="subtitle1" color="text.secondary">Welcome to Foster's Stock</Typography>
+                </Box>
 
-
-            <div className={styles.controls}>
-                <button
-                    className={`${styles.sortBtn} ${sort === 'usage' ? styles.sortBtnActive : ''}`}
-                    onClick={() => toggleSort('usage')}
-                >
-                    Most Used {sort === 'usage' && (sortDir === 'asc' ? '▲' : '▼')}
-                </button>
-                <button
-                    className={`${styles.sortBtn} ${sort === 'name' ? styles.sortBtnActive : ''}`}
-                    onClick={() => toggleSort('name')}
-                >
-                    A-Z {sort === 'name' && (sortDir === 'asc' ? '▲' : '▼')}
-                </button>
-            </div>
-
-            {/* Filter Section */}
-            <div style={{ padding: '0 1rem 1rem 1rem' }}>
-                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                    <input
-                        className={styles.input}
-                        placeholder="Type to search..."
-                        value={search}
-                        onChange={e => setSearch(e.target.value)}
-                        style={{ flex: 1 }}
-                    />
-                    <button onClick={clearFilters} style={{ background: '#374151', color: '#9ca3af', border: 'none', borderRadius: '0.5rem', padding: '0 1rem', cursor: 'pointer' }}>
-                        Clear
-                    </button>
-                </div>
-
-                {/* Main Category Filter */}
-                <div className={styles.filters} style={{ display: 'flex', gap: '0.5rem', overflowX: 'auto', paddingBottom: '0.5rem' }}>
-                    {['All', ...categories.map(c => c.name)].map((type: string) => (
-                        <button
-                            key={type}
-                            onClick={() => { setFilterType(type); setSecondaryFilter(''); }}
-                            style={{
-                                padding: '0.5rem 1rem',
-                                borderRadius: '20px',
-                                border: '1px solid #374151',
-                                background: filterType === type ? '#d97706' : '#1f2937',
-                                color: 'white',
-                                fontSize: '0.9rem',
-                                cursor: 'pointer',
-                                whiteSpace: 'nowrap'
-                            }}
-                        >
-                            {type}
-                        </button>
-                    ))}
-                </div>
-
-                {/* Secondary Category Filter */}
-                {subCats.length > 0 && (
-                    <div className={styles.filters} style={{ display: 'flex', gap: '0.5rem', overflowX: 'auto', marginTop: '0.5rem' }}>
-                        {subCats.map((sub: string) => (
-                            <button
-                                key={sub}
-                                onClick={() => setSecondaryFilter(sub === secondaryFilter ? '' : sub)}
-                                style={{
-                                    padding: '0.25rem 0.75rem',
-                                    borderRadius: '15px',
-                                    border: '1px solid #4b5563',
-                                    background: secondaryFilter === sub ? '#2563eb' : '#374151',
-                                    color: 'white',
-                                    fontSize: '0.8rem',
-                                    cursor: 'pointer',
-                                    whiteSpace: 'nowrap'
+                {/* Filters and Controls */}
+                <Box sx={{ mb: 3 }}>
+                    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 1fr) minmax(0, 2fr)' }, gap: 2, alignItems: 'center' }}>
+                        <Box>
+                            <TextField
+                                fullWidth
+                                placeholder="Search inventory..."
+                                value={search}
+                                onChange={e => setSearch(e.target.value)}
+                                size="small"
+                                InputProps={{
+                                    endAdornment: (
+                                        <InputAdornment position="end">
+                                            {search ? (
+                                                <IconButton size="small" onClick={() => setSearch('')}><ClearIcon /></IconButton>
+                                            ) : (
+                                                <SearchIcon color="action" />
+                                            )}
+                                        </InputAdornment>
+                                    ),
                                 }}
-                            >
-                                {sub}
-                            </button>
-                        ))}
-                    </div>
-                )}
-            </div>
+                            />
+                        </Box>
+                        <Box>
+                            <Box sx={{ display: 'flex', gap: 1, overflowX: 'auto', pb: 1 }}>
+                                {['All', ...categories.map(c => c.name)].map((type: string) => (
+                                    <Chip
+                                        key={type}
+                                        label={type}
+                                        onClick={() => { setFilterType(type); setSecondaryFilter(''); }}
+                                        color={filterType === type ? "primary" : "default"}
+                                        variant={filterType === type ? "filled" : "outlined"}
+                                        sx={{ minWidth: 60, flexShrink: 0 }}
+                                    />
+                                ))}
+                            </Box>
+                        </Box>
+                    </Box>
 
-            <div className={styles.list}>
-                {filteredItems.map(item => (
-                    <div key={item.id} className={styles.itemCard}>
-                        <div className={styles.itemInfo}>
-                            <div className={styles.itemName}>{item.name}</div>
-                            <div className={styles.itemType}>
-                                {item.type}
-                                {item.secondary_type && <span style={{ opacity: 0.7, marginLeft: '6px', fontSize: '0.85em' }}>• {item.secondary_type}</span>}
-                                {canAddItem && (
-                                    <span
-                                        onClick={() => openCostModal(item)}
-                                        style={{ marginLeft: '8px', cursor: 'pointer', opacity: 0.6, fontSize: '0.9em' }}
-                                        title={`Unit Cost: $${item.unit_cost || 0}`}
-                                    >
-                                        💲
-                                    </span>
-                                )}
-                            </div>
-                        </div>
-                        <div className={styles.stockControls}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                                <span className={styles.quantity} style={{ fontSize: '1.5rem' }}>{Number(item.quantity).toFixed(2).replace(/\.00$/, '')}</span>
-                            </div>
+                    {subCats.length > 0 && (
+                        <Box sx={{ display: 'flex', gap: 1, overflowX: 'auto', mt: 1, pb: 1 }}>
+                            {subCats.map((sub: string) => (
+                                <Chip
+                                    key={sub}
+                                    label={sub}
+                                    onClick={() => setSecondaryFilter(sub === secondaryFilter ? '' : sub)}
+                                    color={secondaryFilter === sub ? "secondary" : "default"}
+                                    variant={secondaryFilter === sub ? "filled" : "outlined"}
+                                    size="small"
+                                    sx={{ flexShrink: 0 }}
+                                />
+                            ))}
+                        </Box>
+                    )}
 
-                            <div style={{ display: 'flex', gap: '0.25rem' }}>
-                                {(() => {
-                                    let options = [1];
+                    <Box sx={{ mt: 2, display: 'flex', gap: 2 }}>
+                        <Button
+                            variant={sort === 'usage' ? 'contained' : 'outlined'}
+                            color={sort === 'usage' ? 'primary' : 'inherit'}
+                            onClick={() => toggleSort('usage')}
+                            size="small"
+                        >
+                            Most Used {sort === 'usage' && (sortDir === 'asc' ? '▲' : '▼')}
+                        </Button>
+                        <Button
+                            variant={sort === 'name' ? 'contained' : 'outlined'}
+                            color={sort === 'name' ? 'primary' : 'inherit'}
+                            onClick={() => toggleSort('name')}
+                            size="small"
+                        >
+                            A-Z {sort === 'name' && (sortDir === 'asc' ? '▲' : '▼')}
+                        </Button>
+                    </Box>
+                </Box>
 
-                                    // 1. Check Item-level options
-                                    if (item.stock_options) {
-                                        let parsed = item.stock_options;
-                                        if (typeof parsed === 'string') {
-                                            try { parsed = JSON.parse(parsed); } catch { }
+                {/* Item List */}
+                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr', md: 'repeat(2, 1fr)', lg: 'repeat(3, 1fr)' }, gap: 2 }}>
+                    {filteredItems.map(item => (
+                        <Box key={item.id}>
+                            <Card sx={{ p: 2, display: 'flex', flexDirection: 'column', height: '100%', justifyContent: 'space-between', transition: '0.2s', '&:hover': { borderColor: 'primary.main' } }}>
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
+                                    <Box>
+                                        <Typography variant="h6" fontWeight="bold">{item.name}</Typography>
+                                        <Typography variant="body2" color="text.secondary">
+                                            {item.type}
+                                            {item.secondary_type && ` • ${item.secondary_type}`}
+                                            {canAddItem && (
+                                                <Tooltip title={`Unit Cost: $${item.unit_cost || 0}`}>
+                                                    <IconButton size="small" onClick={() => openCostModal(item)} sx={{ ml: 1, p: 0.5 }}>
+                                                        <Typography variant="caption">💲</Typography>
+                                                    </IconButton>
+                                                </Tooltip>
+                                            )}
+                                        </Typography>
+                                    </Box>
+                                    <Typography variant="h4" fontWeight="bold" color="text.primary">
+                                        {Number(item.quantity).toFixed(2).replace(/\.00$/, '')}
+                                    </Typography>
+                                </Box>
+
+                                <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                                    {(() => {
+                                        let options = [1];
+                                        if (item.stock_options) {
+                                            let parsed = item.stock_options;
+                                            if (typeof parsed === 'string') { try { parsed = JSON.parse(parsed); } catch { } }
+                                            if (Array.isArray(parsed) && parsed.length > 0) {
+                                                options = parsed.map((p: any) => parseInt(p)).filter((n: number) => !isNaN(n));
+                                            }
+                                        } else {
+                                            const cat = categories.find(c => c.name === item.type);
+                                            if (cat && cat.stock_options) {
+                                                let parsed = cat.stock_options;
+                                                if (typeof parsed === 'string') { try { parsed = JSON.parse(parsed); } catch { } }
+                                                if (Array.isArray(parsed) && parsed.length > 0) {
+                                                    options = parsed.map((p: any) => parseInt(p)).filter((n: number) => !isNaN(n));
+                                                }
+                                            }
                                         }
-                                        if (Array.isArray(parsed) && parsed.length > 0) {
-                                            options = parsed.map((p: any) => parseInt(p)).filter((n: number) => !isNaN(n));
-                                            if (options.length > 0) return (
-                                                <StockControls
-                                                    item={item}
-                                                    options={options}
-                                                    canAddStock={canAddStock}
-                                                    canSubtractStock={canSubtractStock}
-                                                    allowCustom={allowCustomIncrement}
-                                                    onAdjust={handleAdjust}
-                                                />
-                                            );
-                                        }
-                                    }
+                                        if (options.length === 0) options = [1];
+                                        
+                                        return (
+                                            <StockControls
+                                                item={item}
+                                                options={options}
+                                                canAddStock={canAddStock}
+                                                canSubtractStock={canSubtractStock}
+                                                allowCustom={allowCustomIncrement}
+                                                onAdjust={handleAdjust}
+                                            />
+                                        );
+                                    })()}
+                                </Box>
+                            </Card>
+                        </Box>
+                    ))}
+                    {filteredItems.length === 0 && (
+                        <Box sx={{ gridColumn: '1 / -1' }}>
+                            <Box sx={{ textAlign: 'center', p: 4 }}>
+                                <Typography variant="body1" color="text.secondary">No items found match your filters.</Typography>
+                            </Box>
+                        </Box>
+                    )}
+                </Box>
 
-                                    // 2. Fallback to Category-level options
-                                    const cat = categories.find(c => c.name === item.type);
-                                    if (cat && cat.stock_options) {
-                                        let parsed = cat.stock_options;
-                                        if (typeof parsed === 'string') {
-                                            try { parsed = JSON.parse(parsed); } catch { }
-                                        }
-                                        if (Array.isArray(parsed) && parsed.length > 0) {
-                                            options = parsed.map((p: any) => parseInt(p)).filter((n: number) => !isNaN(n));
-                                            // Ensure we have at least one valid option
-                                            if (options.length === 0) options = [1];
-                                        }
-                                    }
+            </Container>
 
-                                    return (
-                                        <StockControls
-                                            item={item}
-                                            options={options}
-                                            canAddStock={canAddStock}
-                                            canSubtractStock={canSubtractStock}
-                                            allowCustom={allowCustomIncrement}
-                                            onAdjust={handleAdjust}
-                                        />
-                                    );
-                                })()}
-                            </div>
-                        </div>
-                    </div>
-                ))}
-                {filteredItems.length === 0 && (
-                    <div style={{ textAlign: 'center', color: '#6b7280', padding: '2rem' }}>
-                        No items found match your filters.
-                    </div>
-                )}
-            </div>
+            {/* Modals Transformed to Dialogs */}
+            <Dialog open={!!editingItem} onClose={() => setEditingItem(null)} maxWidth="sm" fullWidth>
+                <DialogTitle>Set Cost: {editingItem?.name}</DialogTitle>
+                <DialogContent dividers>
+                    <Typography variant="body2" color="text.secondary" gutterBottom>Pricing Basis (Click to select input mode):</Typography>
+                    <RadioGroup row value={lastBasis} onChange={(e) => setLastBasis(e.target.value as any)} sx={{ mb: 2 }}>
+                        <FormControlLabel value="unit" control={<Radio color="primary" />} label="Unit (Bottle/Can)" />
+                        <FormControlLabel value="6" control={<Radio color="primary" />} label="6-Pack" />
+                        <FormControlLabel value="24" control={<Radio color="primary" />} label="24-Pack" />
+                    </RadioGroup>
 
-            {editingItem && (
-                <div className={styles.modalOverlay}>
-                    <div className={styles.modal}>
-                        <h2 className={styles.modalTitle}>Set Cost: {editingItem.name}</h2>
-                        <div className={styles.modalActions} style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '0.5rem', marginBottom: '1rem', width: '100%' }}>
-                            <label style={{ color: '#aaa', fontSize: '0.9rem' }}>Pricing Basis (Click to select input mode):</label>
-                            <div style={{ display: 'flex', gap: '1rem' }}>
-                                <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: lastBasis === 'unit' ? '#fbbf24' : 'white' }}>
-                                    <input type="radio" checked={lastBasis === 'unit'} onChange={() => setLastBasis('unit')} /> Unit (Bottle/Can)
-                                </label>
-                                <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: lastBasis === '6' ? '#fbbf24' : 'white' }}>
-                                    <input type="radio" checked={lastBasis === '6'} onChange={() => setLastBasis('6')} /> 6-Pack
-                                </label>
-                                <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: lastBasis === '24' ? '#fbbf24' : 'white' }}>
-                                    <input type="radio" checked={lastBasis === '24'} onChange={() => setLastBasis('24')} /> 24-Pack
-                                </label>
-                            </div>
-                        </div>
-
-                        <div className={styles.formGroup} style={lastBasis !== 'unit' ? { opacity: 0.6 } : {}}>
-                            <label className={styles.label}>Unit Cost ($)</label>
-                            <input
-                                className={styles.input}
+                    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
+                        <Box sx={{ gridColumn: '1 / -1' }}>
+                            <TextField
+                                fullWidth
+                                label="Unit Cost ($)"
                                 type="number"
-                                step="0.01"
                                 value={editCost}
                                 onChange={(e) => { setLastBasis('unit'); handleCostChange(e.target.value, 'unit'); }}
+                                disabled={lastBasis !== 'unit'}
                             />
-                        </div>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                            <div className={styles.formGroup} style={lastBasis !== '6' ? { opacity: 0.6 } : {}}>
-                                <label className={styles.label}>6-Pack Price</label>
-                                <input className={styles.input} type="number" step="0.01" value={pack6Cost} onChange={(e) => { setLastBasis('6'); handleCostChange(e.target.value, '6'); }} />
-                            </div>
-                            <div className={styles.formGroup} style={lastBasis !== '24' ? { opacity: 0.6 } : {}}>
-                                <label className={styles.label}>24-Pack Price</label>
-                                <input className={styles.input} type="number" step="0.01" value={pack24Cost} onChange={(e) => { setLastBasis('24'); handleCostChange(e.target.value, '24'); }} />
-                            </div>
-                        </div>
+                        </Box>
+                        <Box>
+                            <TextField
+                                fullWidth
+                                label="6-Pack Price"
+                                type="number"
+                                value={pack6Cost}
+                                onChange={(e) => { setLastBasis('6'); handleCostChange(e.target.value, '6'); }}
+                                disabled={lastBasis !== '6'}
+                            />
+                        </Box>
+                        <Box>
+                            <TextField
+                                fullWidth
+                                label="24-Pack Price"
+                                type="number"
+                                value={pack24Cost}
+                                onChange={(e) => { setLastBasis('24'); handleCostChange(e.target.value, '24'); }}
+                                disabled={lastBasis !== '24'}
+                            />
+                        </Box>
+                    </Box>
+                    
+                    <Typography variant="body2" color="primary" sx={{ mt: 2 }}>
+                        {lastBasis === 'unit' && `Saving Unit Cost: $${editCost}`}
+                        {lastBasis === '6' && `Saving Unit Cost: $${editCost} (Derived from 6-Pack: $${pack6Cost})`}
+                        {lastBasis === '24' && `Saving Unit Cost: $${editCost} (Derived from 24-Pack: $${pack24Cost})`}
+                    </Typography>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setEditingItem(null)}>Cancel</Button>
+                    <Button variant="contained" onClick={saveCost}>Save Cost</Button>
+                </DialogActions>
+            </Dialog>
 
-                        <div style={{ marginTop: '0.5rem', marginBottom: '1rem', color: '#fbbf24', fontSize: '0.9rem' }}>
-                            {lastBasis === 'unit' && `Saving Unit Cost: $${editCost}`}
-                            {lastBasis === '6' && `Saving Unit Cost: $${editCost} (Derived from 6-Pack: $${pack6Cost})`}
-                            {lastBasis === '24' && `Saving Unit Cost: $${editCost} (Derived from 24-Pack: $${pack24Cost})`}
-                        </div>
+            <Dialog open={showModal} onClose={() => setShowModal(false)} maxWidth="sm" fullWidth>
+                <form onSubmit={handleCreateItem}>
+                    <DialogTitle>Add New Item</DialogTitle>
+                    <DialogContent dividers>
+                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
+                            <TextField
+                                fullWidth
+                                label="Name"
+                                value={newItemName}
+                                onChange={e => setNewItemName(e.target.value)}
+                                required
+                                autoFocus
+                            />
+                            <FormControl fullWidth>
+                                <InputLabel>Type</InputLabel>
+                                <Select value={newItemType} label="Type" onChange={e => setNewItemType(e.target.value)}>
+                                    {categories.map(c => <MenuItem key={c.id} value={c.name}>{c.name}</MenuItem>)}
+                                </Select>
+                            </FormControl>
 
-                        <div className={styles.modalActions}>
-                            <button type="button" className={styles.cancelBtn} onClick={() => setEditingItem(null)}>Cancel</button>
-                            <button type="button" className={styles.submitModalBtn} onClick={saveCost}>Save Cost</button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-
-            {showModal && (
-                <div className={styles.modalOverlay}>
-                    <div className={styles.modal}>
-                        <h2 className={styles.modalTitle}>Add New Item</h2>
-                        <form onSubmit={handleCreateItem}>
-                            <div className={styles.formGroup}>
-                                <label className={styles.label}>Name</label>
-                                <input
-                                    className={styles.input}
-                                    value={newItemName}
-                                    onChange={e => setNewItemName(e.target.value)}
-                                    placeholder="Item Name"
-                                    required
-                                    autoFocus
-                                />
-                            </div>
-                            <div className={styles.formGroup}>
-                                <label className={styles.label}>Type</label>
-                                <select className={styles.input} value={newItemType} onChange={e => setNewItemType(e.target.value)}>
-                                    {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
-                                </select>
-                            </div>
                             {(() => {
                                 const cat = categories.find(c => c.name === newItemType);
                                 if (cat && cat.sub_categories && cat.sub_categories.length > 0) {
                                     return (
-                                        <div className={styles.formGroup}>
-                                            <label className={styles.label}>Sub-Category</label>
-                                            <select className={styles.input} value={newItemSecondary} onChange={e => setNewItemSecondary(e.target.value)}>
-                                                <option value="">(None)</option>
-                                                {cat.sub_categories.map((sub: string) => <option key={sub} value={sub}>{sub}</option>)}
-                                            </select>
-                                        </div>
+                                        <FormControl fullWidth>
+                                            <InputLabel>Sub-Category</InputLabel>
+                                            <Select value={newItemSecondary} label="Sub-Category" onChange={e => setNewItemSecondary(e.target.value)}>
+                                                <MenuItem value=""><em>(None)</em></MenuItem>
+                                                {cat.sub_categories.map((sub: string) => <MenuItem key={sub} value={sub}>{sub}</MenuItem>)}
+                                            </Select>
+                                        </FormControl>
                                     );
                                 }
                                 return null;
                             })()}
 
-                            {/* New Fields: Supplier, Cost, Qty */}
-                            <div className={styles.formGroup}>
-                                <label className={styles.label}>Supplier (Optional)</label>
+                            <FormControl fullWidth>
                                 {suppliers.length > 0 ? (
-                                    <select
-                                        className={styles.input}
-                                        value={newItemSupplier}
-                                        onChange={e => setNewItemSupplier(e.target.value)}
-                                    >
-                                        <option value="">Select a Supplier</option>
-                                        {suppliers.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
-                                    </select>
+                                    <>
+                                        <InputLabel>Supplier (Optional)</InputLabel>
+                                        <Select value={newItemSupplier} label="Supplier (Optional)" onChange={e => setNewItemSupplier(e.target.value)}>
+                                            <MenuItem value=""><em>None</em></MenuItem>
+                                            {suppliers.map(s => <MenuItem key={s.id} value={s.name}>{s.name}</MenuItem>)}
+                                        </Select>
+                                    </>
                                 ) : (
-                                    <input
-                                        className={styles.input}
+                                    <TextField
+                                        label="Supplier (Optional)"
                                         value={newItemSupplier}
                                         onChange={e => setNewItemSupplier(e.target.value)}
                                         placeholder="e.g. Acme Distributors"
                                     />
                                 )}
-                            </div>
+                            </FormControl>
 
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                                <div className={styles.formGroup}>
-                                    <label className={styles.label}>Cost ($)</label>
-                                    <input
-                                        className={styles.input}
-                                        type="number" step="0.01"
+                            <Box sx={{ display: 'flex', gap: 2, flexDirection: { xs: 'column', sm: 'row' } }}>
+                                <Box sx={{ flex: 1 }}>
+                                    <TextField
+                                        fullWidth
+                                        label="Cost ($)"
+                                        type="number"
                                         value={newItemCost}
                                         onChange={e => setNewItemCost(e.target.value)}
-                                        placeholder="0.00"
+                                        inputProps={{ step: "0.01" }}
                                     />
-                                </div>
-                                <div className={styles.formGroup}>
-                                    <label className={styles.label}>Initial Qty</label>
+                                </Box>
+                                <Box sx={{ flex: 1 }}>
                                     {(() => {
-                                        // Dynamic qty selector based on category options
                                         const cat = categories.find(c => c.name === newItemType);
                                         let options = [1];
                                         if (cat && cat.stock_options) {
@@ -641,156 +650,131 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
                                                 options = parsed.map((p: any) => parseInt(p)).filter((n: number) => !isNaN(n));
                                             }
                                         }
-                                        // Add 0 as a default option? User probably wants to pick a pack size. 
-                                        // Or allow typing custom number? User asked for "option to select more than 1, 2... based on settings"
-                                        // Let's offer a select with the configured options + a custom input fallback? 
-                                        // Or just a select if options exist.
-
                                         return (
-                                            <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                                <select
-                                                    className={styles.input}
-                                                    value={newItemQty}
-                                                    onChange={e => setNewItemQty(e.target.value)}
-                                                    style={{ flex: 1 }}
-                                                >
-                                                    <option value="">0</option>
+                                            <FormControl fullWidth>
+                                                <InputLabel>Initial Qty</InputLabel>
+                                                <Select value={newItemQty} label="Initial Qty" onChange={e => setNewItemQty(e.target.value as string)}>
+                                                    <MenuItem value="">0</MenuItem>
                                                     {options.sort((a, b) => a - b).map(opt => (
-                                                        <option key={opt} value={opt}>{opt}</option>
+                                                        <MenuItem key={opt} value={opt}>{opt}</MenuItem>
                                                     ))}
-                                                    {/* Add some standard multiples just in case if limited options? User said "based on category setting" */}
-                                                </select>
-                                            </div>
+                                                </Select>
+                                            </FormControl>
                                         );
                                     })()}
-                                </div>
-                            </div>
-                            <div className={styles.modalActions}>
-                                <button type="button" className={styles.cancelBtn} onClick={() => setShowModal(false)}>Cancel</button>
-                                <button type="submit" className={styles.submitModalBtn} disabled={loading}>
-                                    {loading ? '...' : 'Create Item'}
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            )}
-            {showActivityModal && (
-                <div className={styles.modalOverlay}>
-                    <div className={styles.modal}>
-                        <h2 className={styles.modalTitle}>Session Activity</h2>
-                        <div style={{ maxHeight: '300px', overflowY: 'auto', marginBottom: '1rem' }}>
-                            {myActivity
-                                .filter(log => !user.iat || new Date(log.timestamp).getTime() > user.iat * 1000)
-                                .length === 0 ? <div style={{ color: '#9ca3af', textAlign: 'center' }}>No activity in this session.</div> : (
-                                <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-                                    {(() => {
-                                        // 1. Filter & Aggregate
-                                        const aggregated: Record<string, number> = {};
+                                </Box>
+                            </Box>
+                        </Box>
+                    </DialogContent>
+                    <DialogActions>
+                        <Button onClick={() => setShowModal(false)} disabled={loading}>Cancel</Button>
+                        <Button type="submit" variant="contained" disabled={loading}>
+                            {loading ? '...' : 'Create Item'}
+                        </Button>
+                    </DialogActions>
+                </form>
+            </Dialog>
 
-                                        myActivity
-                                            .filter(log => !user.iat || new Date(log.timestamp).getTime() > user.iat * 1000)
-                                            .forEach(log => {
-                                                let details: any = {};
-                                                try {
-                                                    details = typeof log.details === 'string' ? JSON.parse(log.details) : log.details;
-                                                } catch { return; }
+            <Dialog open={showActivityModal} onClose={() => setShowActivityModal(false)} maxWidth="sm" fullWidth>
+                <DialogTitle>Session Activity</DialogTitle>
+                <DialogContent dividers>
+                    {myActivity.filter(log => !user.iat || new Date(log.timestamp).getTime() > user.iat * 1000).length === 0 ? (
+                        <Typography variant="body2" color="text.secondary" align="center">No activity in this session.</Typography>
+                    ) : (
+                        <Box component="ul" sx={{ listStyle: 'none', p: 0, m: 0 }}>
+                            {(() => {
+                                const aggregated: Record<string, number> = {};
+                                myActivity
+                                    .filter(log => !user.iat || new Date(log.timestamp).getTime() > user.iat * 1000)
+                                    .forEach(log => {
+                                        let details: any = {};
+                                        try { details = typeof log.details === 'string' ? JSON.parse(log.details) : log.details; } catch { return; }
+                                        if (log.action === 'ADD_STOCK' || log.action === 'SUBTRACT_STOCK') {
+                                            const name = details.itemName || 'Unknown Item';
+                                            const qty = Number(details.quantity || Math.abs(details.change || 0));
+                                            if (!aggregated[name]) aggregated[name] = 0;
+                                            if (log.action === 'ADD_STOCK') aggregated[name] += qty;
+                                            else aggregated[name] -= qty;
+                                        }
+                                    });
 
-                                                // Only care about Stock Actions
-                                                if (log.action === 'ADD_STOCK' || log.action === 'SUBTRACT_STOCK') {
-                                                    const name = details.itemName || 'Unknown Item';
-                                                    const qty = Number(details.quantity || Math.abs(details.change || 0));
+                                const items = Object.entries(aggregated);
+                                if (items.length === 0) return <Typography variant="body2" color="text.secondary" align="center">No stock changes in this session.</Typography>;
 
-                                                    if (!aggregated[name]) aggregated[name] = 0;
+                                return items.map(([name, netChange], idx) => (
+                                    <Box component="li" key={idx} sx={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid', borderColor: 'divider', py: 1 }}>
+                                        <Typography variant="body1" fontWeight="bold">{name}</Typography>
+                                        <Typography variant="body1" fontWeight="bold" color={netChange > 0 ? 'success.main' : netChange < 0 ? 'error.main' : 'text.secondary'}>
+                                            {netChange > 0 ? '+' : ''}{netChange}
+                                        </Typography>
+                                    </Box>
+                                ));
+                            })()}
+                        </Box>
+                    )}
+                </DialogContent>
+                <DialogActions sx={{ flexDirection: 'column', gap: 1 }}>
+                    <Button
+                        variant="contained"
+                        fullWidth
+                        onClick={() => {
+                            if (user.role === 'admin') router.push('/admin/dashboard');
+                            else setShowActivityModal(false);
+                        }}
+                    >
+                        {user.role === 'admin' ? 'Return to Dashboard' : 'Keep Working'}
+                    </Button>
+                    <Button
+                        variant="outlined"
+                        color="error"
+                        fullWidth
+                        onClick={handleLogout}
+                    >
+                        Logout
+                    </Button>
+                </DialogActions>
+            </Dialog>
 
-                                                    if (log.action === 'ADD_STOCK') aggregated[name] += qty;
-                                                    else aggregated[name] -= qty;
-                                                }
-                                            });
-
-                                        const items = Object.entries(aggregated);
-
-                                        if (items.length === 0) return <div style={{ color: '#9ca3af', textAlign: 'center' }}>No stock changes in this session.</div>;
-
-                                        return items.map(([name, netChange], idx) => (
-                                            <li key={idx} style={{ borderBottom: '1px solid #374151', padding: '0.75rem 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                <div style={{ color: 'white', fontWeight: 'bold' }}>{name}</div>
-                                                <div style={{
-                                                    color: netChange > 0 ? '#34d399' : netChange < 0 ? '#f87171' : '#9ca3af',
-                                                    fontWeight: 'bold'
-                                                }}>
-                                                    {netChange > 0 ? '+' : ''}{netChange}
-                                                </div>
-                                            </li>
-                                        ));
-                                    })()}
-                                </ul>
-                            )}
-                        </div>
-                        <div className={styles.modalActions} style={{ display: 'flex', gap: '0.5rem', width: '100%' }}>
-                            <button
-                                className={styles.submitModalBtn}
-                                onClick={() => {
-                                    if (user.role === 'admin') {
-                                        router.push('/admin/dashboard');
-                                    } else {
-                                        setShowActivityModal(false);
-                                    }
-                                }}
-                                style={{ flex: 1 }}
-                            >
-                                {user.role === 'admin' ? 'Return to Dashboard' : 'Keep Working'}
-                            </button>
-                            <button
-                                className={styles.cancelBtn}
-                                onClick={handleLogout}
-                                style={{ flex: 1, backgroundColor: '#7f1d1d', border: '1px solid #991b1b' }}
-                            >
-                                Logout
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-            {bottleModal && bottleModal.show && (
-                <div className={styles.modalOverlay}>
-                    <div className={styles.modal}>
-                        <h2 className={styles.modalTitle}>Existing Bottle Level?</h2>
-                        <p style={{ color: '#ccc', marginBottom: '1rem' }}>
-                            Replacing <strong>{bottleModal.item?.name}</strong>. How much was left?
-                        </p>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                            <button
-                                className={styles.submitModalBtn}
-                                style={{ background: '#10b981' }}
-                                onClick={() => {
+            <Dialog open={bottleModal !== null && bottleModal.show} onClose={() => setBottleModal(null)} maxWidth="xs" fullWidth>
+                <DialogTitle>Existing Bottle Level?</DialogTitle>
+                <DialogContent>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                        Replacing <strong>{bottleModal?.item?.name}</strong>. How much was left?
+                    </Typography>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                        <Button
+                            variant="contained"
+                            color="success"
+                            onClick={() => {
+                                if (bottleModal) {
                                     handleAdjust(bottleModal.itemId, bottleModal.amount, 'Standard Replacement');
                                     setBottleModal(null);
-                                }}
-                            >
-                                Standard Replacement
-                            </button>
-                            <div style={{ fontSize: '0.9rem', color: '#9ca3af', marginTop: '0.5rem', marginBottom: '0.25rem' }}>Previous Shift / Partial:</div>
-                            {bottleOptions.map(opt => (
-                                <button
-                                    key={opt.id}
-                                    className={styles.submitModalBtn}
-                                    style={{ background: '#374151', textAlign: 'left', paddingLeft: '1rem' }}
-                                    onClick={() => {
+                                }
+                            }}
+                        >
+                            Standard Replacement
+                        </Button>
+                        <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>Previous Shift / Partial:</Typography>
+                        {bottleOptions.map(opt => (
+                            <Button
+                                key={opt.id}
+                                variant="outlined"
+                                onClick={() => {
+                                    if (bottleModal) {
                                         handleAdjust(bottleModal.itemId, bottleModal.amount, opt.label);
                                         setBottleModal(null);
-                                    }}
-                                >
-                                    {opt.label}
-                                </button>
-                            ))}
-                        </div>
-                        <div className={styles.modalActions} style={{ marginTop: '1rem' }}>
-                            <button className={styles.cancelBtn} onClick={() => setBottleModal(null)}>Cancel</button>
-                        </div>
-                    </div>
-                </div>
-            )}
-        </div>
+                                    }
+                                }}
+                            >
+                                {opt.label}
+                            </Button>
+                        ))}
+                    </Box>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setBottleModal(null)}>Cancel</Button>
+                </DialogActions>
+            </Dialog>
+        </Box>
     );
 }

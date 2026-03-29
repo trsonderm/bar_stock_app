@@ -4,6 +4,11 @@ import { useState, useEffect } from 'react';
 import styles from '../admin.module.css';
 import CsvMappingModal from './CsvMappingModal';
 
+interface OrderSizeOption {
+    label: string;
+    amount: number;
+}
+
 interface Item {
     id: number;
     name: string;
@@ -14,9 +19,10 @@ interface Item {
     supplier?: string;
     supplier_id?: number;
     low_stock_threshold?: number;
-    order_size?: number | number[];
+    order_size?: OrderSizeOption[] | number[] | number;
     stock_options?: number[];
     include_in_audit?: boolean;
+    assigned_locations?: number[];
 }
 
 interface Category {
@@ -46,17 +52,19 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
         supplier_id: undefined as number | undefined,
         unit_cost: '',
         quantity: '',
-        order_size: [1] as number[],
+        order_size: [{ label: 'Unit', amount: 1 }] as OrderSizeOption[],
         low_stock_threshold: '5' as string | null, // '5' or null (for global) or custom string
         track_quantity: true,
         include_in_audit: true,
-        stock_options: [] as number[]
+        stock_options: [] as number[],
+        assignedLocations: [] as number[]
     });
 
     // Temp input for stock options
     const [tempOptionInput, setTempOptionInput] = useState('');
     // Temp input for order sizes
-    const [tempOrderInput, setTempOrderInput] = useState('');
+    const [tempOrderLabel, setTempOrderLabel] = useState('Pack');
+    const [tempOrderAmount, setTempOrderAmount] = useState('');
 
     const [stockMode, setStockMode] = useState<string>('CATEGORY');
 
@@ -112,14 +120,16 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
             supplier_id: undefined,
             unit_cost: '',
             quantity: '',
-            order_size: [1],
+            order_size: [{ label: 'Unit', amount: 1 }],
             low_stock_threshold: '5',
             track_quantity: true,
             include_in_audit: true,
-            stock_options: []
+            stock_options: [],
+            assignedLocations: []
         });
         setTempOptionInput('');
-        setTempOrderInput('');
+        setTempOrderLabel('Pack');
+        setTempOrderAmount('');
         setAddToAllLocations(false);
     };
 
@@ -140,11 +150,25 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
             supplier_id: item.supplier_id,
             unit_cost: item.unit_cost !== undefined ? item.unit_cost.toString() : '',
             quantity: item.quantity !== undefined ? item.quantity.toString() : '',
-            order_size: Array.isArray(item.order_size) ? item.order_size : (item.order_size ? [item.order_size] : [1]),
+            order_size: (() => {
+                const os = item.order_size;
+                if (!os) return [{ label: 'Unit', amount: 1 }];
+                if (Array.isArray(os)) {
+                    if (os.length > 0 && typeof os[0] === 'object' && os[0] !== null && 'amount' in os[0]) {
+                        return os as OrderSizeOption[];
+                    }
+                    return (os as number[]).map(n => ({ label: n === 1 ? 'Unit' : n.toString(), amount: n }));
+                }
+                if (typeof os === 'number') {
+                    return [{ label: os === 1 ? 'Unit' : os.toString(), amount: os }];
+                }
+                return [{ label: 'Unit', amount: 1 }];
+            })(),
             low_stock_threshold: item.low_stock_threshold === null || item.low_stock_threshold === undefined ? null : item.low_stock_threshold.toString(),
             track_quantity: true, // Assuming true if it exists, or check quantity
             include_in_audit: item.include_in_audit !== undefined ? item.include_in_audit : true,
-            stock_options: Array.isArray(item.stock_options) ? item.stock_options : []
+            stock_options: Array.isArray(item.stock_options) ? item.stock_options : [],
+            assignedLocations: item.assigned_locations || []
         });
 
         setShowModal(true);
@@ -162,11 +186,12 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                 supplier_id: formData.supplier_id,
                 unit_cost: formData.unit_cost ? parseFloat(formData.unit_cost) : 0,
                 quantity: formData.quantity ? parseFloat(formData.quantity) : 0,
-                order_size: formData.order_size.length > 0 ? formData.order_size : [1],
+                order_size: formData.order_size.length > 0 ? formData.order_size : [{ label: 'Unit', amount: 1 }],
                 low_stock_threshold: formData.low_stock_threshold === null ? null : parseInt(formData.low_stock_threshold || '5'),
                 track_quantity: formData.track_quantity ? 1 : 0,
                 include_in_audit: formData.include_in_audit,
                 stock_options: formData.stock_options.length > 0 ? formData.stock_options : null,
+                assignedLocations: formData.assignedLocations,
                 add_to_all_locations: addToAllLocations
             };
 
@@ -349,7 +374,16 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                                     <td>{item.supplier || '-'}</td>
                                     <td>${Number(item.unit_cost || 0).toFixed(2)}</td>
                                     <td style={{ fontSize: '0.9em', color: '#cbd5e1' }}>
-                                        {Array.isArray(item.order_size) ? item.order_size.map(os => <div key={os}>{os}</div>) : (item.order_size ?? 1)}
+                                        {(() => {
+                                            const os = item.order_size;
+                                            if (Array.isArray(os)) {
+                                                if (os.length > 0 && typeof os[0] === 'object' && os[0] !== null) {
+                                                    return (os as OrderSizeOption[]).map((o, idx) => <div key={idx}>{o.label}: {o.amount}</div>);
+                                                }
+                                                return (os as number[]).map(o => <div key={o}>{o}</div>);
+                                            }
+                                            return os ?? 1;
+                                        })()}
                                     </td>
                                     {stockMode === 'PRODUCT' && (
                                         <td style={{ fontWeight: 'bold', color: item.quantity === 0 ? '#ef4444' : item.quantity < (item.low_stock_threshold ?? 5) ? '#f59e0b' : 'inherit' }}>
@@ -492,52 +526,66 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                                 </div>
                                 <div>
                                     <label className={styles.statLabel}>Order Sizes</label>
-                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', background: '#374151', padding: '0.5rem', borderRadius: '0.5rem', minHeight: '42px' }}>
-                                        {formData.order_size.map((size) => (
-                                            <span key={size} style={{
-                                                background: '#d97706', color: 'white', padding: '2px 8px', borderRadius: '4px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '4px'
-                                            }}>
-                                                {size}
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setFormData(prev => ({ ...prev, order_size: prev.order_size.filter(o => o !== size) }))}
-                                                    style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', padding: 0, fontSize: '0.85rem', fontWeight: 'bold' }}
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', background: '#374151', padding: '0.5rem', borderRadius: '0.5rem', minHeight: '42px' }}>
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                                            {formData.order_size.map((size, idx) => (
+                                                <span key={idx} style={{
+                                                    background: '#d97706', color: 'white', padding: '2px 8px', borderRadius: '4px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap'
+                                                }}>
+                                                    {size.label}: {size.amount}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setFormData(prev => ({ ...prev, order_size: prev.order_size.filter((_, i) => i !== idx) }))}
+                                                        style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', padding: 0, fontSize: '0.85rem', fontWeight: 'bold' }}
+                                                    >
+                                                        x
+                                                    </button>
+                                                </span>
+                                            ))}
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '4px', marginTop: '4px' }}>
+                                            {tempOrderLabel !== 'Custom' ? (
+                                                <select
+                                                    className={styles.input}
+                                                    value={tempOrderLabel}
+                                                    onChange={e => setTempOrderLabel(e.target.value)}
+                                                    style={{ width: '80px', padding: '2px 4px', fontSize: '0.9rem' }}
                                                 >
-                                                    x
-                                                </button>
-                                            </span>
-                                        ))}
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                    <option value="Unit">Unit</option>
+                                                    <option value="Pack">Pack</option>
+                                                    <option value="Case">Case</option>
+                                                    <option value="Custom">Custom</option>
+                                                </select>
+                                            ) : (
+                                                <input
+                                                    className={styles.input}
+                                                    placeholder="Type..."
+                                                    onChange={e => setTempOrderLabel(e.target.value)}
+                                                    style={{ width: '80px', padding: '2px 4px', fontSize: '0.9rem' }}
+                                                    autoFocus
+                                                />
+                                            )}
+
                                             <input
                                                 className={styles.input}
-                                                value={tempOrderInput}
-                                                onChange={e => setTempOrderInput(e.target.value)}
-                                                onKeyDown={(e) => {
-                                                    if (e.key === 'Enter') {
-                                                        e.preventDefault();
-                                                        const val = parseInt(tempOrderInput);
-                                                        if (!isNaN(val) && !formData.order_size.includes(val)) {
-                                                            setFormData(prev => ({
-                                                                ...prev,
-                                                                order_size: [...prev.order_size, val].sort((a, b) => a - b)
-                                                            }));
-                                                            setTempOrderInput('');
-                                                        }
-                                                    }
-                                                }}
-                                                placeholder="#"
+                                                value={tempOrderAmount}
+                                                onChange={e => setTempOrderAmount(e.target.value)}
+                                                placeholder="Qty"
+                                                type="number"
                                                 style={{ width: '60px', padding: '2px 4px', fontSize: '0.9rem' }}
                                             />
                                             <button
                                                 type="button"
                                                 onClick={() => {
-                                                    const val = parseInt(tempOrderInput);
-                                                    if (!isNaN(val) && !formData.order_size.includes(val)) {
+                                                    const val = parseInt(tempOrderAmount);
+                                                    if (!isNaN(val) && val > 0 && tempOrderLabel.trim() !== '') {
+                                                        const newOpt = { label: tempOrderLabel.trim(), amount: val };
                                                         setFormData(prev => ({
                                                             ...prev,
-                                                            order_size: [...prev.order_size, val].sort((a, b) => a - b)
+                                                            order_size: [...prev.order_size, newOpt]
                                                         }));
-                                                        setTempOrderInput('');
+                                                        setTempOrderAmount('');
+                                                        setTempOrderLabel('Pack');
                                                     }
                                                 }}
                                                 style={{ background: '#10b981', color: 'white', border: 'none', borderRadius: '4px', padding: '2px 6px', cursor: 'pointer', fontSize: '0.9rem' }}
@@ -658,19 +706,27 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                                 )}
                             </div>
 
-                            {!editingId && myLocations.length > 1 && (
+                            {myLocations.length > 0 && (
                                 <div style={{ marginBottom: '1rem', padding: '1rem', background: '#1e293b', borderRadius: '0.5rem', border: '1px solid #3b82f6' }}>
-                                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', color: 'white', fontWeight: 'bold' }}>
-                                        <input
-                                            type="checkbox"
-                                            checked={addToAllLocations}
-                                            onChange={e => setAddToAllLocations(e.target.checked)}
-                                            style={{ width: '18px', height: '18px', accentColor: '#3b82f6' }}
-                                        />
-                                        Add to all my locations
-                                    </label>
-                                    <p className="text-xs text-gray-400 mt-1" style={{ marginLeft: '26px' }}>
-                                        If checked, this product will be created and tracked at all {myLocations.length} locations you have access to.
+                                    <label className={styles.statLabel} style={{ marginBottom: '0.5rem', display: 'block' }}>Assigned Locations</label>
+                                    <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                                        {myLocations.map(loc => (
+                                            <label key={loc.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'white', cursor: 'pointer' }}>
+                                                <input
+                                                    type="checkbox"
+                                                    checked={formData.assignedLocations.includes(loc.id)}
+                                                    onChange={e => {
+                                                        if (e.target.checked) setFormData(p => ({ ...p, assignedLocations: [...p.assignedLocations, loc.id] }));
+                                                        else setFormData(p => ({ ...p, assignedLocations: p.assignedLocations.filter(id => id !== loc.id) }));
+                                                    }}
+                                                    style={{ width: '18px', height: '18px', accentColor: '#3b82f6' }}
+                                                />
+                                                {loc.name}
+                                            </label>
+                                        ))}
+                                    </div>
+                                    <p className="text-xs text-gray-400 mt-2">
+                                        Select the locations where this product should be tracked.
                                     </p>
                                 </div>
                             )}

@@ -1,7 +1,10 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Bell, X, Check } from 'lucide-react';
+import { X, Check } from 'lucide-react';
+import IconButton from '@mui/material/IconButton';
+import Badge from '@mui/material/Badge';
+import NotificationsIcon from '@mui/icons-material/Notifications';
 
 interface Notification {
     id: number;
@@ -66,16 +69,15 @@ export default function NotificationBell() {
 
     return (
         <div className="relative" ref={wrapperRef}>
-            <button
+            <IconButton
                 onClick={() => setIsOpen(!isOpen)}
-                className="relative p-2 rounded-full hover:bg-gray-800 text-gray-300 hover:text-white transition-colors"
+                color="inherit"
                 title="Notifications"
             >
-                <Bell className="w-6 h-6" />
-                {unreadCount > 0 && (
-                    <span className="absolute top-1 right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-gray-900"></span>
-                )}
-            </button>
+                <Badge badgeContent={unreadCount} color="error">
+                    <NotificationsIcon />
+                </Badge>
+            </IconButton>
 
             {isOpen && (
                 <div className="absolute right-0 mt-2 w-80 bg-gray-900 border border-gray-700 rounded-xl shadow-2xl z-50 overflow-hidden">

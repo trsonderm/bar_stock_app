@@ -6,8 +6,13 @@ echo "Starting deployment..."
 echo "Pulling from git..."
 git pull
 
+echo "Exporting environment variables..."
+export NEXT_PUBLIC_APP_URL="https://dev.topshelftinventory.com"
+
 echo "Installing dependencies..."
-npm install
+# Ensure all libraries (including devDependencies required for build) are installed 
+# even if NODE_ENV=production is set in the environment
+npm install --include=dev --legacy-peer-deps
 
 echo "Checking database..."
 if [ ! -f "inventory.db" ]; then

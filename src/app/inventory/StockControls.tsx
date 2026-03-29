@@ -1,5 +1,10 @@
 import { useState } from 'react';
-import styles from './inventory.module.css';
+import Box from '@mui/material/Box';
+import IconButton from '@mui/material/IconButton';
+import TextField from '@mui/material/TextField';
+import Typography from '@mui/material/Typography';
+import AddIcon from '@mui/icons-material/Add';
+import RemoveIcon from '@mui/icons-material/Remove';
 
 interface StockControlsProps {
     item: any;
@@ -14,48 +19,40 @@ export default function StockControls({ item, options, canAddStock, canSubtractS
     const [customAmount, setCustomAmount] = useState<string>('');
 
     return (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', justifyContent: 'flex-end', width: '100%' }}>
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, justifyContent: 'flex-end', width: '100%', alignItems: 'center' }}>
             {options.sort((a, b) => a - b).map((amt) => (
-                <div key={amt} className={styles.stockGroup}>
-                    <span style={{ color: '#9ca3af', fontSize: '0.8rem', marginRight: '0.25rem' }}>{amt}:</span>
-                    <button className={`${styles.stockBtn} ${styles.minusBtn}`} disabled={!canSubtractStock} onClick={() => onAdjust(item.id, -amt)}>-</button>
-                    <button className={`${styles.stockBtn} ${styles.plusBtn}`} disabled={!canAddStock} onClick={() => onAdjust(item.id, amt)}>+</button>
-                </div>
+                <Box key={amt} sx={{ display: 'flex', alignItems: 'center', bgcolor: 'background.paper', borderRadius: 1, border: '1px solid', borderColor: 'divider', overflow: 'hidden' }}>
+                    <Typography variant="caption" sx={{ color: 'text.secondary', px: 1, fontWeight: 'bold' }}>{amt}</Typography>
+                    <IconButton size="small" color="error" disabled={!canSubtractStock} onClick={() => onAdjust(item.id, -amt)} sx={{ borderRadius: 0, borderLeft: '1px solid', borderColor: 'divider', p: 0.5 }}>
+                        <RemoveIcon fontSize="small" />
+                    </IconButton>
+                    <IconButton size="small" color="success" disabled={!canAddStock} onClick={() => onAdjust(item.id, amt)} sx={{ borderRadius: 0, borderLeft: '1px solid', borderColor: 'divider', p: 0.5 }}>
+                        <AddIcon fontSize="small" />
+                    </IconButton>
+                </Box>
             ))}
 
             {allowCustom && (
-                <div className={styles.stockGroup} style={{ borderLeft: '1px solid #374151', paddingLeft: '1rem' }}>
-                    <input
+                <Box sx={{ display: 'flex', alignItems: 'center', borderLeft: '1px solid', borderColor: 'divider', pl: 1 }}>
+                    <TextField
                         type="number"
-                        min="0.01"
-                        step="any"
+                        size="small"
                         placeholder="#"
                         value={customAmount}
                         onChange={(e) => setCustomAmount(e.target.value)}
-                        style={{ width: '60px', background: '#111827', border: '1px solid #374151', color: 'white', padding: '0.25rem', borderRadius: '0.25rem', marginRight: '0.5rem' }}
+                        inputProps={{ min: '0.01', step: 'any' }}
+                        sx={{ width: 70, mr: 1, '& .MuiInputBase-root': { height: 32 } }}
                     />
-                    <button
-                        className={`${styles.stockBtn} ${styles.minusBtn}`}
-                        disabled={!canSubtractStock || !customAmount}
-                        onClick={() => {
-                            const val = parseFloat(customAmount);
-                            if (val > 0) onAdjust(item.id, -val);
-                        }}
-                    >
-                        -
-                    </button>
-                    <button
-                        className={`${styles.stockBtn} ${styles.plusBtn}`}
-                        disabled={!canAddStock || !customAmount}
-                        onClick={() => {
-                            const val = parseFloat(customAmount);
-                            if (val > 0) onAdjust(item.id, val);
-                        }}
-                    >
-                        +
-                    </button>
-                </div>
+                    <Box sx={{ display: 'flex', bgcolor: 'background.paper', borderRadius: 1, border: '1px solid', borderColor: 'divider', overflow: 'hidden' }}>
+                        <IconButton size="small" color="error" disabled={!canSubtractStock || !customAmount} onClick={() => { const val = parseFloat(customAmount); if (val > 0) onAdjust(item.id, -val); }} sx={{ borderRadius: 0, p: 0.5 }}>
+                            <RemoveIcon fontSize="small" />
+                        </IconButton>
+                        <IconButton size="small" color="success" disabled={!canAddStock || !customAmount} onClick={() => { const val = parseFloat(customAmount); if (val > 0) onAdjust(item.id, val); }} sx={{ borderRadius: 0, borderLeft: '1px solid', borderColor: 'divider', p: 0.5 }}>
+                            <AddIcon fontSize="small" />
+                        </IconButton>
+                    </Box>
+                </Box>
             )}
-        </div>
+        </Box>
     );
 }

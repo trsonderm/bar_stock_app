@@ -10,6 +10,7 @@ export async function GET(req: NextRequest) {
 
     const { searchParams } = new URL(req.url);
     const dateParam = searchParams.get('date'); // YYYY-MM-DD
+    const locationId = searchParams.get('locationId');
     const today = new Date();
     const targetDate = dateParam ? new Date(dateParam) : today;
 
@@ -61,7 +62,7 @@ export async function GET(req: NextRequest) {
         console.log(`Daily Report Window: ${windowStart.toISOString()} -> ${windowEnd.toISOString()}`);
 
         // 2. Fetch All Activity Logs (Usage AND Restocks)
-        const logs = await db.query(`
+        let logsQuery = `
             SELECT 
                 al.user_id,
                 al.user_id,
@@ -77,7 +78,15 @@ export async function GET(req: NextRequest) {
               AND (al.action = 'SUBTRACT_STOCK' OR al.action = 'ADD_STOCK')
               AND al.timestamp >= $2
               AND al.timestamp <= $3
-        `, [organizationId, windowStart.toISOString(), windowEnd.toISOString()]);
+        `;
+        const logParams: any[] = [organizationId, windowStart.toISOString(), windowEnd.toISOString()];
+
+        if (locationId) {
+            logsQuery += ` AND (al.details->>'locationId')::text = $4`;
+            logParams.push(locationId);
+        }
+
+        const logs = await db.query(logsQuery, logParams);
 
         // 3. Fetch Item Costs (Current Cost, might have changed but best estimate)
         const itemIds = [...new Set(logs.map((l: any) => l.item_id))];
@@ -144,12 +153,21 @@ export async function GET(req: NextRequest) {
 
 
         // 5. Alerts (Low Stock & Run-out)
-        const inventory = await db.query(`
+        let invQuery = `
             SELECT i.id, i.name, i.low_stock_threshold, SUM(inv.quantity) as quantity, i.order_size, i.unit_cost
             FROM items i
             LEFT JOIN inventory inv ON i.id = inv.item_id WHERE inv.organization_id = $1
-            GROUP BY i.id
-        `, [organizationId]);
+        `;
+        const invParams: any[] = [organizationId];
+
+        if (locationId) {
+            invQuery += ` AND inv.location_id = $2`;
+            invParams.push(locationId);
+        }
+
+        invQuery += ` GROUP BY i.id`;
+
+        const inventory = await db.query(invQuery, invParams);
 
         const lowStockAlerts = inventory.filter((i: any) => i.quantity <= (i.low_stock_threshold || 5));
 

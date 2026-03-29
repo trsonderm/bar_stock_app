@@ -9,6 +9,8 @@ export const metadata: Metadata = {
   description: "Premium Bar Stock Management",
 };
 
+import ThemeRegistry from '@/components/ThemeRegistry';
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -22,7 +24,9 @@ export default function RootLayout({
         <link rel="icon" href="/icon.png" />
       </head>
       <body className={inter.className}>
-        {children}
+        <ThemeRegistry>
+          {children}
+        </ThemeRegistry>
       </body>
     </html>
   );

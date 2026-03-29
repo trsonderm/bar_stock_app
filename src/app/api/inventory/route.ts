@@ -43,7 +43,8 @@ export async function GET(req: NextRequest) {
         COALESCE(i.include_in_audit, true) as include_in_audit,
         MAX(isp.supplier_id) as supplier_id,
         COALESCE(SUM(inv.quantity), 0) as quantity,
-        COALESCE(MAX(usage_stats.usage_count), 0) as usage_count
+        COALESCE(MAX(usage_stats.usage_count), 0) as usage_count,
+        (SELECT json_agg(location_id) FROM inventory WHERE item_id = i.id) as assigned_locations
       FROM items i
       LEFT JOIN inventory inv ON i.id = inv.item_id AND inv.location_id = $2
       LEFT JOIN item_suppliers isp ON i.id = isp.item_id AND isp.is_preferred = true
@@ -92,7 +93,7 @@ export async function POST(req: NextRequest) {
         }
 
         const body = await req.json();
-        const { name, type, secondary_type, supplier, supplier_id, low_stock_threshold, order_size, stock_options, include_in_audit, quantity, add_to_all_locations } = body;
+        const { name, type, secondary_type, supplier, supplier_id, low_stock_threshold, order_size, stock_options, include_in_audit, quantity, assignedLocations, add_to_all_locations } = body;
 
         if (!name || !type) return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
 
@@ -129,7 +130,9 @@ export async function POST(req: NextRequest) {
         // Determine locations to init inventory
         let locationsToInit: { id: number }[] = [];
 
-        if (add_to_all_locations) {
+        if (assignedLocations && Array.isArray(assignedLocations) && assignedLocations.length > 0) {
+            locationsToInit = assignedLocations.map((id: number) => ({ id }));
+        } else if (add_to_all_locations) {
             const assigned = await db.query(`
                 SELECT l.id 
                 FROM locations l
@@ -196,7 +199,7 @@ export async function PUT(req: NextRequest) {
 
         if (!canEdit && !canStock) return NextResponse.json({ error: 'Permission denied' }, { status: 403 });
 
-        const { id, unit_cost, name, type, quantity, secondary_type, supplier, supplier_id, low_stock_threshold, order_size, stock_options, include_in_audit } = await req.json();
+        const { id, unit_cost, name, type, quantity, secondary_type, supplier, supplier_id, low_stock_threshold, order_size, stock_options, include_in_audit, assignedLocations } = await req.json();
 
         if (!id) return NextResponse.json({ error: 'Missing ID' }, { status: 400 });
 
@@ -261,6 +264,29 @@ export async function PUT(req: NextRequest) {
         VALUES($1, $2, true)
                     ON CONFLICT(item_id, supplier_id) DO UPDATE SET is_preferred = true
             `, [id, supplier_id]);
+            }
+
+            // Location Sync logic
+            if (assignedLocations !== undefined && Array.isArray(assignedLocations)) {
+                // Fetch current locations
+                const currentLocs = await db.query('SELECT location_id FROM inventory WHERE item_id = $1 AND organization_id = $2', [id, organizationId]);
+                const currentLocIds = currentLocs.map((l: any) => l.location_id);
+
+                // Add missing
+                for (const locId of assignedLocations) {
+                    if (!currentLocIds.includes(locId)) {
+                        await db.execute(
+                            'INSERT INTO inventory (item_id, location_id, quantity, organization_id) VALUES ($1, $2, 0, $3)',
+                            [id, locId, organizationId]
+                        );
+                    }
+                }
+
+                // Remove extra
+                const locsToRemove = currentLocIds.filter((lid: number) => !assignedLocations.includes(lid));
+                if (locsToRemove.length > 0) {
+                    await db.execute('DELETE FROM inventory WHERE item_id = $1 AND organization_id = $2 AND location_id = ANY($3::int[])', [id, organizationId, locsToRemove]);
+                }
             }
         }
 

@@ -24,6 +24,8 @@ export default function AdminNav({ user }: { user: NavUser }) {
     const isActive = (path: string) => pathname === path;
 
     const [dropdownOpen, setDropdownOpen] = useState(false);
+    const [productDropdownOpen, setProductDropdownOpen] = useState(false);
+    const [orderDropdownOpen, setOrderDropdownOpen] = useState(false);
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -91,25 +93,63 @@ export default function AdminNav({ user }: { user: NavUser }) {
                     {isMobileMenuOpen ? '✖ Close' : '☰ Menu'}
                 </button>
             </div>
-            <nav className={`${styles.nav} ${isMobileMenuOpen ? 'flex flex-col' : 'hidden md:flex flex-row overflow-x-auto overflow-y-hidden'}`}>
+            <nav className={`${styles.nav} ${isMobileMenuOpen ? 'flex flex-col' : 'hidden md:flex flex-row flex-wrap'}`}>
                 <Link href="/admin/dashboard" className={isActive('/admin/dashboard') ? styles.navItemActive : styles.navItem}>Dashboard</Link>
                 {isPro && (
                     <Link href="/admin/reports" className={isActive('/admin/reports') ? styles.navItemActive : styles.navItem}>Reporting</Link>
                 )}
-                <Link href="/admin/prices" className={isActive('/admin/prices') ? styles.navItemActive : styles.navItem}>Prices</Link>
-                {canManageProducts && (
-                    <Link href="/admin/products" className={isActive('/admin/products') ? styles.navItemActive : styles.navItem}>Product List</Link>
-                )}
+                {/* Product Dropdown */}
+                <div
+                    className={styles.dropdownContainer}
+                    onMouseEnter={() => setProductDropdownOpen(true)}
+                    onMouseLeave={() => setProductDropdownOpen(false)}
+                >
+                    <button
+                        className={`${styles.navItem} ${productDropdownOpen || isActive('/admin/prices') || isActive('/admin/products') || isActive('/admin/audit') ? styles.dropdownActive : ''}`}
+                        onClick={() => setProductDropdownOpen(!productDropdownOpen)}
+                        style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 'inherit', display: 'flex', alignItems: 'center', gap: '5px' }}
+                    >
+                        Product ▼
+                    </button>
+                    {productDropdownOpen && (
+                        <div className={styles.dropdownMenu}>
+                            <Link href="/admin/prices" className={styles.dropdownItem}>Prices</Link>
+                            {canManageProducts && (
+                                <Link href="/admin/products" className={styles.dropdownItem}>Product List</Link>
+                            )}
+                            {canAudit && (
+                                <Link href="/admin/audit" className={styles.dropdownItem}>Audit</Link>
+                            )}
+                        </div>
+                    )}
+                </div>
+
                 <Link href="/admin/query" className={isActive('/admin/query') ? styles.navItemActive : styles.navItem}>Activity Search</Link>
-                {canAudit && (
-                    <Link href="/admin/audit" className={isActive('/admin/audit') ? styles.navItemActive : styles.navItem} style={{ color: '#ec4899' }}>Audit</Link>
-                )}
                 <Link href="/inventory" className={isActive('/inventory') ? styles.navItemActive : styles.navItem} target="_blank">Stock View</Link>
 
 
-                {isPro && (
-                    <Link href="/admin/reports/smart-order" className={isActive('/admin/reports/smart-order') ? styles.navItemActive : styles.navItem}>Smart Order</Link>
-                )}
+                {/* Order Dropdown */}
+                <div
+                    className={styles.dropdownContainer}
+                    onMouseEnter={() => setOrderDropdownOpen(true)}
+                    onMouseLeave={() => setOrderDropdownOpen(false)}
+                >
+                    <button
+                        className={`${styles.navItem} ${orderDropdownOpen || isActive('/admin/orders/manual') || isActive('/admin/reports/smart-order') ? styles.dropdownActive : ''}`}
+                        onClick={() => setOrderDropdownOpen(!orderDropdownOpen)}
+                        style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 'inherit', display: 'flex', alignItems: 'center', gap: '5px' }}
+                    >
+                        Order ▼
+                    </button>
+                    {orderDropdownOpen && (
+                        <div className={styles.dropdownMenu}>
+                            <Link href="/admin/orders/manual" className={styles.dropdownItem}>Manual Order</Link>
+                            {isPro && (
+                                <Link href="/admin/reports/smart-order" className={styles.dropdownItem}>Smart Order</Link>
+                            )}
+                        </div>
+                    )}
+                </div>
 
                 <Link href="/admin/schedule" className={isActive('/admin/schedule') ? styles.navItemActive : styles.navItem}>Scheduler</Link>
 

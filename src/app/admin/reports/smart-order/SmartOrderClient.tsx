@@ -37,6 +37,16 @@ export default function SmartOrderClient() {
     const [notifications, setNotifications] = useState<any[]>([]);
     const [orgName, setOrgName] = useState('My Bar');
     const [showPrintView, setShowPrintView] = useState(false);
+    const [availableSignatures, setAvailableSignatures] = useState<any[]>([]);
+    const [showSignatureModal, setShowSignatureModal] = useState(false);
+
+    useEffect(() => {
+        if (showPrintView && availableSignatures.length === 0) {
+            fetch('/api/settings/signatures').then(r => r.json()).then(d => {
+                if (d.signatures) setAvailableSignatures(d.signatures);
+            }).catch(console.error);
+        }
+    }, [showPrintView]);
 
     const fetchInitial = async () => {
         setLoading(true);
@@ -191,7 +201,7 @@ export default function SmartOrderClient() {
     if (showPrintView) {
         // Group by Supplier
         const itemsBySupplier: Record<string, Suggestion[]> = {};
-        const suggestionsToPrint = filteredSuggestions.length > 0 ? filteredSuggestions : suggestions;
+        const suggestionsToPrint = (filteredSuggestions.length > 0 ? filteredSuggestions : suggestions).filter(s => s.suggested_order > 0);
 
         suggestionsToPrint.forEach(s => {
             const sup = s.supplier || 'Unassigned';
@@ -227,12 +237,50 @@ export default function SmartOrderClient() {
                         Close
                     </button>
                     <button
-                        onClick={() => setIsSigned(!isSigned)}
+                        onClick={() => {
+                            if (isSigned) {
+                                setIsSigned(false);
+                                setActiveSignature(null);
+                            } else {
+                                setShowSignatureModal(true);
+                            }
+                        }}
                         className={`px-6 py-2 rounded font-sans font-bold shadow transition-colors ${isSigned ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-yellow-400 text-black hover:bg-yellow-500'}`}
                     >
                         {isSigned ? '✅ Signed' : '✍️ Stamp Signature'}
                     </button>
                 </div>
+
+                {showSignatureModal && (
+                    <div className="fixed inset-0 bg-black/50 z-[10000] flex items-center justify-center print:hidden">
+                        <div className="bg-white p-6 rounded shadow-xl text-black w-96 relative">
+                            <h3 className="text-xl font-bold mb-4">Select Signature</h3>
+                            {availableSignatures.length === 0 ? (
+                                <p className="text-gray-500 mb-4">No signatures found. Please add one in Settings.</p>
+                            ) : (
+                                <div className="flex flex-col gap-2 mb-4 max-h-64 overflow-y-auto">
+                                    {availableSignatures.map(sig => (
+                                        <button
+                                            key={sig.id}
+                                            onClick={() => {
+                                                setActiveSignature(sig.data);
+                                                setIsSigned(true);
+                                                setShowSignatureModal(false);
+                                            }}
+                                            className="border p-2 rounded hover:bg-gray-100 flex items-center justify-between"
+                                        >
+                                            <span className="font-bold">{sig.label || 'Signature'}</span>
+                                            {sig.data && <img src={sig.data} alt="sig" className="h-8 object-contain mix-blend-multiply" />}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                            <div className="flex justify-end gap-2">
+                                <button onClick={() => setShowSignatureModal(false)} className="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded text-black font-bold">Cancel</button>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 <div className="max-w-4xl mx-auto bg-white min-h-screen p-8 md:p-12 shadow-2xl print:shadow-none">
                     {/* Header */}

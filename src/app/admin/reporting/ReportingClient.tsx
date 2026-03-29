@@ -95,11 +95,28 @@ export default function ReportingClient() {
     // Usage Trends State
     const [usageData, setUsageData] = useState<any>({}); // Changed to object for complex data
     const [usageLoading, setUsageLoading] = useState(false);
+    const [showRestocks, setShowRestocks] = useState(true);
 
     // Employee Usage State
     const [empUsageData, setEmpUsageData] = useState<{ summary: any[], logs: any[] }>({ summary: [], logs: [] });
     const [empUsageLoading, setEmpUsageLoading] = useState(false);
     const [empFilters, setEmpFilters] = useState({ shiftId: '', userIds: [] as number[] });
+
+    // --- Report Config State ---
+    const [configExpanded, setConfigExpanded] = useState(false);
+    const [reportConfig, setReportConfig] = useState({
+        enabled: false,
+        frequency: 'weekly',
+        runTime: '08:00',
+        runDay: 'monday',
+        runDate: '',
+        recipients: '',
+        cc: '',
+        bcc: '',
+        subject: 'Report',
+        lookbackPeriod: '1_month', // Default for usage trends
+        locationId: '' // Default 'All Locations'
+    });
 
 
     // Initial Load
@@ -117,7 +134,7 @@ export default function ReportingClient() {
         if (selectedReportId === 'daily_report') fetchDailyReport();
         if (selectedReportId === 'usage_trends') fetchUsageData();
         if (selectedReportId === 'employee_usage') fetchEmployeeUsage();
-    }, [selectedReportId, dateRange, blFilters, empFilters, selectedCategory]); // Dependencies for refetching
+    }, [selectedReportId, dateRange, blFilters, empFilters, selectedCategory, reportConfig.locationId]); // Dependencies for refetching
 
     const fetchSettings = () => {
         fetch('/api/admin/settings').then(r => r.json()).then(d => {
@@ -208,7 +225,8 @@ export default function ReportingClient() {
             // Reusing inventory endpoint with low_stock flag or creating new one?
             // Assuming we have to create a dedicated one or use inventory list filtered.
             // Let's rely on a specific endpoint I will ensure exists: /api/inventory/low-stock
-            const res = await fetch('/api/admin/reporting/low-stock');
+            const locQuery = reportConfig.locationId ? `?locationId=${reportConfig.locationId}` : '';
+            const res = await fetch(`/api/admin/reporting/low-stock${locQuery}`);
             if (!res.ok) throw new Error('Failed to fetch');
             const d = await res.json();
             setLowStockData(d.items || []);
@@ -223,7 +241,8 @@ export default function ReportingClient() {
         try {
             // Use the detailed endpoint
             // Use 'end' date from range as the target date for 'Daily' report
-            const res = await fetch(`/api/admin/reporting/daily?date=${dateRange.end}`);
+            const locQuery = reportConfig.locationId ? `&locationId=${reportConfig.locationId}` : '';
+            const res = await fetch(`/api/admin/reporting/daily?date=${dateRange.end}${locQuery}`);
             if (res.ok) {
                 const d = await res.json();
                 setDailyStats(d);
@@ -499,7 +518,24 @@ export default function ReportingClient() {
                         </>
                     )}
 
-                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    {locations.length > 0 && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginLeft: '1rem', borderLeft: '1px solid #4b5563', paddingLeft: '1rem' }}>
+                            <span style={{ color: '#9ca3af', fontSize: '0.875rem' }}>Location:</span>
+                            <select
+                                className={styles.input}
+                                value={reportConfig.locationId || ''}
+                                onChange={e => setReportConfig({ ...reportConfig, locationId: e.target.value })}
+                                style={{ width: 'auto', padding: '0.5rem', background: '#111827', border: '1px solid #4b5563', color: 'white', borderRadius: '0.25rem' }}
+                            >
+                                <option value="">All Locations</option>
+                                {locations.map(loc => (
+                                    <option key={loc.id} value={loc.id}>{loc.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
+
+                    <div style={{ display: 'flex', gap: '0.5rem', marginLeft: '1rem' }}>
                         <button
                             onClick={runReport}
                             style={{
@@ -560,21 +596,6 @@ export default function ReportingClient() {
 
     // --- New Sub-Components ---
 
-    // --- Report Config State ---
-    const [configExpanded, setConfigExpanded] = useState(false);
-    const [reportConfig, setReportConfig] = useState({
-        enabled: false,
-        frequency: 'weekly',
-        runTime: '08:00',
-        runDay: 'monday',
-        runDate: '',
-        recipients: '',
-        cc: '',
-        bcc: '',
-        subject: 'Report',
-        lookbackPeriod: '1_month', // Default for usage trends
-        locationId: '' // Default 'All Locations'
-    });
 
     const handleSaveConfig = () => {
         console.log("Saving Config for", selectedReportId, reportConfig);
@@ -729,21 +750,6 @@ export default function ReportingClient() {
                                 </select>
                             </div>
                         )}
-
-                        {/* Location Selector (Available for all reports if org has locations) */}
-                        <div style={{ marginTop: '1rem', borderTop: '1px solid #374151', paddingTop: '1rem' }}>
-                            <label style={{ display: 'block', color: '#9ca3af', fontSize: '0.75rem', marginBottom: '0.25rem' }}>Location Filter</label>
-                            <select
-                                className={styles.input}
-                                value={reportConfig.locationId || ''}
-                                onChange={e => setReportConfig({ ...reportConfig, locationId: e.target.value })}
-                            >
-                                <option value="">All Locations</option>
-                                {locations.map(loc => (
-                                    <option key={loc.id} value={loc.id}>{loc.name}</option>
-                                ))}
-                            </select>
-                        </div>
 
                         <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'flex-end' }}>
                             <button onClick={handleSaveConfig} style={{ background: '#059669', color: 'white', padding: '0.5rem 1rem', borderRadius: '0.25rem', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}>
@@ -1285,7 +1291,18 @@ export default function ReportingClient() {
                         </div>
 
                         <div className={styles.card} style={{ gridColumn: 'span 2' }}>
-                            <h3 className={styles.cardTitle}>Future Stock Projection (Top Items)</h3>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                                <h3 className={styles.cardTitle} style={{ marginBottom: 0 }}>Future Stock Projection (Top Items)</h3>
+                                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', background: '#374151', padding: '0.25rem 0.75rem', borderRadius: '0.5rem' }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={showRestocks}
+                                        onChange={e => setShowRestocks(e.target.checked)}
+                                        style={{ accentColor: '#10b981', width: '16px', height: '16px' }}
+                                    />
+                                    <span style={{ fontSize: '0.85rem', color: '#d1d5db', fontWeight: 'bold' }}>Simulate Smart Restocks</span>
+                                </label>
+                            </div>
                             {usageLoading ? <p>Loading...</p> : (
                                 <div style={{ height: '400px', width: '100%' }}>
                                     <ResponsiveContainer>
@@ -1298,7 +1315,7 @@ export default function ReportingClient() {
                                             {filteredUsageProjections.map((prod: any, idx: number) => (
                                                 <Line
                                                     key={idx}
-                                                    data={prod.data}
+                                                    data={showRestocks ? prod.dataWithRestocks : prod.data}
                                                     type="monotone"
                                                     dataKey="stock"
                                                     name={prod.item}
