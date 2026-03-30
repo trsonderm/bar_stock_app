@@ -103,6 +103,28 @@ export default function OrganizationsPage() {
                 </label>
             )
         },
+        {
+            header: 'Default UI Theme',
+            cell: (row: any) => {
+                const currentTheme = row.settings?.default_theme || 'dark';
+                return (
+                    <select
+                        value={currentTheme}
+                        onChange={(e) => {
+                            const val = e.target.value;
+                            handleUpdate(row.id, 'default_theme', val);
+                            const updatedRow = { ...row, settings: { ...row.settings, default_theme: val } };
+                            setOrgs(prev => prev.map(o => o.id === row.id ? updatedRow : o));
+                        }}
+                        className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white"
+                    >
+                        <option value="dark">Dark</option>
+                        <option value="light">Light</option>
+                        <option value="blue">Deep Blue</option>
+                    </select>
+                );
+            }
+        },
         { header: 'Joined', accessorKey: 'created_at' as const },
     ];
 

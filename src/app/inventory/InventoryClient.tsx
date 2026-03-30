@@ -98,6 +98,13 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
     const [allowCustomIncrement, setAllowCustomIncrement] = useState(false);
     const [loading, setLoading] = useState(false);
 
+    // Pending Orders Check-In State
+    const [pendingOrders, setPendingOrders] = useState<any[]>([]);
+    const [showPendingModal, setShowPendingModal] = useState(false);
+    const [selectedOrder, setSelectedOrder] = useState<any>(null);
+    const [checkInQuantities, setCheckInQuantities] = useState<Record<number, number>>({});
+    const [checkingIn, setCheckingIn] = useState(false);
+
     // Cost Edit State
     const [editingItem, setEditingItem] = useState<Item | null>(null);
     const [editCost, setEditCost] = useState('');
@@ -261,6 +268,65 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
         }
     };
 
+    const openPendingOrders = async () => {
+        try {
+            const res = await fetch('/api/inventory/pending');
+            if (res.ok) {
+                const data = await res.json();
+                setPendingOrders(data.orders || []);
+            }
+        } catch (e) { console.error(e); }
+        setShowPendingModal(true);
+        setSelectedOrder(null);
+    };
+
+    const selectOrderForCheckIn = (order: any) => {
+        setSelectedOrder(order);
+        const initialQty: Record<number, number> = {};
+        if (order.items) {
+            order.items.forEach((item: any) => {
+                initialQty[item.item_id] = item.expected_qty;
+            });
+        }
+        setCheckInQuantities(initialQty);
+    };
+
+    const submitCheckIn = async () => {
+        if (!selectedOrder) return;
+        setCheckingIn(true);
+        try {
+            const payload = {
+                order_id: selectedOrder.id,
+                check_in_items: selectedOrder.items.map((i: any) => ({
+                    item_id: i.item_id,
+                    expected_qty: i.expected_qty,
+                    received_qty: checkInQuantities[i.item_id] || 0
+                }))
+            };
+
+            const res = await fetch('/api/inventory/check-in', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if (res.ok) {
+                alert('Order checked-in successfully! Variances logged.');
+                setShowPendingModal(false);
+                setSelectedOrder(null);
+                fetchItems();
+                fetchActivity();
+            } else {
+                alert('Failed to check in order.');
+            }
+        } catch (e) {
+            console.error(e);
+            alert('Communication Error');
+        } finally {
+            setCheckingIn(false);
+        }
+    };
+
     const openCostModal = (item: Item) => {
         setEditingItem(item);
         const c = item.unit_cost || 0;
@@ -348,6 +414,16 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
                             size="small"
                         >
                             Add Item
+                        </Button>
+                    )}
+                    {canAddStock && (
+                        <Button
+                            variant="contained"
+                            color="success"
+                            onClick={openPendingOrders}
+                            size="small"
+                        >
+                            Check In Order
                         </Button>
                     )}
                     <Button
@@ -775,6 +851,70 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
                     <Button onClick={() => setBottleModal(null)}>Cancel</Button>
                 </DialogActions>
             </Dialog>
+
+            {/* PENDING ORDERS MODAL */}
+            <Dialog open={showPendingModal} onClose={() => setShowPendingModal(false)} maxWidth="md" fullWidth>
+                <DialogTitle>{selectedOrder ? `Checking In Order #${selectedOrder.id}` : 'Pending Supplier Purchase Orders'}</DialogTitle>
+                <DialogContent dividers>
+                    {!selectedOrder ? (
+                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                            {pendingOrders.length === 0 ? (
+                                <Typography color="text.secondary">No pending orders waiting for stock.</Typography>
+                            ) : (
+                                pendingOrders.map((o) => (
+                                    <Card key={o.id} sx={{ p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <Box>
+                                            <Typography variant="h6">Order #{o.id}</Typography>
+                                            <Typography variant="body2" color="text.secondary">Supplier: {o.supplier_name || 'Multiple'}</Typography>
+                                            <Typography variant="body2" color="text.secondary">Expected: {new Date(o.expected_delivery_date).toLocaleDateString()}</Typography>
+                                        </Box>
+                                        <Button variant="contained" onClick={() => selectOrderForCheckIn(o)}>Start Check-In</Button>
+                                    </Card>
+                                ))
+                            )}
+                        </Box>
+                    ) : (
+                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                            <Typography variant="body2" color="error.main" sx={{ mb: 1 }}>
+                                Adjust quantities downward if items were missing. Any difference will be logged as variance.
+                            </Typography>
+                            {selectedOrder.items?.map((item: any) => {
+                                const qty = checkInQuantities[item.item_id] || 0;
+                                return (
+                                    <Box key={item.item_id} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid', borderColor: 'divider', pb: 1 }}>
+                                        <Box>
+                                            <Typography variant="subtitle1" fontWeight="bold">{item.name}</Typography>
+                                            <Typography variant="body2" color="text.secondary">Expected: {item.expected_qty}</Typography>
+                                        </Box>
+                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                                            <IconButton size="small" onClick={() => setCheckInQuantities(p => ({...p, [item.item_id]: Math.max(0, qty - 1)}))}>
+                                                <ClearIcon fontSize="small" />
+                                            </IconButton>
+                                            <Typography variant="h6" color={qty < item.expected_qty ? 'error.main' : 'success.main'}>{qty}</Typography>
+                                            <IconButton size="small" onClick={() => setCheckInQuantities(p => ({...p, [item.item_id]: qty + 1}))}>
+                                                <AddIcon fontSize="small" />
+                                            </IconButton>
+                                        </Box>
+                                    </Box>
+                                );
+                            })}
+                        </Box>
+                    )}
+                </DialogContent>
+                <DialogActions>
+                    {selectedOrder ? (
+                        <>
+                            <Button onClick={() => setSelectedOrder(null)} disabled={checkingIn}>Back</Button>
+                            <Button variant="contained" color="success" onClick={submitCheckIn} disabled={checkingIn}>
+                                {checkingIn ? 'Processing...' : 'Confirm Delivery & Update Stock'}
+                            </Button>
+                        </>
+                    ) : (
+                        <Button onClick={() => setShowPendingModal(false)}>Close</Button>
+                    )}
+                </DialogActions>
+            </Dialog>
+
         </Box>
     );
 }

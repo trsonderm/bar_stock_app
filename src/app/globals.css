@@ -64,3 +64,33 @@ button {
     print-color-adjust: exact !important;
   }
 }
+
+/* --- MUI GLUE CSS --- */
+/* Force Tailwind dark slate to use MUI vars */
+.bg-slate-900, .bg-gray-900, .bg-slate-950, .bg-gray-950 { background-color: var(--mui-bg-default) !important; }
+.bg-slate-800, .bg-gray-800 { background-color: var(--mui-bg-paper) !important; }
+.border-slate-700, .border-gray-700, .border-slate-800, .border-gray-800 { border-color: var(--mui-border) !important; }
+.text-slate-400, .text-slate-300, .text-gray-400, .text-gray-300 { color: var(--mui-text-secondary) !important; }
+
+/* In Light Mode, invert hardcoded text-white unless it's a button or link */
+[data-theme='light'] .text-white:not(button):not(a):not(button .text-white):not(a .text-white) {
+    color: var(--mui-text-primary) !important;
+}
+
+[data-theme='light'] h1.text-white, 
+[data-theme='light'] h2.text-white, 
+[data-theme='light'] h3.text-white, 
+[data-theme='light'] p.text-white, 
+[data-theme='light'] div.text-white,
+[data-theme='light'] span.text-white,
+[data-theme='light'] label.text-white,
+[data-theme='light'] td.text-white {
+    color: var(--mui-text-primary) !important;
+}
+
+/* Ensure buttons keep their text white in light mode if they are colored */
+[data-theme='light'] button.text-white,
+[data-theme='light'] button .text-white,
+[data-theme='light'] a.text-white {
+    color: #ffffff !important;
+}

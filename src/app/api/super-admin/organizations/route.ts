@@ -9,7 +9,7 @@ export async function GET(req: NextRequest) {
     }
 
     try {
-        const orgs = await db.query('SELECT id, name, billing_status, sms_enabled, subscription_plan, created_at FROM organizations ORDER BY created_at DESC');
+        const orgs = await db.query('SELECT id, name, billing_status, sms_enabled, subscription_plan, settings, created_at FROM organizations ORDER BY created_at DESC');
         return NextResponse.json({ organizations: orgs });
     } catch (e) {
         return NextResponse.json({ error: 'Internal Error' }, { status: 500 });
@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
     if (!session || !session.isSuperAdmin) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     try {
-        const { id, billing_status, sms_enabled, subscription_plan } = await req.json();
+        const { id, billing_status, sms_enabled, subscription_plan, default_theme } = await req.json();
 
         if (id) {
             // Update
@@ -40,6 +40,10 @@ export async function POST(req: NextRequest) {
             if (subscription_plan !== undefined) {
                 updates.push(`subscription_plan = $${pIdx++}`);
                 params.push(subscription_plan);
+            }
+            if (default_theme !== undefined) {
+                updates.push(`settings = COALESCE(settings, '{}'::jsonb) || $${pIdx++}::jsonb`);
+                params.push(JSON.stringify({ default_theme }));
             }
 
 

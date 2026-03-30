@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
+import nodemailer from 'nodemailer';
+import { sendSMS } from '@/lib/twilio';
 
 export async function POST(req: NextRequest) {
     const session = await getSession();
@@ -8,7 +10,7 @@ export async function POST(req: NextRequest) {
 
     try {
         const body = await req.json();
-        const { supplier_id, expected_delivery_date, items } = body; // items: [{item_id, quantity}]
+        const { supplier_id, expected_delivery_date, items, send_email, send_sms } = body; // items: [{item_id, quantity}]
 
         // Start Transaction
         await db.query('BEGIN');
@@ -34,6 +36,40 @@ export async function POST(req: NextRequest) {
         }
 
         await db.query('COMMIT');
+
+        // Post-commit: Email & SMS
+        if ((send_email || send_sms) && supplier_id) {
+            const supplierRes = await db.query('SELECT name, contact_email, contact_phone FROM suppliers WHERE id = $1', [supplier_id]);
+            const supplier = supplierRes[0];
+            const orderTotalItems = items.reduce((acc: number, i: any) => acc + i.quantity, 0);
+
+            if (supplier) {
+                const messageBody = `New Order from TopShelf. Order ID: #${orderId}. Total Items requested: ${orderTotalItems}. Please check your portal or email for details.`;
+                
+                if (send_sms && supplier.contact_phone) {
+                    await sendSMS(supplier.contact_phone, messageBody);
+                }
+
+                if (send_email && supplier.contact_email) {
+                    try {
+                        let transporter = nodemailer.createTransport({
+                            host: process.env.SMTP_HOST || 'smtp.sendgrid.net',
+                            port: parseInt(process.env.SMTP_PORT || '587'),
+                            auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
+                        });
+                        await transporter.sendMail({
+                            from: '"TopShelf" <orders@topshelfinventory.com>',
+                            to: supplier.contact_email,
+                            subject: `New Purchase Order #${orderId}`,
+                            text: messageBody
+                        });
+                    } catch (mailErr) {
+                        console.error('Email Dispatch Error:', mailErr);
+                    }
+                }
+            }
+        }
+
         return NextResponse.json({ success: true, orderId });
 
     } catch (e) {

@@ -25,18 +25,11 @@ export default async function AdminLayout({
 
     const userWithFreshPlan = session ? { ...session, subscriptionPlan: currentPlan } : null;
 
+    if (!userWithFreshPlan) return null;
+
     return (
-        <div className={styles.container}>
-            <header className={styles.header}>
-                <div>
-                    <h1 className={styles.title} style={{ fontSize: '1.2rem', marginBottom: '0.2rem' }}>Admin Panel</h1>
-                    <div style={{ fontSize: '0.8rem', color: '#9ca3af', fontWeight: 'normal' }}>Fosters Bars</div>
-                </div>
-                {userWithFreshPlan && <AdminNav user={userWithFreshPlan} />}
-            </header>
-            <main style={{ marginTop: '2rem' }}>
-                {children}
-            </main>
-        </div>
+        <AdminNav user={userWithFreshPlan as any}>
+            {children}
+        </AdminNav>
     );
 }
