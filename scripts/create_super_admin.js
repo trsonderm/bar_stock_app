@@ -2,7 +2,7 @@ const { Pool } = require('pg');
 const bcrypt = require('bcryptjs');
 
 const pool = new Pool({
-    connectionString: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/topshelf',
+    connectionString: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5433/topshelf',
 });
 
 async function createSuperAdmin() {
