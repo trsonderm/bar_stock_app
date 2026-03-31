@@ -21,14 +21,9 @@ done
 # 3. Rebuild and Start Containers
 echo "Rebuilding and starting containers..."
 # Use --build to ensure changes are picked up. -d for detached mode.
-# Using 'docker compose' (v2) which is standard on modern systems. Fallback to 'docker-compose' if needed.
-if docker compose version > /dev/null 2>&1; then
-    docker compose down --remove-orphans
-    docker compose up -d --build
-else
-    docker-compose down --remove-orphans
-    docker-compose up -d --build
-fi
+# Using 'docker compose' (v2) which is standard on modern systems.
+docker compose down --remove-orphans
+docker compose up -d --build
 
 # 3. Wait for Database
 echo "Waiting for database to initialize..."
@@ -36,10 +31,6 @@ sleep 5
 
 # 4. Run Migrations inside the container
 echo "Running database migrations..."
-if docker compose version > /dev/null 2>&1; then
-    docker compose exec -T app node scripts/migrate.js
-else
-    docker-compose exec -T app node scripts/migrate.js
-fi
+docker compose exec -T app node scripts/migrate.js
 
 echo "Deployment Complete! Application should be running on port 6050."
