@@ -19,10 +19,6 @@ if [ ! -f "inventory.db" ]; then
     echo "Database not found. Initializing..."
     node scripts/init-db.js
 fi
-
-echo "Running migrations..."
-node scripts/migrate.js
-
 echo "Building application..."
 npm run build
 
