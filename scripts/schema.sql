@@ -61,8 +61,6 @@ CREATE TABLE IF NOT EXISTS items (
     description TEXT,
     unit_cost DECIMAL(10,2) DEFAULT 0,
     supplier TEXT,
-    unit_cost DECIMAL(10,2) DEFAULT 0,
-    supplier TEXT,
     track_quantity INTEGER DEFAULT 1, -- Could be Boolean, but keeping Integer 0/1 for easier migration if code relies on 1
     order_size INTEGER DEFAULT 1,
     low_stock_threshold INTEGER DEFAULT 5,
