@@ -30,7 +30,6 @@ echo "Waiting for database to initialize..."
 sleep 5
 
 # 4. Run Migrations inside the container
-echo "Running database migrations..."
-docker compose exec -T app node scripts/migrate.js
-
+# Note: migrate.js is a legacy SQLite script. 
+# Postgres schema is initialized manually via init-postgres.js for safety.
 echo "Deployment Complete! Application should be running on port 6050."
