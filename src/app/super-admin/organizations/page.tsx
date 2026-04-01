@@ -65,12 +65,13 @@ export default function OrganizationsPage() {
             header: 'Plan',
             cell: (row: any) => (
                 <select
-                    value={row.subscription_plan || 'base'}
+                    value={row.subscription_plan || 'free'}
                     onChange={(e) => handleUpdate(row.id, 'subscription_plan', e.target.value)}
                     className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white"
                 >
-                    <option value="base">Base ($200/yr)</option>
-                    <option value="pro">Pro ($300/yr)</option>
+                    <option value="monthly">Monthly ($20/mo)</option>
+                    <option value="yearly">Yearly ($200/yr)</option>
+                    <option value="free">Free Platform</option>
                     <option value="free_trial">Free Trial</option>
                 </select>
             )
@@ -171,9 +172,9 @@ export default function OrganizationsPage() {
                 searchPlaceholder="Search organizations..."
                 onSearch={setSearchTerm}
                 actions={(item) => (
-                    <button className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors">
-                        <MoreVertical className="w-4 h-4" />
-                    </button>
+                    <a href={`/super-admin/organizations/${item.id}`} className="px-3 py-1.5 bg-blue-600/20 text-blue-400 hover:bg-blue-600 hover:text-white rounded-lg transition-colors text-sm font-bold flex items-center gap-2">
+                        View Details <ArrowUpRight className="w-3 h-3" />
+                    </a>
                 )}
                 pagination={{
                     currentPage: 1,
