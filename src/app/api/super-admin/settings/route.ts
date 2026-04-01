@@ -28,23 +28,18 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { billing_enabled, maintenance_mode, smtp_host, smtp_port, smtp_user, smtp_pass, smtp_secure, quick_login_enabled, chat_available } = await req.json();
+    const payload = await req.json();
 
     await db.execute('BEGIN');
     try {
-        const updateSetting = async (k: string, v: string) => {
-            await db.execute("INSERT INTO system_settings (key, value) VALUES ($1, $2) ON CONFLICT(key) DO UPDATE SET value = EXCLUDED.value", [k, String(v)]);
-        };
-
-        await updateSetting('billing_enabled', billing_enabled);
-        await updateSetting('maintenance_mode', maintenance_mode);
-        await updateSetting('smtp_host', smtp_host || '');
-        await updateSetting('smtp_port', smtp_port || '');
-        await updateSetting('smtp_user', smtp_user || '');
-        await updateSetting('smtp_pass', smtp_pass || '');
-        await updateSetting('smtp_secure', smtp_secure);
-        await updateSetting('quick_login_enabled', quick_login_enabled);
-        await updateSetting('chat_available', chat_available);
+        for (const [key, value] of Object.entries(payload)) {
+            if (value !== undefined) {
+                await db.execute(
+                    "INSERT INTO system_settings (key, value) VALUES ($1, $2) ON CONFLICT(key) DO UPDATE SET value = EXCLUDED.value", 
+                    [key, String(value)]
+                );
+            }
+        }
 
         await db.execute('COMMIT');
         return NextResponse.json({ success: true });

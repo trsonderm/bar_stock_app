@@ -12,16 +12,22 @@ import {
 } from 'lucide-react';
 import { AdminPageHeader } from '../components/AdminPageHeader';
 
-// Mock Data
-const MOCK_TICKETS = [
-    { id: 'T-1024', subject: 'Billing issue with Pro plan', user: 'Sarah Connor', org: 'Cyberdyne Systems', status: 'Open', priority: 'High', time: '2m ago' },
-    { id: 'T-1023', subject: 'Feature request: Custom reports', user: 'James Bond', org: 'MI6', status: 'In Progress', priority: 'Medium', time: '1h ago' },
-    { id: 'T-1022', subject: 'Login failed multiple times', user: 'Neo', org: 'The Matrix', status: 'Open', priority: 'Critical', time: '3h ago' },
-    { id: 'T-1021', subject: 'How to add new user?', user: 'Ellen Ripley', org: 'Weyland-Yutani', status: 'Resolved', priority: 'Low', time: '1d ago' },
-];
-
 export default function SupportPage() {
-    const [selectedTicket, setSelectedTicket] = useState<typeof MOCK_TICKETS[0] | null>(null);
+    const [tickets, setTickets] = useState<any[]>([]);
+    const [selectedTicket, setSelectedTicket] = useState<any | null>(null);
+    const [loading, setLoading] = useState(true);
+
+    React.useEffect(() => {
+        fetch('/api/support/tickets')
+            .then(res => res.json())
+            .then(data => {
+                if(data.tickets) {
+                    setTickets(data.tickets);
+                }
+                setLoading(false);
+            })
+            .catch(() => setLoading(false));
+    }, []);
 
     const actions = [
         { label: 'Ticket Settings', variant: 'secondary' as const },
@@ -61,7 +67,9 @@ export default function SupportPage() {
                     </div>
 
                     <div className="flex-1 overflow-y-auto">
-                        {MOCK_TICKETS.map(ticket => (
+                        {loading && <div className="p-4 text-slate-500">Loading tickets...</div>}
+                        {!loading && tickets.length === 0 && <div className="p-4 text-slate-500">No support tickets found.</div>}
+                        {tickets.map(ticket => (
                             <div
                                 key={ticket.id}
                                 onClick={() => setSelectedTicket(ticket)}
@@ -71,25 +79,24 @@ export default function SupportPage() {
                                     }`}
                             >
                                 <div className="flex justify-between items-start mb-1">
-                                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${ticket.status === 'Open' ? 'bg-emerald-500/10 text-emerald-400' :
-                                            ticket.status === 'In Progress' ? 'bg-blue-500/10 text-blue-400' :
+                                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${ticket.status === 'open' ? 'bg-emerald-500/10 text-emerald-400' :
+                                            ticket.status === 'in_progress' ? 'bg-blue-500/10 text-blue-400' :
                                                 'bg-slate-500/10 text-slate-400'
                                         }`}>
                                         {ticket.status.toUpperCase()}
                                     </span>
-                                    <span className="text-xs text-slate-500">{ticket.time}</span>
+                                    <span className="text-xs text-slate-500">{new Date(ticket.created_at).toLocaleDateString()}</span>
                                 </div>
                                 <h4 className={`text-sm font-medium mb-1 line-clamp-1 ${selectedTicket?.id === ticket.id ? 'text-blue-400' : 'text-slate-200'}`}>
                                     {ticket.subject}
                                 </h4>
                                 <div className="flex items-center justify-between text-xs text-slate-500">
-                                    <span>{ticket.user}</span>
+                                    <span>{ticket.first_name || 'User'} {ticket.last_name || ''}</span>
                                     <span className={`flex items-center gap-1 ${ticket.priority === 'Critical' ? 'text-rose-400' :
                                             ticket.priority === 'High' ? 'text-amber-400' :
                                                 'text-slate-500'
                                         }`}>
-                                        {ticket.priority === 'Critical' && <AlertCircle className="w-3 h-3" />}
-                                        {ticket.priority}
+                                        {ticket.org_name || 'System Org'}
                                     </span>
                                 </div>
                             </div>
@@ -108,9 +115,9 @@ export default function SupportPage() {
                                     <div className="flex items-center gap-4 text-sm text-slate-400">
                                         <span className="flex items-center gap-1.5">
                                             <div className="w-5 h-5 rounded-full bg-indigo-500 flex items-center justify-center text-[10px] font-bold text-white">
-                                                {selectedTicket.user.charAt(0)}
+                                                {selectedTicket.first_name ? selectedTicket.first_name.charAt(0) : 'U'}
                                             </div>
-                                            {selectedTicket.user} from {selectedTicket.org}
+                                            {selectedTicket.first_name} {selectedTicket.last_name} from {selectedTicket.org_name || 'Unknown'}
                                         </span>
                                         <span>•</span>
                                         <span>ID: {selectedTicket.id}</span>
@@ -128,18 +135,17 @@ export default function SupportPage() {
 
                             {/* Conversation Area (Scrollable) */}
                             <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                                {/* Only one mock message for now */}
                                 <div className="flex gap-4">
                                     <div className="w-8 h-8 rounded-full bg-indigo-500 flex items-center justify-center font-bold text-white shrink-0 mt-1">
-                                        {selectedTicket.user.charAt(0)}
+                                        {selectedTicket.first_name ? selectedTicket.first_name.charAt(0) : 'U'}
                                     </div>
                                     <div className="flex-1">
                                         <div className="flex items-baseline justify-between mb-1">
-                                            <span className="font-bold text-slate-200">{selectedTicket.user}</span>
-                                            <span className="text-xs text-slate-500">{selectedTicket.time}</span>
+                                            <span className="font-bold text-slate-200">{selectedTicket.first_name} {selectedTicket.last_name}</span>
+                                            <span className="text-xs text-slate-500">{new Date(selectedTicket.created_at).toLocaleString()}</span>
                                         </div>
                                         <div className="p-4 bg-slate-900 rounded-2xl rounded-tl-none border border-slate-800 text-slate-300 text-sm leading-relaxed">
-                                            <p>Hi, I was wondering if it's possible for us to get early access to the new custom reporting features? We have a board meeting next week and it would be super helpful.</p>
+                                            <p>{selectedTicket.description || 'No description provided.'}</p>
                                         </div>
                                     </div>
                                 </div>

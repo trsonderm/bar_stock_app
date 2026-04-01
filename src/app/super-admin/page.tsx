@@ -33,23 +33,8 @@ export default function SuperAdminDashboard() {
                 setStats(data);
                 setLoading(false);
             })
-            .catch(() => {
-                // Fallback data if API fails or is not implemented yet
-                setStats({
-                    orgCount: 12,
-                    userCount: 450,
-                    ticketCount: 5,
-                    growth: 12.5,
-                    activity: [
-                        { name: 'Mon', value: 30 },
-                        { name: 'Tue', value: 45 },
-                        { name: 'Wed', value: 55 },
-                        { name: 'Thu', value: 40 },
-                        { name: 'Fri', value: 70 },
-                        { name: 'Sat', value: 35 },
-                        { name: 'Sun', value: 20 },
-                    ]
-                });
+            .catch((e) => {
+                console.error("Dashboard stats failed to stream:", e);
                 setLoading(false);
             });
     }, []);
