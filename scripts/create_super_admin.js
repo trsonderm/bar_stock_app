@@ -27,7 +27,7 @@ async function createSuperAdmin() {
             console.log('User exists. Upgrading to Super Admin...');
             await client.query(`
                 UPDATE users 
-                SET role = 'super_admin', permissions = '["all", "super_admin"]', password_hash = $1
+                SET role = 'admin', permissions = '["all", "super_admin"]', password_hash = $1
                 WHERE email = $2
             `, [passHash, email]);
             console.log('✅ User upgraded to Super Admin successfully!');
@@ -40,7 +40,7 @@ async function createSuperAdmin() {
 
             await client.query(`
                 INSERT INTO users (first_name, last_name, email, password_hash, pin_hash, role, permissions, organization_id)
-                VALUES ('Super', 'Admin', $1, $2, $3, 'super_admin', '["all", "super_admin"]', $4)
+                VALUES ('Super', 'Admin', $1, $2, $3, 'admin', '["all", "super_admin"]', $4)
             `, [email, passHash, pinHash, orgId]);
 
             console.log('✅ Super Admin account created successfully!');
