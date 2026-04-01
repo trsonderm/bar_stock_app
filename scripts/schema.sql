@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS categories (
     name TEXT NOT NULL,
     stock_options JSONB, -- storing as JSONB for better querying if needed, or keeping TEXT if legacy code expects it. Let's use JSONB.
     sub_categories JSONB,
+    enable_low_stock_reporting BOOLEAN DEFAULT TRUE,
     UNIQUE(name, organization_id)
 );
 
@@ -230,6 +231,7 @@ CREATE TABLE IF NOT EXISTS shifts (
     label TEXT NOT NULL,
     start_time TEXT NOT NULL,
     end_time TEXT NOT NULL,
+    color TEXT DEFAULT '#3b82f6',
     assigned_user_ids JSONB DEFAULT '[]',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -240,6 +242,7 @@ CREATE TABLE IF NOT EXISTS user_schedules (
     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
     shift_id INTEGER REFERENCES shifts(id) ON DELETE CASCADE,
     date DATE NOT NULL,
+    recurring_group_id VARCHAR(255),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(organization_id, user_id, date)
 );
