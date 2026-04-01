@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
         const usersJson = assigned_user_ids ? JSON.stringify(assigned_user_ids) : '[]';
 
         const res = await db.one(
-            'INSERT INTO shifts (organization_id, label, start_time, end_time, assigned_user_ids) VALUES ($1, $2, $3, $4, $5) RETURNING id',
+            'INSERT INTO shifts (organization_id, label, start_time, end_time, assigned_user_ids) VALUES ($1, $2, $3, $4, $5::jsonb) RETURNING id',
             [session.organizationId, label, start_time, end_time, usersJson]
         );
 
@@ -63,7 +63,7 @@ export async function PUT(req: NextRequest) {
         const usersJson = assigned_user_ids ? JSON.stringify(assigned_user_ids) : '[]';
 
         const result = await db.execute(
-            'UPDATE shifts SET label = $1, start_time = $2, end_time = $3, assigned_user_ids = $4 WHERE id = $5 AND organization_id = $6',
+            'UPDATE shifts SET label = $1, start_time = $2, end_time = $3, assigned_user_ids = $4::jsonb WHERE id = $5 AND organization_id = $6',
             [label, start_time, end_time, usersJson, id, session.organizationId]
         );
 

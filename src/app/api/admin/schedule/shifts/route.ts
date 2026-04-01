@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
         const shiftColor = color || '#3b82f6'; // Default blue
 
         const res = await db.one(
-            'INSERT INTO shifts (organization_id, label, start_time, end_time, color, assigned_user_ids) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
+            'INSERT INTO shifts (organization_id, label, start_time, end_time, color, assigned_user_ids) VALUES ($1, $2, $3, $4, $5, $6::jsonb) RETURNING id',
             [session.organizationId, label, start_time, end_time, shiftColor, usersJson]
         );
 
@@ -65,7 +65,7 @@ export async function PUT(req: NextRequest) {
         const shiftColor = color || '#3b82f6';
 
         const result = await db.execute(
-            'UPDATE shifts SET label = $1, start_time = $2, end_time = $3, color = $4, assigned_user_ids = $5 WHERE id = $6 AND organization_id = $7',
+            'UPDATE shifts SET label = $1, start_time = $2, end_time = $3, color = $4, assigned_user_ids = $5::jsonb WHERE id = $6 AND organization_id = $7',
             [label, start_time, end_time, shiftColor, usersJson, id, session.organizationId]
         );
 
