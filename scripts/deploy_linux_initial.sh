@@ -49,13 +49,18 @@ for i in $(seq 1 $MAX_TRIES); do
 done
 
 echo ""
-echo "[Step 6] Initializing Raw Database Schema..."
-# This drops and recreates the public schema and tables
-docker compose exec -T app node scripts/init-postgres.js
+echo "[Step 6] Compiling Local Node Environment for Admin Tools..."
+# The Docker container strips unused modules. We install them securely on the host.
+npm install --legacy-peer-deps || true
 
 echo ""
-echo "[Step 7] Injecting Primary Super Admin Account..."
-docker compose exec -T app node scripts/create_super_admin.js trsonderm@gmail.com D@T@121j
+echo "[Step 7] Initializing Raw Database Schema..."
+# This drops and recreates the public schema and tables directly against the mapped 5433 port
+node scripts/init-postgres.js
+
+echo ""
+echo "[Step 8] Injecting Primary Super Admin Account..."
+node scripts/create_super_admin.js trsonderm@gmail.com D@T@121j
 
 echo "=========================================================="
 echo "✅ DEPLOYMENT COMPLETE! Bar Stock App is fully online."
