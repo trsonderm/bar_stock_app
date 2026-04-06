@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface DateRangePickerProps {
@@ -19,6 +19,20 @@ export default function DateRangePicker({
     onDateSelect
 }: DateRangePickerProps) {
     const [viewDate, setViewDate] = useState(new Date());
+
+    useEffect(() => {
+        if (startDate) {
+            const [y, m] = startDate.split('-');
+            if (y && m) {
+                const year = parseInt(y);
+                const month = parseInt(m) - 1;
+                // Only change if it's a different month/year
+                if (viewDate.getFullYear() !== year || viewDate.getMonth() !== month) {
+                    setViewDate(new Date(year, month, 1));
+                }
+            }
+        }
+    }, [startDate]);
 
     const getDaysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
     const getFirstDayOfMonth = (year: number, month: number) => new Date(year, month, 1).getDay();

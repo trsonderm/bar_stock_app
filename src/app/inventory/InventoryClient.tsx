@@ -727,15 +727,14 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
                                             }
                                         }
                                         return (
-                                            <FormControl fullWidth>
-                                                <InputLabel>Initial Qty</InputLabel>
-                                                <Select value={newItemQty} label="Initial Qty" onChange={e => setNewItemQty(e.target.value as string)}>
-                                                    <MenuItem value="">0</MenuItem>
-                                                    {options.sort((a, b) => a - b).map(opt => (
-                                                        <MenuItem key={opt} value={opt}>{opt}</MenuItem>
-                                                    ))}
-                                                </Select>
-                                            </FormControl>
+                                            <TextField
+                                                fullWidth
+                                                label="Initial Qty"
+                                                type="number"
+                                                inputProps={{ min: 0, max: 24000, step: "any" }}
+                                                value={newItemQty}
+                                                onChange={e => setNewItemQty(e.target.value)}
+                                            />
                                         );
                                     })()}
                                 </Box>
