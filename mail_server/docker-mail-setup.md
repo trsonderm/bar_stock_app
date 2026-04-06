@@ -20,7 +20,7 @@ Before installation, configure your DNS records to route mail towards the exact 
 Install Docker engine and Docker Compose standard tooling:
 ```bash
 sudo apt update
-sudo apt install curl apt-transport-https ca-certificates gnupg2 -y
+sudo apt install curl apt-transport-https ca-certificates gnupg2 jq -y
 curl -fsSL https://get.docker.com -o get-docker.sh
 sudo sh get-docker.sh
 ```
@@ -36,8 +36,9 @@ cd mailcow-dockerized
 ```
 
 Generate the configuration matrix. It will prompt you for the `Mail server hostname`. You **MUST** specify `mail.topshelfinventory.com`.
+*(Note: Do NOT run this with `sh generate_config.sh` as it requires Bash).*
 ```bash
-./generate_config.sh
+bash ./generate_config.sh
 ```
 
 *(Optional)* If running locally with minimal RAM (<3GB), disable the antivirus scanner to prevent OOM errors:
