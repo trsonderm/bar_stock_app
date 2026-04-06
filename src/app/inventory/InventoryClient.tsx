@@ -93,6 +93,10 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
     const [newItemQty, setNewItemQty] = useState('');
     const [newItemTrackQty, setNewItemTrackQty] = useState(true);
 
+    const [newItemCustomOrderSizes, setNewItemCustomOrderSizes] = useState('');
+    const [newItemStockOptionsMode, setNewItemStockOptionsMode] = useState<'category' | 'custom'>('category');
+    const [newItemCustomStockOptions, setNewItemCustomStockOptions] = useState('');
+
     const [categories, setCategories] = useState<any[]>([]); // Full Category objects
     const [suppliers, setSuppliers] = useState<{ id: number, name: string }[]>([]);
     const [allowCustomIncrement, setAllowCustomIncrement] = useState(false);
@@ -226,7 +230,9 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
                     type: newItemType,
                     secondary_type: newItemSecondary || undefined,
                     supplier: newItemSupplier || undefined,
-                    track_quantity: newItemTrackQty ? 1 : 0
+                    track_quantity: newItemTrackQty ? 1 : 0,
+                    order_size: newItemCustomOrderSizes ? newItemCustomOrderSizes.split(',').map(s => parseFloat(s.trim())).filter(n => !isNaN(n)) : undefined,
+                    stock_options: newItemStockOptionsMode === 'custom' && newItemCustomStockOptions ? newItemCustomStockOptions.split(',').map(s => parseFloat(s.trim())).filter(n => !isNaN(n)) : null
                 })
             });
 
@@ -254,6 +260,9 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
                 setNewItemCost('');
                 setNewItemQty('');
                 setNewItemTrackQty(true);
+                setNewItemCustomOrderSizes('');
+                setNewItemStockOptionsMode('category');
+                setNewItemCustomStockOptions('');
 
                 fetchItems();
             } else {
@@ -738,6 +747,40 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
                                         );
                                     })()}
                                 </Box>
+                            </Box>
+
+                            <Box sx={{ mt: 1, borderTop: '1px solid', borderColor: 'divider', pt: 2 }}>
+                                <Typography variant="subtitle2" fontWeight="bold" gutterBottom>Override Stock Logic</Typography>
+                                
+                                <TextField
+                                    fullWidth
+                                    label="Order Qty Matrix (Optional, comma separated e.g. '1, 6, 24')"
+                                    value={newItemCustomOrderSizes}
+                                    onChange={e => setNewItemCustomOrderSizes(e.target.value)}
+                                    sx={{ mb: 2 }}
+                                    placeholder="Leave blank for platform default"
+                                />
+
+                                <FormControl component="fieldset" fullWidth sx={{ mb: 1 }}>
+                                    <Typography variant="body2" color="text.secondary">Stock Subtraction Quantities</Typography>
+                                    <RadioGroup
+                                        row
+                                        value={newItemStockOptionsMode}
+                                        onChange={e => setNewItemStockOptionsMode(e.target.value as any)}
+                                    >
+                                        <FormControlLabel value="category" control={<Radio size="small" />} label="Inherit Database Category Settings" />
+                                        <FormControlLabel value="custom" control={<Radio size="small" />} label="Custom Item Override" />
+                                    </RadioGroup>
+                                </FormControl>
+                                
+                                {newItemStockOptionsMode === 'custom' && (
+                                    <TextField
+                                        fullWidth
+                                        label="Custom Stock Qty Subtractions (Comma separated e.g. '1, 0.5')"
+                                        value={newItemCustomStockOptions}
+                                        onChange={e => setNewItemCustomStockOptions(e.target.value)}
+                                    />
+                                )}
                             </Box>
                         </Box>
                     </DialogContent>

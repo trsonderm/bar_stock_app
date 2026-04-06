@@ -26,6 +26,7 @@ export default function SuperAdminNav() {
         { name: 'Database Explorer', href: '/super-admin/database', icon: Database },
         { name: 'DB Maintenance Tools', href: '/super-admin/maintenance', icon: Database },
         { name: 'Site Settings', href: '/super-admin/settings', icon: Settings },
+        { name: 'Mail Accounts', href: '/super-admin/mail-accounts', icon: Settings },
         { name: 'Report Builder', href: '/super-admin/reports/custom', icon: FileBarChart },
     ];
 
