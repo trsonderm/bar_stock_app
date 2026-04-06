@@ -1,6 +1,8 @@
 #!/bin/bash
 set -e
 
+cd "$(dirname "$0")/.."
+
 echo "=========================================================="
 echo "  TopShelf Inventory - Master Initial Linux Deployment "
 echo "=========================================================="

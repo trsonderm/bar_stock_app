@@ -1,6 +1,8 @@
 #!/bin/bash
 set -e
 
+cd "$(dirname "$0")"
+
 echo "Starting deployment..."
 
 echo "Pulling from git..."

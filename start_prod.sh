@@ -1,8 +1,8 @@
 #!/bin/bash
 export NODE_ENV=production
 
-# Ensure we are in the project root (optional, assumes script is run from root or relative)
-# cd "$(dirname "$0")" 
+# Ensure we are in the project root
+cd "$(dirname "$0")" 
 
 echo "Starting Production Server..."
 
