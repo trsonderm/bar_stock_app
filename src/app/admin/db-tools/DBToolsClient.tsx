@@ -27,7 +27,7 @@ export default function DBToolsClient() {
         fetch('/api/super-admin/organizations').then(r => r.json()).then(d => {
             if (d.organizations) {
                 setOrganizations(d.organizations);
-                if (d.organizations.length > 0) setSelectedOrg(d.organizations[0].id);
+                // Default to All Organizations ("")
             }
         });
 
@@ -38,10 +38,11 @@ export default function DBToolsClient() {
     }, []);
 
     const fetchTable = async () => {
-        if (!selectedTable || !selectedOrg) return;
+        if (!selectedTable) return;
         setLoading(true);
         try {
-            const res = await fetch(`/api/super-admin/database?table=${selectedTable}&organizationId=${selectedOrg}`);
+            const orgParam = selectedOrg ? `&organizationId=${selectedOrg}` : '';
+            const res = await fetch(`/api/super-admin/database?table=${selectedTable}${orgParam}`);
             const data = await res.json();
             setTableData(data);
         } catch { alert('Error'); }
@@ -49,7 +50,10 @@ export default function DBToolsClient() {
     };
 
     const fetchDuplicates = async () => {
-        if (!selectedOrg) return;
+        if (!selectedOrg) {
+            alert('Please select a specific organization to scan for duplicates.');
+            return;
+        }
         setLoading(true);
         try {
             const res = await fetch(`/api/super-admin/tools/duplicates?type=${dupType}&organizationId=${selectedOrg}`);
@@ -75,7 +79,10 @@ export default function DBToolsClient() {
     };
 
     const fetchOrphans = async () => {
-        if (!selectedOrg) return;
+        if (!selectedOrg) {
+            alert('Please select a specific organization to scan for orphans.');
+            return;
+        }
         setLoading(true);
         try {
             const res = await fetch(`/api/super-admin/tools/orphans?type=${orphanType}&organizationId=${selectedOrg}`);
@@ -116,6 +123,7 @@ export default function DBToolsClient() {
                     onChange={e => setSelectedOrg(e.target.value)}
                     className="bg-gray-800 text-white p-2 rounded border border-gray-600"
                 >
+                    <option value="">All Organizations</option>
                     {organizations.map(o => (
                         <option key={o.id} value={o.id}>{o.name} (ID: {o.id})</option>
                     ))}

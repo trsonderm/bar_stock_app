@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(req: NextRequest) {
     const session = await getSession();
     const isSuperAdmin = session?.isSuperAdmin || (session?.permissions as any)?.includes('super_admin');
@@ -109,7 +111,7 @@ export async function POST(req: NextRequest) {
         }
 
         const cols = Object.keys(data);
-        const vals = Object.values(data);
+        const vals = Object.values(data).map(v => (typeof v === 'object' && v !== null ? JSON.stringify(v) : v));
 
         // Construct Query
         // INSERT INTO "table" ("col1", "col2") VALUES ($1, $2)
@@ -144,7 +146,7 @@ export async function PUT(req: NextRequest) {
         }
 
         const cols = Object.keys(updates);
-        const vals = Object.values(updates);
+        const vals = Object.values(updates).map(v => (typeof v === 'object' && v !== null ? JSON.stringify(v) : v));
 
         // UPDATE "table" SET "col" = $1 WHERE "pk" = $2
         const setStr = cols.map((c, i) => `"${c}" = $${i + 1}`).join(', ');
