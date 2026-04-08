@@ -83,21 +83,37 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
     // Multi-location Logic
     const [myLocations, setMyLocations] = useState<{ id: number, name: string }[]>([]);
     const [addToAllLocations, setAddToAllLocations] = useState(false);
+    const [selectedLocationId, setSelectedLocationId] = useState<number | null>(null);
 
     useEffect(() => {
-        fetchData();
+        // fetchData() is triggered separately via the selectedLocationId effect
         fetch('/api/admin/settings').then(r => r.json()).then(d => {
             if (d.settings?.stock_count_mode) setStockMode(d.settings.stock_count_mode);
         });
         fetch('/api/user/locations').then(r => r.json()).then(d => {
-            if (d.locations) setMyLocations(d.locations);
+            if (d.locations && d.locations.length > 0) {
+                setMyLocations(d.locations);
+                // Pick up current cookie location as default selection
+                const match = document.cookie.match(/(^| )current_location_id=([^;]+)/);
+                const cookieLocId = match ? parseInt(match[2]) : null;
+                const found = cookieLocId ? d.locations.find((l: any) => l.id === cookieLocId) : null;
+                setSelectedLocationId(found ? found.id : d.locations[0].id);
+            }
         });
     }, [overrideOrgId]);
+
+    // Re-fetch inventory whenever the selected location changes
+    useEffect(() => {
+        fetchData();
+    }, [overrideOrgId, selectedLocationId]);
 
     const fetchData = async () => {
         setLoading(true);
         try {
-            const inventoryUrl = overrideOrgId ? `/api/inventory?sort=name&orgId=${overrideOrgId}` : '/api/inventory?sort=name';
+            const locParam = selectedLocationId ? `&locationId=${selectedLocationId}` : '';
+            const inventoryUrl = overrideOrgId
+                ? `/api/inventory?sort=name&orgId=${overrideOrgId}${locParam}`
+                : `/api/inventory?sort=name${locParam}`;
             const catsUrl = overrideOrgId ? `/api/admin/categories?orgId=${overrideOrgId}` : '/api/admin/categories';
             const suppliersUrl = overrideOrgId ? `/api/admin/suppliers?orgId=${overrideOrgId}` : '/api/admin/suppliers';
 
@@ -393,7 +409,25 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                                 <th>Supplier</th>
                                 <th>Cost ($)</th>
                                 <th>Order Qty</th>
-                                {stockMode === 'PRODUCT' && <th>In Stock</th>}
+                                {stockMode === 'PRODUCT' && (
+                                    <th>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'nowrap' }}>
+                                            <span>In Stock</span>
+                                            {myLocations.length > 1 && (
+                                                <select
+                                                    value={selectedLocationId ?? ''}
+                                                    onChange={e => setSelectedLocationId(parseInt(e.target.value))}
+                                                    style={{ fontSize: '0.75rem', padding: '1px 4px', background: '#1f2937', border: '1px solid #374151', color: '#d1d5db', borderRadius: '4px', cursor: 'pointer' }}
+                                                    onClick={e => e.stopPropagation()}
+                                                >
+                                                    {myLocations.map(l => (
+                                                        <option key={l.id} value={l.id}>{l.name}</option>
+                                                    ))}
+                                                </select>
+                                            )}
+                                        </div>
+                                    </th>
+                                )}
                                 {stockMode === 'PRODUCT' && <th>Count Options</th>}
                                 <th>Low Limit</th>
                                 <th style={{ textAlign: 'right' }}>Actions</th>

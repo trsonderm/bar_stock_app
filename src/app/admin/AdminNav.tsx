@@ -206,7 +206,7 @@ export default function AdminNav({ user, children }: { user: NavUser, children: 
                             <List component="div" disablePadding>
                                 <DrawerItem text="Report Builder" icon={<BuildIcon fontSize="small" />} href="/admin/reports/builder" isSub badge="PRO" />
                                 <DrawerItem text="Saved Reports" icon={<AssessmentIcon fontSize="small" />} href="/admin/reports" isSub />
-                                <DrawerItem text="Standard Reports" icon={<AutoGraphIcon fontSize="small" />} href="/admin/reports/daily" isSub />
+                                <DrawerItem text="Standard Reports" icon={<AutoGraphIcon fontSize="small" />} href="/admin/reporting" isSub />
                             </List>
                         </Collapse>
                     </>

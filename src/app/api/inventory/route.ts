@@ -17,16 +17,15 @@ export async function GET(req: NextRequest) {
         }
         const sort = searchParams.get('sort') || 'usage';
 
-        // Determine Location Context
+        // Determine Location Context — explicit param wins over cookie
+        const locParam = searchParams.get('locationId');
         const cookieLoc = req.cookies.get('current_location_id')?.value;
-        let locationId = cookieLoc ? parseInt(cookieLoc) : null;
+        let locationId = locParam ? parseInt(locParam) : (cookieLoc ? parseInt(cookieLoc) : null);
 
         // Validate location belongs to org
         if (locationId) {
             const validLoc = await db.one('SELECT id FROM locations WHERE id = $1 AND organization_id = $2', [locationId, organizationId]);
-            if (!validLoc) {
-                locationId = null; // Reset if invalid
-            }
+            if (!validLoc) locationId = null;
         }
 
         if (!locationId) {

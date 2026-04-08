@@ -74,9 +74,15 @@ export default function PricesClient() {
 
     const filteredItems = items.filter(i => i.name.toLowerCase().includes(search.toLowerCase()));
 
+    // Group by the distinct types that actually exist in the items, preserving category order where possible
+    const itemTypes = [...new Set(items.map(i => i.type))];
+    const orderedTypes = [
+        ...categories.filter(c => itemTypes.includes(c)),
+        ...itemTypes.filter(t => !categories.includes(t)),
+    ];
     const grouped: Record<string, Item[]> = {};
-    categories.forEach(cat => {
-        grouped[cat] = filteredItems.filter(i => i.type === cat);
+    orderedTypes.forEach(type => {
+        grouped[type] = filteredItems.filter(i => i.type === type);
     });
 
     if (loading) return <div className={styles.container}>Loading...</div>;
