@@ -208,3 +208,10 @@ EXCEPTION WHEN duplicate_column THEN NULL; END $$;
 DO $$ BEGIN
   ALTER TABLE items ADD COLUMN include_in_low_stock_alerts BOOLEAN DEFAULT TRUE;
 EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
+-- =========================================================
+-- 13. Purchase orders: location_id
+-- =========================================================
+DO $$ BEGIN
+  ALTER TABLE purchase_orders ADD COLUMN location_id INTEGER REFERENCES locations(id) ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;

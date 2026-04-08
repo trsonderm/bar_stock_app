@@ -11,12 +11,24 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
+    // Read location from cookie header
+    const cookieHeader = req.headers.get('cookie') || '';
+    const locMatch = cookieHeader.match(/current_location_id=(\d+)/);
+    const locationId = locMatch ? parseInt(locMatch[1]) : null;
+
     try {
+        // Build location filter: show orders for this location OR orders with no location set
+        const locFilter = locationId
+            ? `AND (po.location_id = ${locationId} OR po.location_id IS NULL)`
+            : '';
+
         const orders = await db.query(`
             SELECT
                 po.id,
                 po.status,
                 po.tracking_status,
+                po.location_id,
+                l.name AS location_name,
                 po.expected_delivery_date,
                 po.created_at,
                 po.confirmed_at,
@@ -32,8 +44,10 @@ export async function GET(req: NextRequest) {
             LEFT JOIN suppliers s ON po.supplier_id = s.id
             LEFT JOIN users u ON po.submitted_by = u.id
             LEFT JOIN users cu ON po.confirmed_by = cu.id
+            LEFT JOIN locations l ON po.location_id = l.id
             WHERE po.organization_id = $1
               AND po.archived_at IS NULL
+              ${locFilter}
             ORDER BY po.created_at DESC
         `, [session.organizationId]);
 
@@ -50,6 +64,8 @@ export async function GET(req: NextRequest) {
                 po.id,
                 po.status,
                 po.tracking_status,
+                po.location_id,
+                l.name AS location_name,
                 po.expected_delivery_date,
                 po.created_at,
                 po.confirmed_at,
@@ -63,12 +79,14 @@ export async function GET(req: NextRequest) {
             FROM purchase_orders po
             LEFT JOIN suppliers s ON po.supplier_id = s.id
             LEFT JOIN users u ON po.submitted_by = u.id
+            LEFT JOIN locations l ON po.location_id = l.id
             WHERE po.organization_id = $1
               AND po.archived_at IS NOT NULL
+              ${locFilter}
             ORDER BY po.archived_at DESC
         `, [session.organizationId]);
 
-        return NextResponse.json({ current, history, archived });
+        return NextResponse.json({ current, history, archived, locationId });
     } catch (e) {
         console.error('Admin orders GET error:', e);
         return NextResponse.json({ error: 'Internal Error' }, { status: 500 });

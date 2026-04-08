@@ -10,16 +10,16 @@ export async function POST(req: NextRequest) {
 
     try {
         const body = await req.json();
-        const { supplier_id, expected_delivery_date, items, send_email, send_sms } = body; // items: [{item_id, quantity}]
+        const { supplier_id, expected_delivery_date, items, send_email, send_sms, location_id } = body; // items: [{item_id, quantity}]
 
         // Start Transaction
         await db.query('BEGIN');
 
         // Create Order
         const orderRes = await db.query(`
-            INSERT INTO purchase_orders (organization_id, supplier_id, expected_delivery_date, details)
-            VALUES ($1, $2, $3, $4) RETURNING id
-        `, [session.organizationId, supplier_id, expected_delivery_date, JSON.stringify({ created_by: session.id })]);
+            INSERT INTO purchase_orders (organization_id, supplier_id, location_id, expected_delivery_date, details)
+            VALUES ($1, $2, $3, $4, $5) RETURNING id
+        `, [session.organizationId, supplier_id, location_id || null, expected_delivery_date, JSON.stringify({ created_by: session.id })]);
 
         const orderId = orderRes[0].id; // pg-pool style or rows[0].id? Assuming db helper returns rows or we check helper again. 
         // Note: db helper in this project usually returns rows directly if using simple query wrapper?

@@ -121,6 +121,7 @@ CREATE TABLE IF NOT EXISTS purchase_orders (
     id SERIAL PRIMARY KEY,
     organization_id INTEGER REFERENCES organizations(id),
     supplier_id INTEGER REFERENCES suppliers(id),
+    location_id INTEGER REFERENCES locations(id) ON DELETE SET NULL,
     status TEXT DEFAULT 'PENDING',
     tracking_status VARCHAR(50) DEFAULT 'PENDING',
     expected_delivery_date TIMESTAMP,

@@ -115,15 +115,20 @@ export default function ReportBuilderClient({ user }: { user: any }) {
                         previewData: undefined,
                         loading: false,
                     }));
+                    const finalSections = loadedSections.length ? loadedSections : [defaultSection()];
                     setReportName(r.name || 'My Custom Report');
                     setLoadedReportId(r.id);
-                    setSections(loadedSections.length ? loadedSections : [defaultSection()]);
-                    setSelectedId(loadedSections[0]?.id || null);
+                    setSections(finalSections);
+                    setSelectedId(finalSections[0]?.id || null);
                     setIsScheduled(r.is_scheduled || false);
                     if (r.schedule_config) {
                         const sc = typeof r.schedule_config === 'string' ? JSON.parse(r.schedule_config) : r.schedule_config;
                         setScheduleConfig(sc);
                     }
+                    // Auto-fetch previews for all loaded sections
+                    finalSections.forEach((s, i) => {
+                        setTimeout(() => fetchPreview(s), i * 200);
+                    });
                 })
                 .catch(() => {});
         }
@@ -140,13 +145,13 @@ export default function ReportBuilderClient({ user }: { user: any }) {
         }
     };
 
-    const fetchPreview = useCallback(async (section: ReportSection) => {
+    const fetchPreview = useCallback(async (section: ReportSection, forceMock = false) => {
         setSections(prev => prev.map(s => s.id === section.id ? { ...s, loading: true } : s));
         try {
             const res = await fetch('/api/admin/reports/data', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ section })
+                body: JSON.stringify({ section, forceMock })
             });
             const data = await res.json();
             setSections(prev => prev.map(s => s.id === section.id ? { ...s, previewData: data, loading: false } : s));
@@ -159,13 +164,23 @@ export default function ReportBuilderClient({ user }: { user: any }) {
         // Clear previewData whenever config changes so stale preview is hidden
         const configKeys: (keyof ReportSection)[] = ['dataSource', 'chartType', 'groupBy', 'aggregation', 'timeFrame', 'type'];
         const touchesConfig = configKeys.some(k => k in updates);
-        setSections(prev => prev.map(s => s.id === id ? { ...s, ...updates, ...(touchesConfig ? { previewData: undefined } : {}) } : s));
+        setSections(prev => {
+            const next = prev.map(s => s.id === id ? { ...s, ...updates, ...(touchesConfig ? { previewData: undefined } : {}) } : s);
+            return next;
+        });
+        // Auto-refresh preview when config changes
+        if (configKeys.some(k => k in updates)) {
+            const updated = { ...sections.find(s => s.id === id)!, ...updates, previewData: undefined, loading: false };
+            setTimeout(() => fetchPreview(updated), 0);
+        }
     };
 
     const addSection = (type: SectionType) => {
         const s = { ...defaultSection(), type, id: uid() };
         setSections(prev => [...prev, s]);
         setSelectedId(s.id);
+        // Auto-load preview for new section
+        setTimeout(() => fetchPreview(s), 50);
     };
 
     const removeSection = (id: string) => {
@@ -229,10 +244,30 @@ export default function ReportBuilderClient({ user }: { user: any }) {
     const renderPreview = (section: ReportSection) => {
         if (section.loading) return <div style={{ color: '#6b7280', padding: '1rem', textAlign: 'center' }}>Loading preview...</div>;
         const data = section.previewData;
-        if (!data || !data.rows || data.rows.length === 0) {
+        if (!data) {
+            // Not yet loaded — show a subtle placeholder
             return (
-                <div style={{ padding: '2rem', textAlign: 'center', color: '#4b5563', border: '1px dashed #374151', borderRadius: '0.5rem' }}>
-                    <p style={{ margin: 0, fontSize: '0.9rem' }}>No data yet — click <strong>Refresh Preview</strong> to load.</p>
+                <div style={{ padding: '1.5rem', textAlign: 'center', color: '#4b5563', border: '1px dashed #1e293b', borderRadius: '0.5rem' }}>
+                    <p style={{ margin: '0 0 0.75rem', fontSize: '0.85rem' }}>Click <strong style={{ color: '#9ca3af' }}>Preview</strong> to load data.</p>
+                    <button
+                        onClick={() => fetchPreview(section, true)}
+                        style={{ padding: '0.4rem 1rem', background: 'rgba(245,158,11,0.15)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '0.4rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600 }}
+                    >
+                        Use Mock Data
+                    </button>
+                </div>
+            );
+        }
+        if (!data.rows || data.rows.length === 0) {
+            return (
+                <div style={{ padding: '1.5rem', textAlign: 'center', color: '#4b5563', border: '1px dashed #374151', borderRadius: '0.5rem' }}>
+                    <p style={{ margin: '0 0 0.75rem', fontSize: '0.85rem' }}>No data found for this time range.</p>
+                    <button
+                        onClick={() => fetchPreview(section, true)}
+                        style={{ padding: '0.4rem 1rem', background: 'rgba(245,158,11,0.15)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '0.4rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600 }}
+                    >
+                        Use Mock Data
+                    </button>
                 </div>
             );
         }

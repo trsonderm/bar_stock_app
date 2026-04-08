@@ -63,7 +63,8 @@ export async function POST(req: NextRequest) {
     const orgId = session.organizationId;
 
     try {
-        const { section } = await req.json();
+        const body = await req.json();
+        const { section, forceMock } = body;
         const { dataSource, filters, groupBy, aggregation, timeFrame } = section || {};
 
         // Build time bounds
@@ -110,8 +111,9 @@ export async function POST(req: NextRequest) {
                 LIMIT 50
             `, [orgId, startDate, endDate]);
 
-            const rows = data && data.length > 0 ? data : generateFakeRows('bottle_levels', 'none');
-            return NextResponse.json({ rows, columns: ['option_label', 'count'], isSample: !(data && data.length > 0) });
+            const hasBottleData = !forceMock && data && data.length > 0;
+            const rows = hasBottleData ? data : generateFakeRows('bottle_levels', 'none');
+            return NextResponse.json({ rows, columns: ['option_label', 'count'], isSample: !hasBottleData });
         } else {
             actionFilter = `AND al.action IN ('ADD_STOCK', 'SUBTRACT_STOCK')`;
         }
@@ -170,7 +172,7 @@ export async function POST(req: NextRequest) {
               ${userSql}
         `, [orgId, startDate, endDate]);
 
-        const hasRealData = rows && rows.length > 0;
+        const hasRealData = !forceMock && rows && rows.length > 0;
         const finalRows = hasRealData ? rows : generateFakeRows(dataSource || 'add_stock', gb || 'none');
         const finalSummary = hasRealData ? (summaryRows?.[0] || {}) : generateFakeSummary();
 

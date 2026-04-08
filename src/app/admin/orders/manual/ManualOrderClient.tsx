@@ -150,6 +150,10 @@ export default function ManualOrderClient({ user }: { user: any }) {
                 quantity: c.orderQty * c.packAmount // Total units expected
             }));
 
+            // Read current location from cookie
+            const locMatch = document.cookie.match(/current_location_id=(\d+)/);
+            const locationId = locMatch ? parseInt(locMatch[1]) : null;
+
             const res = await fetch('/api/orders', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -158,7 +162,8 @@ export default function ManualOrderClient({ user }: { user: any }) {
                     expected_delivery_date: new Date(Date.now() + 86400000 * 2).toISOString(), // Dummy +2 days
                     items: dbItems,
                     send_email: sendEmail,
-                    send_sms: sendSms
+                    send_sms: sendSms,
+                    location_id: locationId,
                 })
             });
 

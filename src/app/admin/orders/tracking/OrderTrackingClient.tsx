@@ -7,6 +7,8 @@ interface Order {
     id: number;
     status: string;
     tracking_status: string;
+    location_id?: number;
+    location_name?: string;
     expected_delivery_date: string;
     created_at: string;
     confirmed_at?: string;
@@ -52,6 +54,8 @@ export default function OrderTrackingClient({ user }: { user: any }) {
     const [editNote, setEditNote] = useState('');
     const [editSubmitting, setEditSubmitting] = useState(false);
 
+    const [currentLocationName, setCurrentLocationName] = useState<string | null>(null);
+
     const fetchOrders = useCallback(async () => {
         try {
             const res = await fetch('/api/admin/orders');
@@ -59,6 +63,13 @@ export default function OrderTrackingClient({ user }: { user: any }) {
             if (data.current) setCurrent(data.current);
             if (data.history) setHistory(data.history);
             if (data.archived) setArchived(data.archived);
+            if (data.locationId) {
+                // Get location name from user locations
+                fetch('/api/user/locations').then(r => r.json()).then(d => {
+                    const loc = (d.locations || []).find((l: any) => l.id === data.locationId);
+                    if (loc) setCurrentLocationName(loc.name);
+                });
+            }
         } catch (e) {
             console.error(e);
         } finally {
@@ -217,9 +228,14 @@ export default function OrderTrackingClient({ user }: { user: any }) {
 
     return (
         <div style={{ padding: '2rem', maxWidth: '1100px', margin: '0 auto' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '2rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '2rem', flexWrap: 'wrap' }}>
                 <Package size={28} color="#3b82f6" />
                 <h1 style={{ color: 'white', fontSize: '1.75rem', fontWeight: 700, margin: 0 }}>Order Tracking</h1>
+                {currentLocationName && (
+                    <span style={{ padding: '0.25rem 0.75rem', borderRadius: '2rem', background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.3)', color: '#93c5fd', fontSize: '0.8rem', fontWeight: 600 }}>
+                        📍 {currentLocationName}
+                    </span>
+                )}
             </div>
 
             {/* Current Orders */}
@@ -245,6 +261,7 @@ export default function OrderTrackingClient({ user }: { user: any }) {
                                     </div>
                                     <div style={{ fontSize: '0.85rem', color: '#9ca3af' }}>
                                         {order.supplier_name || 'No Supplier'} &bull; {order.item_count} items &bull; {order.total_ordered} units
+                                        {order.location_name && <> &bull; <span style={{ color: '#60a5fa' }}>📍 {order.location_name}</span></>}
                                     </div>
                                     <div style={{ fontSize: '0.8rem', color: '#6b7280' }}>
                                         Ordered: {new Date(order.created_at).toLocaleDateString()}
