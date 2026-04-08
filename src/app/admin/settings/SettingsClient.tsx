@@ -30,6 +30,8 @@ export default function SettingsClient() {
         ai_ordering_phone: '',
         stock_count_mode: 'CATEGORY',
         allow_custom_increment: 'false',
+        smart_order_per_location: 'false',
+        per_location_pricing: 'false',
         workday_start: '06:00',
         profit_reporting_mode: 'off',           // 'off' | 'per_item' | 'total'
         order_confirmation_recipients: '[]',    // JSON array of user IDs
@@ -423,6 +425,22 @@ export default function SettingsClient() {
                                     className={styles.input}
                                     style={{ width: '100%', background: '#111827', color: 'white', padding: '0.5rem', border: '1px solid #374151', borderRadius: '0.25rem' }}
                                 />
+                            </div>
+                            <div style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#111827', padding: '0.75rem 1rem', borderRadius: '0.5rem', border: '1px solid #374151' }}>
+                                <div>
+                                    <div style={{ fontWeight: 'bold', color: 'white', fontSize: '0.9rem' }}>Generate Separate Orders per Location</div>
+                                    <div style={{ fontSize: '0.8rem', color: '#9ca3af', marginTop: '2px' }}>
+                                        When enabled, smart orders are grouped and sent separately for each location using its assigned supplier.
+                                    </div>
+                                </div>
+                                <label className={styles.switch}>
+                                    <input
+                                        type="checkbox"
+                                        checked={settings.smart_order_per_location === 'true'}
+                                        onChange={e => setSettings(prev => ({ ...prev, smart_order_per_location: e.target.checked ? 'true' : 'false' }))}
+                                    />
+                                    <span className={styles.slider}></span>
+                                </label>
                             </div>
                             <button onClick={handleSubmit} style={{ padding: '0.5rem 1rem', background: '#3b82f6', color: 'white', borderRadius: '0.25rem', border: 'none', cursor: 'pointer' }}>
                                 Save Configurations

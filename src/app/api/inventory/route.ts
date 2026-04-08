@@ -41,33 +41,38 @@ export async function GET(req: NextRequest) {
         i.order_size, i.low_stock_threshold,
         COALESCE(i.stock_options, '[]') as stock_options,
         COALESCE(i.include_in_audit, true) as include_in_audit,
+        COALESCE(i.include_in_low_stock_alerts, true) as include_in_low_stock_alerts,
         COALESCE(i.stock_unit_label, 'unit') as stock_unit_label,
         COALESCE(i.stock_unit_size, 1) as stock_unit_size,
         COALESCE(i.order_unit_label, 'case') as order_unit_label,
         COALESCE(i.order_unit_size, 1) as order_unit_size,
         COALESCE(i.use_category_qty_defaults, true) as use_category_qty_defaults,
         MAX(isp.supplier_id) as supplier_id,
+        ils.supplier_id as location_supplier_id,
         COALESCE(SUM(inv.quantity), 0) as quantity,
         COALESCE(MAX(usage_stats.usage_count), 0) as usage_count,
-        (SELECT json_agg(location_id) FROM inventory WHERE item_id = i.id) as assigned_locations
+        (SELECT json_agg(location_id) FROM inventory WHERE item_id = i.id) as assigned_locations,
+        ilp.sale_price as location_sale_price
       FROM items i
       LEFT JOIN inventory inv ON i.id = inv.item_id AND inv.location_id = $2
       LEFT JOIN item_suppliers isp ON i.id = isp.item_id AND isp.is_preferred = true
+      LEFT JOIN item_location_suppliers ils ON i.id = ils.item_id AND ils.location_id = $2
+      LEFT JOIN item_location_prices ilp ON i.id = ilp.item_id AND ilp.location_id = $2
       LEFT JOIN (
-        SELECT 
-            (details->>'itemId')::int as item_id, 
-            COUNT(*) as usage_count 
-        FROM activity_logs 
+        SELECT
+            (details->>'itemId')::int as item_id,
+            COUNT(*) as usage_count
+        FROM activity_logs
         WHERE action = 'SUBTRACT_STOCK' AND organization_id = $1
         GROUP BY (details->>'itemId')::int
       ) usage_stats ON i.id = usage_stats.item_id
       WHERE (
-        i.organization_id = $1 
+        i.organization_id = $1
         OR (i.organization_id IS NULL AND NOT EXISTS (
             SELECT 1 FROM items i2 WHERE i2.name = i.name AND i2.organization_id = $1
         ))
       )
-      GROUP BY i.id, usage_stats.usage_count
+      GROUP BY i.id, usage_stats.usage_count, ils.supplier_id, ilp.sale_price
     `;
 
         if (sort === 'usage') {
@@ -204,7 +209,7 @@ export async function PUT(req: NextRequest) {
 
         if (!canEdit && !canStock) return NextResponse.json({ error: 'Permission denied' }, { status: 403 });
 
-        const { id, unit_cost, sale_price, name, type, quantity, secondary_type, supplier, supplier_id, low_stock_threshold, order_size, stock_options, include_in_audit, assignedLocations, stock_unit_label, stock_unit_size, order_unit_label, order_unit_size, use_category_qty_defaults } = await req.json();
+        const { id, unit_cost, sale_price, name, type, quantity, secondary_type, supplier, supplier_id, low_stock_threshold, order_size, stock_options, include_in_audit, include_in_low_stock_alerts, assignedLocations, stock_unit_label, stock_unit_size, order_unit_label, order_unit_size, use_category_qty_defaults, location_supplier_id, location_sale_price, locationId: bodyLocationId } = await req.json();
 
         if (!id) return NextResponse.json({ error: 'Missing ID' }, { status: 400 });
 
@@ -274,6 +279,10 @@ export async function PUT(req: NextRequest) {
                 updates.push(`include_in_audit = $${pIdx++} `);
                 params.push(include_in_audit);
             }
+            if (include_in_low_stock_alerts !== undefined) {
+                updates.push(`include_in_low_stock_alerts = $${pIdx++} `);
+                params.push(include_in_low_stock_alerts);
+            }
 
             if (updates.length > 0) {
                 params.push(id);
@@ -294,6 +303,42 @@ export async function PUT(req: NextRequest) {
                     VALUES($1, $2, true)
                     ON CONFLICT(item_id, supplier_id) DO UPDATE SET is_preferred = true
                 `, [id, validSupplierId]);
+            }
+
+            // Per-location supplier
+            const putLocId = bodyLocationId || (req.cookies.get('current_location_id')?.value ? parseInt(req.cookies.get('current_location_id')!.value) : null);
+            if (location_supplier_id !== undefined && putLocId) {
+                const validLocSupplierId = location_supplier_id && !isNaN(Number(location_supplier_id)) ? Number(location_supplier_id) : null;
+                if (validLocSupplierId) {
+                    await db.execute(`
+                        INSERT INTO item_location_suppliers (organization_id, item_id, location_id, supplier_id)
+                        VALUES ($1, $2, $3, $4)
+                        ON CONFLICT (item_id, location_id) DO UPDATE SET supplier_id = $4
+                    `, [organizationId, id, putLocId, validLocSupplierId]);
+                } else {
+                    // null means "use global supplier" — remove location-specific override
+                    await db.execute(
+                        'DELETE FROM item_location_suppliers WHERE item_id = $1 AND location_id = $2',
+                        [id, putLocId]
+                    );
+                }
+            }
+
+            // Per-location sale price
+            if (location_sale_price !== undefined && putLocId) {
+                const priceVal = location_sale_price !== null ? parseFloat(location_sale_price) : null;
+                if (priceVal !== null && !isNaN(priceVal)) {
+                    await db.execute(`
+                        INSERT INTO item_location_prices (organization_id, item_id, location_id, sale_price)
+                        VALUES ($1, $2, $3, $4)
+                        ON CONFLICT (item_id, location_id) DO UPDATE SET sale_price = $4
+                    `, [organizationId, id, putLocId, priceVal]);
+                } else {
+                    await db.execute(
+                        'DELETE FROM item_location_prices WHERE item_id = $1 AND location_id = $2',
+                        [id, putLocId]
+                    );
+                }
             }
 
             // Location Sync logic
@@ -324,9 +369,9 @@ export async function PUT(req: NextRequest) {
         if (quantity !== undefined && canStock) {
             console.log(`[PUT Inventory] STOCK UPDATE START for item ${id}, qty: ${quantity}, org: ${organizationId}`);
 
-            // Determine Location (Match GET logic)
+            // Determine Location (Match GET logic) — body locationId wins over cookie
             const cookieLoc = req.cookies.get('current_location_id')?.value;
-            let targetLocationId = cookieLoc ? parseInt(cookieLoc) : null;
+            let targetLocationId: number | null = bodyLocationId ? parseInt(bodyLocationId) : (cookieLoc ? parseInt(cookieLoc) : null);
 
             if (!targetLocationId) {
                 const defaultLoc = await db.one('SELECT id FROM locations WHERE organization_id = $1 ORDER BY id ASC LIMIT 1', [organizationId]);

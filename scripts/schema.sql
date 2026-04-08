@@ -73,6 +73,7 @@ CREATE TABLE IF NOT EXISTS items (
     low_stock_threshold INTEGER DEFAULT 5,
     stock_options JSONB,
     include_in_audit BOOLEAN DEFAULT TRUE,
+    include_in_low_stock_alerts BOOLEAN DEFAULT TRUE,
     category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
     -- Quantity unit config (per-product override)
     stock_unit_label VARCHAR(50) DEFAULT 'unit',

@@ -18,6 +18,8 @@ interface Item {
     quantity: number;
     supplier?: string;
     supplier_id?: number;
+    location_supplier_id?: number;
+    include_in_low_stock_alerts?: boolean;
     low_stock_threshold?: number;
     order_size?: OrderSizeOption[] | number[] | number;
     stock_options?: number[];
@@ -55,12 +57,14 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
         secondary_type: '',
         supplier: '',
         supplier_id: undefined as number | undefined,
+        location_supplier_id: undefined as number | undefined,
         unit_cost: '',
         quantity: '',
         order_size: [{ label: 'Unit', amount: 1 }] as OrderSizeOption[],
         low_stock_threshold: '5' as string | null,
         track_quantity: true,
         include_in_audit: true,
+        include_in_low_stock_alerts: true,
         stock_options: [] as number[],
         assignedLocations: [] as number[],
         use_category_qty_defaults: true,
@@ -146,12 +150,14 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
             secondary_type: '',
             supplier: '',
             supplier_id: undefined,
+            location_supplier_id: undefined,
             unit_cost: '',
             quantity: '',
             order_size: [{ label: 'Unit', amount: 1 }],
             low_stock_threshold: '5',
             track_quantity: true,
             include_in_audit: true,
+            include_in_low_stock_alerts: true,
             stock_options: [],
             assignedLocations: [],
             use_category_qty_defaults: true,
@@ -183,6 +189,8 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
             secondary_type: item.secondary_type || '',
             supplier: item.supplier || '',
             supplier_id: item.supplier_id,
+            location_supplier_id: item.location_supplier_id,
+            include_in_low_stock_alerts: item.include_in_low_stock_alerts !== false,
             unit_cost: item.unit_cost !== undefined ? item.unit_cost.toString() : '',
             quantity: item.quantity !== undefined ? item.quantity.toString() : '',
             order_size: (() => {
@@ -226,13 +234,18 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                 secondary_type: formData.secondary_type || undefined,
                 supplier: formData.supplier || undefined,
                 supplier_id: formData.supplier_id,
+                // Per-location supplier — only sent when a location is selected
+                ...(myLocations.length > 1 && selectedLocationId ? {
+                    location_supplier_id: formData.location_supplier_id ?? null,
+                    locationId: selectedLocationId,
+                } : {}),
                 unit_cost: formData.unit_cost ? parseFloat(formData.unit_cost) : 0,
                 quantity: formData.quantity ? parseFloat(formData.quantity) : 0,
                 order_size: formData.order_size.length > 0 ? formData.order_size : [{ label: 'Unit', amount: 1 }],
                 low_stock_threshold: formData.low_stock_threshold === null ? null : parseInt(formData.low_stock_threshold || '5'),
                 track_quantity: formData.track_quantity ? 1 : 0,
                 include_in_audit: formData.include_in_audit,
-                // When using custom qty config, subtraction_presets replaces stock_options
+                include_in_low_stock_alerts: formData.include_in_low_stock_alerts,
                 stock_options: formData.use_category_qty_defaults
                     ? (formData.stock_options.length > 0 ? formData.stock_options : null)
                     : (formData.subtraction_presets.length > 0 ? formData.subtraction_presets : null),
@@ -380,7 +393,7 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                     </div>
                 </div>
 
-                <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
                     <input
                         className={styles.input}
                         placeholder="Search products..."
@@ -397,6 +410,18 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                         <option value="All">All Categories</option>
                         {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
                     </select>
+                    {myLocations.length > 1 && (
+                        <select
+                            className={styles.input}
+                            value={selectedLocationId ?? ''}
+                            onChange={e => setSelectedLocationId(parseInt(e.target.value))}
+                            style={{ width: 'auto' }}
+                        >
+                            {myLocations.map(l => (
+                                <option key={l.id} value={l.id}>{l.name}</option>
+                            ))}
+                        </select>
+                    )}
                 </div>
 
                 <div className={styles.tableContainer}>
@@ -409,25 +434,7 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                                 <th>Supplier</th>
                                 <th>Cost ($)</th>
                                 <th>Order Qty</th>
-                                {stockMode === 'PRODUCT' && (
-                                    <th>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'nowrap' }}>
-                                            <span>In Stock</span>
-                                            {myLocations.length > 1 && (
-                                                <select
-                                                    value={selectedLocationId ?? ''}
-                                                    onChange={e => setSelectedLocationId(parseInt(e.target.value))}
-                                                    style={{ fontSize: '0.75rem', padding: '1px 4px', background: '#1f2937', border: '1px solid #374151', color: '#d1d5db', borderRadius: '4px', cursor: 'pointer' }}
-                                                    onClick={e => e.stopPropagation()}
-                                                >
-                                                    {myLocations.map(l => (
-                                                        <option key={l.id} value={l.id}>{l.name}</option>
-                                                    ))}
-                                                </select>
-                                            )}
-                                        </div>
-                                    </th>
-                                )}
+                                {stockMode === 'PRODUCT' && <th>In Stock</th>}
                                 {stockMode === 'PRODUCT' && <th>Count Options</th>}
                                 <th>Low Limit</th>
                                 <th style={{ textAlign: 'right' }}>Actions</th>
@@ -439,7 +446,14 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                                     <td>{item.name}</td>
                                     <td>{item.type}</td>
                                     <td>{item.secondary_type || '-'}</td>
-                                    <td>{item.supplier || '-'}</td>
+                                    <td>
+                                        {item.location_supplier_id
+                                            ? (suppliers.find(s => s.id === item.location_supplier_id)?.name ?? item.supplier ?? '-')
+                                            : (item.supplier || '-')}
+                                        {item.location_supplier_id && myLocations.length > 1 && (
+                                            <span style={{ fontSize: '0.7em', color: '#6b7280', marginLeft: '4px' }}>(loc)</span>
+                                        )}
+                                    </td>
                                     <td>${Number(item.unit_cost || 0).toFixed(2)}</td>
                                     <td style={{ fontSize: '0.9em', color: '#cbd5e1' }}>
                                         {(() => {
@@ -556,7 +570,10 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                             })()}
 
                             <div style={{ marginBottom: '1rem' }}>
-                                <label className={styles.statLabel}>Supplier</label>
+                                <label className={styles.statLabel}>
+                                    Supplier
+                                    {myLocations.length > 1 && <span style={{ fontSize: '0.75rem', color: '#6b7280', marginLeft: '6px' }}>(global default)</span>}
+                                </label>
                                 {suppliers.length > 0 ? (
                                     <select
                                         style={{ width: '100%' }}
@@ -580,6 +597,30 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                                     />
                                 )}
                             </div>
+
+                            {myLocations.length > 1 && selectedLocationId && suppliers.length > 0 && (
+                                <div style={{ marginBottom: '1rem', padding: '0.75rem', background: '#1e293b', borderRadius: '0.5rem', border: '1px solid #334155' }}>
+                                    <label className={styles.statLabel}>
+                                        Supplier for{' '}
+                                        <span style={{ color: '#f59e0b' }}>
+                                            {myLocations.find(l => l.id === selectedLocationId)?.name}
+                                        </span>
+                                        <span style={{ fontSize: '0.75rem', color: '#6b7280', marginLeft: '6px' }}>(overrides global)</span>
+                                    </label>
+                                    <select
+                                        style={{ width: '100%' }}
+                                        className={styles.input}
+                                        value={formData.location_supplier_id || ''}
+                                        onChange={e => {
+                                            const id = e.target.value ? parseInt(e.target.value) : undefined;
+                                            setFormData({ ...formData, location_supplier_id: id });
+                                        }}
+                                    >
+                                        <option value="">Use global supplier</option>
+                                        {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                    </select>
+                                </div>
+                            )}
 
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
                                 <div>
@@ -675,7 +716,7 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                                 </div>
                             </div>
 
-                            <div style={{ marginBottom: '1rem' }}>
+                            <div style={{ marginBottom: '0.75rem' }}>
                                 <label className={styles.statLabel} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
                                     <input
                                         type="checkbox"
@@ -685,8 +726,23 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                                     />
                                     Include in Audit
                                 </label>
-                                <p className="text-xs text-gray-500 mt-1" style={{ marginLeft: '26px' }}>
+                                <p className="text-xs text-gray-500 mt-1" style={{ marginLeft: '26px', fontSize: '0.78rem', color: '#6b7280' }}>
                                     If unchecked, this item will be hidden from default audit views.
+                                </p>
+                            </div>
+
+                            <div style={{ marginBottom: '1rem' }}>
+                                <label className={styles.statLabel} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={formData.include_in_low_stock_alerts}
+                                        onChange={e => setFormData({ ...formData, include_in_low_stock_alerts: e.target.checked })}
+                                        style={{ width: '18px', height: '18px' }}
+                                    />
+                                    Include in Low Stock Alerts
+                                </label>
+                                <p style={{ marginLeft: '26px', fontSize: '0.78rem', color: '#6b7280', margin: '2px 0 0 26px' }}>
+                                    If unchecked, this item will never trigger a low stock notification.
                                 </p>
                             </div>
 

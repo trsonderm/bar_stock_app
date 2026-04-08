@@ -155,3 +155,45 @@ DO $$ BEGIN
     END;
   END IF;
 END $$;
+
+-- =========================================================
+-- 8. Per-location supplier assignments
+-- =========================================================
+CREATE TABLE IF NOT EXISTS item_location_suppliers (
+  id SERIAL PRIMARY KEY,
+  organization_id INTEGER REFERENCES organizations(id) ON DELETE CASCADE,
+  item_id INTEGER REFERENCES items(id) ON DELETE CASCADE,
+  location_id INTEGER REFERENCES locations(id) ON DELETE CASCADE,
+  supplier_id INTEGER REFERENCES suppliers(id) ON DELETE SET NULL,
+  UNIQUE(item_id, location_id)
+);
+
+-- =========================================================
+-- 9. Per-location item prices
+-- =========================================================
+CREATE TABLE IF NOT EXISTS item_location_prices (
+  id SERIAL PRIMARY KEY,
+  organization_id INTEGER REFERENCES organizations(id) ON DELETE CASCADE,
+  item_id INTEGER REFERENCES items(id) ON DELETE CASCADE,
+  location_id INTEGER REFERENCES locations(id) ON DELETE CASCADE,
+  sale_price DECIMAL(10,2),
+  UNIQUE(item_id, location_id)
+);
+
+-- =========================================================
+-- 10. Per-location pricing flag on organizations
+-- =========================================================
+DO $$ BEGIN
+  ALTER TABLE organizations ADD COLUMN per_location_pricing BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE organizations ADD COLUMN smart_order_per_location BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
+-- =========================================================
+-- 11. Include item in low stock alerts flag
+-- =========================================================
+DO $$ BEGIN
+  ALTER TABLE items ADD COLUMN include_in_low_stock_alerts BOOLEAN DEFAULT TRUE;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
