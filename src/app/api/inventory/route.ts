@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
-import { createNotification } from '@/lib/notifications';
 import { logActivity } from '@/lib/logger';
 import { checkAndTriggerSmartOrder } from '@/lib/smart-order';
 
@@ -129,11 +128,9 @@ export async function POST(req: NextRequest) {
 
         // Auto-link Supplier if provided
         if (supplier_id) {
-            const sup = await db.one('SELECT supplier_sku FROM item_suppliers WHERE item_id = $1 AND is_preferred = true', [itemId]);
-            // Since it's new, we just insert
             await db.execute(`
                 INSERT INTO item_suppliers(item_id, supplier_id, is_preferred)
-        VALUES($1, $2, true)
+                VALUES($1, $2, true)
                 ON CONFLICT(item_id, supplier_id) DO UPDATE SET is_preferred = true
             `, [itemId, supplier_id]);
         }

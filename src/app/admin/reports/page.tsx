@@ -1,27 +1,24 @@
+import { getSession } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { redirect } from 'next/navigation';
-import { getSession } from '@/lib/auth';
-import ReportingClient from '../reporting/ReportingClient';
+import SavedReportsClient from './SavedReportsClient';
 
-export default async function ReportsPage() {
+export default async function SavedReportsPage() {
     const session = await getSession();
-    if (!session || !session.organizationId) {
-        redirect('/login');
-    }
+    if (!session || !session.organizationId) redirect('/login');
+    if (session.role !== 'admin') redirect('/inventory');
 
-    let isPro = session.subscriptionPlan === 'pro' || session.subscriptionPlan === 'free_trial' || session.isSuperAdmin;
-
-    // Double check DB for fresh status
-    try {
-        const org = await db.one('SELECT subscription_plan FROM organizations WHERE id = $1', [session.organizationId]);
-        if (org && (org.subscription_plan === 'pro' || org.subscription_plan === 'free_trial')) {
-            isPro = true;
-        }
-    } catch { }
-
+    const isPro = session.subscriptionPlan === 'pro' || session.subscriptionPlan === 'free_trial' || session.isSuperAdmin;
     if (!isPro) {
-        redirect('/admin/dashboard?upgrade=true');
+        try {
+            const org = await db.one('SELECT subscription_plan FROM organizations WHERE id = $1', [session.organizationId]);
+            if (org && (org.subscription_plan !== 'pro' && org.subscription_plan !== 'free_trial')) {
+                redirect('/admin/billing');
+            }
+        } catch {
+            redirect('/admin/billing');
+        }
     }
 
-    return <ReportingClient />;
+    return <SavedReportsClient />;
 }

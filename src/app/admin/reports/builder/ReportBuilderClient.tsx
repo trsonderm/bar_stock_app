@@ -125,7 +125,10 @@ export default function ReportBuilderClient({ user }: { user: any }) {
     }, []);
 
     const updateSection = (id: string, updates: Partial<ReportSection>) => {
-        setSections(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s));
+        // Clear previewData whenever config changes so stale preview is hidden
+        const configKeys: (keyof ReportSection)[] = ['dataSource', 'chartType', 'groupBy', 'aggregation', 'timeFrame', 'type'];
+        const touchesConfig = configKeys.some(k => k in updates);
+        setSections(prev => prev.map(s => s.id === id ? { ...s, ...updates, ...(touchesConfig ? { previewData: undefined } : {}) } : s));
     };
 
     const addSection = (type: SectionType) => {
@@ -199,7 +202,21 @@ export default function ReportBuilderClient({ user }: { user: any }) {
                 </div>
             );
         }
+        const isSample = data.isSample;
 
+        return (
+            <>
+                {isSample && (
+                    <div style={{ marginBottom: '0.5rem', padding: '0.4rem 0.75rem', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '0.35rem', fontSize: '0.75rem', color: '#f59e0b', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                        ⚠ Sample data — no real activity found for this time range
+                    </div>
+                )}
+                {renderChart(section, data)}
+            </>
+        );
+    };
+
+    const renderChart = (section: ReportSection, data: any) => {
         const rows = data.rows.map((r: any) => ({
             ...r,
             date: r.date ? new Date(r.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : r.option_label || r.item_name || r.user_name || '',

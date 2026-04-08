@@ -68,6 +68,8 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
         stock_unit_size: '1',
         order_unit_label: 'case',
         order_unit_size: '1',
+        subtraction_presets: [1] as number[],
+        custom_preset_input: '',
     });
 
     // Temp input for stock options
@@ -141,6 +143,8 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
             stock_unit_size: '1',
             order_unit_label: 'case',
             order_unit_size: '1',
+            subtraction_presets: [1],
+            custom_preset_input: '',
         });
         setTempOptionInput('');
         setTempOrderLabel('Pack');
@@ -189,6 +193,8 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
             stock_unit_size: String(item.stock_unit_size ?? 1),
             order_unit_label: item.order_unit_label || 'case',
             order_unit_size: String(item.order_unit_size ?? 1),
+            subtraction_presets: Array.isArray(item.stock_options) && item.stock_options.length > 0 ? item.stock_options : [1],
+            custom_preset_input: '',
         });
 
         setShowModal(true);
@@ -210,7 +216,10 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                 low_stock_threshold: formData.low_stock_threshold === null ? null : parseInt(formData.low_stock_threshold || '5'),
                 track_quantity: formData.track_quantity ? 1 : 0,
                 include_in_audit: formData.include_in_audit,
-                stock_options: formData.stock_options.length > 0 ? formData.stock_options : null,
+                // When using custom qty config, subtraction_presets replaces stock_options
+                stock_options: formData.use_category_qty_defaults
+                    ? (formData.stock_options.length > 0 ? formData.stock_options : null)
+                    : (formData.subtraction_presets.length > 0 ? formData.subtraction_presets : null),
                 assignedLocations: formData.assignedLocations,
                 add_to_all_locations: addToAllLocations,
                 use_category_qty_defaults: formData.use_category_qty_defaults,
@@ -720,62 +729,99 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                                     <span style={{ color: 'white', fontWeight: 600 }}>Use Category Quantity Defaults</span>
                                 </label>
                                 {!formData.use_category_qty_defaults && (
-                                    <div>
-                                        <p style={{ fontSize: '0.8rem', color: '#9ca3af', marginBottom: '0.75rem' }}>
-                                            Configure how this product is stocked vs. how it&apos;s ordered.
-                                            Example: 6 beers = 1 6-pack, ordered by case (24).
-                                        </p>
-                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-                                            <div>
-                                                <label className={styles.statLabel}>Stock Unit Label</label>
-                                                <input
-                                                    className={styles.input}
-                                                    placeholder="e.g. bottle, can"
-                                                    value={formData.stock_unit_label}
-                                                    onChange={e => setFormData({ ...formData, stock_unit_label: e.target.value })}
-                                                    style={{ marginBottom: 0 }}
-                                                />
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                        {/* Stock unit label only */}
+                                        <div>
+                                            <label className={styles.statLabel}>Stock Unit Label</label>
+                                            <input
+                                                className={styles.input}
+                                                placeholder="e.g. bottle, can, unit"
+                                                value={formData.stock_unit_label}
+                                                onChange={e => setFormData({ ...formData, stock_unit_label: e.target.value })}
+                                                style={{ marginBottom: 0 }}
+                                            />
+                                        </div>
+
+                                        {/* Subtraction preset amounts for stock view */}
+                                        <div>
+                                            <label className={styles.statLabel}>Subtraction Amounts (for Stock View)</label>
+                                            <p style={{ fontSize: '0.78rem', color: '#6b7280', margin: '0 0 0.5rem' }}>
+                                                Preset buttons shown when removing stock. Click to toggle; add custom values below.
+                                            </p>
+                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginBottom: '0.5rem' }}>
+                                                {[1, 6, 12].map(preset => {
+                                                    const active = formData.subtraction_presets.includes(preset);
+                                                    return (
+                                                        <button
+                                                            key={preset}
+                                                            type="button"
+                                                            onClick={() => setFormData(prev => ({
+                                                                ...prev,
+                                                                subtraction_presets: active
+                                                                    ? prev.subtraction_presets.filter(p => p !== preset)
+                                                                    : [...prev.subtraction_presets, preset].sort((a, b) => a - b)
+                                                            }))}
+                                                            style={{
+                                                                padding: '4px 14px',
+                                                                background: active ? '#3b82f6' : '#374151',
+                                                                color: active ? 'white' : '#9ca3af',
+                                                                border: `1px solid ${active ? '#3b82f6' : '#4b5563'}`,
+                                                                borderRadius: '4px',
+                                                                cursor: 'pointer',
+                                                                fontWeight: active ? 700 : 400,
+                                                                fontSize: '0.9rem'
+                                                            }}
+                                                        >
+                                                            {preset}
+                                                        </button>
+                                                    );
+                                                })}
+                                                {/* Custom presets already added */}
+                                                {formData.subtraction_presets.filter(p => ![1, 6, 12].includes(p)).map(preset => (
+                                                    <span key={preset} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 10px', background: '#3b82f6', color: 'white', borderRadius: '4px', fontSize: '0.9rem' }}>
+                                                        {preset}
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setFormData(prev => ({ ...prev, subtraction_presets: prev.subtraction_presets.filter(p => p !== preset) }))}
+                                                            style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', padding: 0, fontWeight: 'bold', lineHeight: 1 }}
+                                                        >×</button>
+                                                    </span>
+                                                ))}
                                             </div>
-                                            <div>
-                                                <label className={styles.statLabel}>Stock Unit Size</label>
+                                            {/* Add custom preset */}
+                                            <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
                                                 <input
                                                     className={styles.input}
                                                     type="number"
                                                     min="1"
-                                                    placeholder="1"
-                                                    value={formData.stock_unit_size}
-                                                    onChange={e => setFormData({ ...formData, stock_unit_size: e.target.value })}
-                                                    style={{ marginBottom: 0 }}
+                                                    placeholder="Custom #"
+                                                    value={formData.custom_preset_input}
+                                                    onChange={e => setFormData({ ...formData, custom_preset_input: e.target.value })}
+                                                    style={{ width: '100px', marginBottom: 0 }}
+                                                    onKeyDown={e => {
+                                                        if (e.key === 'Enter') {
+                                                            e.preventDefault();
+                                                            const val = parseInt(formData.custom_preset_input);
+                                                            if (!isNaN(val) && val > 0 && !formData.subtraction_presets.includes(val)) {
+                                                                setFormData(prev => ({ ...prev, subtraction_presets: [...prev.subtraction_presets, val].sort((a, b) => a - b), custom_preset_input: '' }));
+                                                            }
+                                                        }
+                                                    }}
                                                 />
-                                            </div>
-                                            <div>
-                                                <label className={styles.statLabel}>Order Unit Label</label>
-                                                <input
-                                                    className={styles.input}
-                                                    placeholder="e.g. case, keg"
-                                                    value={formData.order_unit_label}
-                                                    onChange={e => setFormData({ ...formData, order_unit_label: e.target.value })}
-                                                    style={{ marginBottom: 0 }}
-                                                />
-                                            </div>
-                                            <div>
-                                                <label className={styles.statLabel}>Order Unit Size</label>
-                                                <input
-                                                    className={styles.input}
-                                                    type="number"
-                                                    min="1"
-                                                    placeholder="24"
-                                                    value={formData.order_unit_size}
-                                                    onChange={e => setFormData({ ...formData, order_unit_size: e.target.value })}
-                                                    style={{ marginBottom: 0 }}
-                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const val = parseInt(formData.custom_preset_input);
+                                                        if (!isNaN(val) && val > 0 && !formData.subtraction_presets.includes(val)) {
+                                                            setFormData(prev => ({ ...prev, subtraction_presets: [...prev.subtraction_presets, val].sort((a, b) => a - b), custom_preset_input: '' }));
+                                                        }
+                                                    }}
+                                                    style={{ background: '#10b981', color: 'white', border: 'none', borderRadius: '4px', padding: '6px 12px', cursor: 'pointer', fontWeight: 700 }}
+                                                >
+                                                    + Add
+                                                </button>
                                             </div>
                                         </div>
-                                        {formData.order_unit_size && formData.stock_unit_label && (
-                                            <p style={{ fontSize: '0.8rem', color: '#10b981', marginTop: '0.5rem' }}>
-                                                1 {formData.order_unit_label || 'order unit'} = {formData.order_unit_size} {formData.stock_unit_label}(s)
-                                            </p>
-                                        )}
                                     </div>
                                 )}
                             </div>
