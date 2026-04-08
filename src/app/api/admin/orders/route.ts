@@ -1,0 +1,76 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { db, pool } from '@/lib/db';
+import { getSession } from '@/lib/auth';
+
+export async function GET(req: NextRequest) {
+    const session = await getSession();
+    if (!session || !session.organizationId) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    if (session.role !== 'admin') {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    try {
+        const orders = await db.query(`
+            SELECT
+                po.id,
+                po.status,
+                po.tracking_status,
+                po.expected_delivery_date,
+                po.created_at,
+                po.confirmed_at,
+                po.archived_at,
+                po.resubmit_of,
+                po.resubmit_note,
+                s.name AS supplier_name,
+                u.first_name || ' ' || u.last_name AS submitted_by_name,
+                cu.first_name || ' ' || cu.last_name AS confirmed_by_name,
+                (SELECT COUNT(*) FROM purchase_order_items WHERE purchase_order_id = po.id) AS item_count,
+                (SELECT COALESCE(SUM(quantity), 0) FROM purchase_order_items WHERE purchase_order_id = po.id) AS total_ordered
+            FROM purchase_orders po
+            LEFT JOIN suppliers s ON po.supplier_id = s.id
+            LEFT JOIN users u ON po.submitted_by = u.id
+            LEFT JOIN users cu ON po.confirmed_by = cu.id
+            WHERE po.organization_id = $1
+              AND po.archived_at IS NULL
+            ORDER BY po.created_at DESC
+        `, [session.organizationId]);
+
+        const current = orders.filter((o: any) =>
+            ['PENDING', 'IN_TRANSIT', 'PARTIALLY_RECEIVED'].includes(o.tracking_status || o.status)
+        );
+        const history = orders.filter((o: any) =>
+            ['RECEIVED', 'DELIVERED'].includes(o.tracking_status || o.status)
+        );
+
+        // Also fetch archived (resubmitted) for history view
+        const archived = await db.query(`
+            SELECT
+                po.id,
+                po.status,
+                po.tracking_status,
+                po.expected_delivery_date,
+                po.created_at,
+                po.confirmed_at,
+                po.archived_at,
+                po.resubmit_of,
+                po.resubmit_note,
+                s.name AS supplier_name,
+                u.first_name || ' ' || u.last_name AS submitted_by_name,
+                (SELECT COUNT(*) FROM purchase_order_items WHERE purchase_order_id = po.id) AS item_count,
+                (SELECT COALESCE(SUM(quantity), 0) FROM purchase_order_items WHERE purchase_order_id = po.id) AS total_ordered
+            FROM purchase_orders po
+            LEFT JOIN suppliers s ON po.supplier_id = s.id
+            LEFT JOIN users u ON po.submitted_by = u.id
+            WHERE po.organization_id = $1
+              AND po.archived_at IS NOT NULL
+            ORDER BY po.archived_at DESC
+        `, [session.organizationId]);
+
+        return NextResponse.json({ current, history, archived });
+    } catch (e) {
+        console.error('Admin orders GET error:', e);
+        return NextResponse.json({ error: 'Internal Error' }, { status: 500 });
+    }
+}

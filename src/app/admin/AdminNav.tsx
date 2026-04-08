@@ -20,6 +20,8 @@ import Collapse from '@mui/material/Collapse';
 import Avatar from '@mui/material/Avatar';
 import Menu from '@mui/material/Menu';
 import MenuItem from '@mui/material/MenuItem';
+import Tooltip from '@mui/material/Tooltip';
+import Chip from '@mui/material/Chip';
 
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import AssessmentIcon from '@mui/icons-material/Assessment';
@@ -38,6 +40,10 @@ import CategoryIcon from '@mui/icons-material/Category';
 import GroupIcon from '@mui/icons-material/Group';
 import PaymentIcon from '@mui/icons-material/Payment';
 import HelpIcon from '@mui/icons-material/Help';
+import TrackChangesIcon from '@mui/icons-material/TrackChanges';
+import BuildIcon from '@mui/icons-material/Build';
+import ScheduleIcon from '@mui/icons-material/Schedule';
+import AutoGraphIcon from '@mui/icons-material/AutoGraph';
 
 const drawerWidth = 260;
 
@@ -53,11 +59,12 @@ export default function AdminNav({ user, children }: { user: NavUser, children: 
     const router = useRouter();
 
     const [mobileOpen, setMobileOpen] = useState(false);
-    
+
     // Submenu states
     const [productOpen, setProductOpen] = useState(false);
     const [orderOpen, setOrderOpen] = useState(false);
     const [settingsOpen, setSettingsOpen] = useState(false);
+    const [reportingOpen, setReportingOpen] = useState(false);
 
     // Locations and Top right menu state
     const [myLocations, setMyLocations] = useState<{ id: number, name: string }[]>([]);
@@ -109,13 +116,13 @@ export default function AdminNav({ user, children }: { user: NavUser, children: 
         setMobileOpen(!mobileOpen);
     };
 
-    const DrawerItem = ({ text, icon, href, isSub = false }: any) => {
-        const active = pathname === href;
+    const DrawerItem = ({ text, icon, href, isSub = false, badge }: any) => {
+        const active = pathname === href || pathname.startsWith(href + '/');
         return (
             <ListItem disablePadding sx={{ display: 'block' }}>
-                <ListItemButton 
-                    component={Link} 
-                    href={href} 
+                <ListItemButton
+                    component={Link}
+                    href={href}
                     onClick={() => setMobileOpen(false)}
                     sx={{
                         minHeight: 48,
@@ -127,11 +134,45 @@ export default function AdminNav({ user, children }: { user: NavUser, children: 
                     <ListItemIcon sx={{ minWidth: 40, color: active ? 'primary.main' : 'inherit' }}>
                         {icon}
                     </ListItemIcon>
-                    <ListItemText primary={text} primaryTypographyProps={{ fontSize: '0.9rem', fontWeight: active ? 600 : 400, color: active ? 'primary.main' : 'text.primary' }} />
+                    <ListItemText
+                        primary={
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                                <span>{text}</span>
+                                {badge && (
+                                    <Chip
+                                        label={badge}
+                                        size="small"
+                                        sx={{ height: 18, fontSize: '0.65rem', bgcolor: 'rgba(168,85,247,0.2)', color: '#a855f7', fontWeight: 700, '& .MuiChip-label': { px: 0.75 } }}
+                                    />
+                                )}
+                            </Box>
+                        }
+                        primaryTypographyProps={{ fontSize: '0.9rem', fontWeight: active ? 600 : 400, color: active ? 'primary.main' : 'text.primary' }}
+                    />
                 </ListItemButton>
             </ListItem>
         );
     };
+
+    // Greyed-out Pro upgrade item
+    const ProLockedItem = ({ text, icon, isSub = false }: any) => (
+        <Tooltip title="Upgrade to Pro to unlock" placement="right">
+            <ListItem disablePadding sx={{ display: 'block', opacity: 0.45 }}>
+                <ListItemButton disabled sx={{ minHeight: 48, pl: isSub ? 4 : 2 }}>
+                    <ListItemIcon sx={{ minWidth: 40 }}>{icon}</ListItemIcon>
+                    <ListItemText
+                        primary={
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                                <span>{text}</span>
+                                <Chip label="PRO" size="small" sx={{ height: 18, fontSize: '0.65rem', bgcolor: 'rgba(168,85,247,0.2)', color: '#a855f7', fontWeight: 700, '& .MuiChip-label': { px: 0.75 } }} />
+                            </Box>
+                        }
+                        primaryTypographyProps={{ fontSize: '0.9rem' }}
+                    />
+                </ListItemButton>
+            </ListItem>
+        </Tooltip>
+    );
 
     const drawerContent = (
         <div>
@@ -142,8 +183,36 @@ export default function AdminNav({ user, children }: { user: NavUser, children: 
             </Toolbar>
             <List sx={{ pt: 1 }}>
                 <DrawerItem text="Dashboard" icon={<DashboardIcon />} href="/admin/dashboard" />
-                
-                {isPro && <DrawerItem text="Reporting" icon={<AssessmentIcon />} href="/admin/reports" />}
+
+                {/* REPORTING FOLDER (Pro only) */}
+                {isPro ? (
+                    <>
+                        <ListItem disablePadding sx={{ display: 'block' }}>
+                            <ListItemButton onClick={() => setReportingOpen(!reportingOpen)} sx={{ minHeight: 48, pl: 2 }}>
+                                <ListItemIcon sx={{ minWidth: 40 }}><AssessmentIcon /></ListItemIcon>
+                                <ListItemText
+                                    primary={
+                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                                            Reporting
+                                            <Chip label="PRO" size="small" sx={{ height: 18, fontSize: '0.65rem', bgcolor: 'rgba(168,85,247,0.2)', color: '#a855f7', fontWeight: 700, '& .MuiChip-label': { px: 0.75 } }} />
+                                        </Box>
+                                    }
+                                    primaryTypographyProps={{ fontSize: '0.9rem' }}
+                                />
+                                {reportingOpen ? <ExpandLess /> : <ExpandMore />}
+                            </ListItemButton>
+                        </ListItem>
+                        <Collapse in={reportingOpen} timeout="auto" unmountOnExit>
+                            <List component="div" disablePadding>
+                                <DrawerItem text="Report Builder" icon={<BuildIcon fontSize="small" />} href="/admin/reports/builder" isSub badge="PRO" />
+                                <DrawerItem text="Saved Reports" icon={<AssessmentIcon fontSize="small" />} href="/admin/reports" isSub />
+                                <DrawerItem text="Standard Reports" icon={<AutoGraphIcon fontSize="small" />} href="/admin/reports/daily" isSub />
+                            </List>
+                        </Collapse>
+                    </>
+                ) : (
+                    <ProLockedItem text="Reporting" icon={<AssessmentIcon />} />
+                )}
 
                 {/* PRODUCT FOLDER */}
                 <ListItem disablePadding sx={{ display: 'block' }}>
@@ -175,11 +244,22 @@ export default function AdminNav({ user, children }: { user: NavUser, children: 
                 <Collapse in={orderOpen} timeout="auto" unmountOnExit>
                     <List component="div" disablePadding>
                         <DrawerItem text="Manual Order" icon={<span />} href="/admin/orders/manual" isSub />
-                        {isPro && <DrawerItem text="Smart Order" icon={<span />} href="/admin/reports/smart-order" isSub />}
+                        <DrawerItem text="Order Tracking" icon={<TrackChangesIcon fontSize="small" />} href="/admin/orders/tracking" isSub />
+                        {isPro ? (
+                            <DrawerItem text="Smart Order" icon={<span />} href="/admin/reports/smart-order" isSub badge="PRO" />
+                        ) : (
+                            <ProLockedItem text="Smart Order" icon={<span />} isSub />
+                        )}
+                        <DrawerItem text="Order History" icon={<span />} href="/admin/orders/history" isSub />
                     </List>
                 </Collapse>
 
-                <DrawerItem text="Scheduler" icon={<EventIcon />} href="/admin/schedule" />
+                {/* SCHEDULER (Pro only) */}
+                {isPro ? (
+                    <DrawerItem text="Scheduler" icon={<EventIcon />} href="/admin/schedule" badge="PRO" />
+                ) : (
+                    <ProLockedItem text="Scheduler" icon={<ScheduleIcon />} />
+                )}
 
                 {/* SETTINGS FOLDER */}
                 <ListItem disablePadding sx={{ display: 'block' }}>
@@ -191,15 +271,15 @@ export default function AdminNav({ user, children }: { user: NavUser, children: 
                 </ListItem>
                 <Collapse in={settingsOpen} timeout="auto" unmountOnExit>
                     <List component="div" disablePadding>
-                        <DrawerItem text="General" icon={<SettingsIcon fontSize="small"/>} href="/admin/settings" isSub />
-                        <DrawerItem text="Categories" icon={<CategoryIcon fontSize="small"/>} href="/admin/categories" isSub />
-                        <DrawerItem text="Reporting Config" icon={<AssessmentIcon fontSize="small"/>} href="/admin/settings/reporting" isSub />
-                        <DrawerItem text="Ordering" icon={<LocalShippingIcon fontSize="small"/>} href="/admin/settings/ordering" isSub />
-                        <DrawerItem text="Users" icon={<GroupIcon fontSize="small"/>} href="/admin/users" isSub />
-                        <DrawerItem text="Billing" icon={<PaymentIcon fontSize="small"/>} href="/admin/billing" isSub />
-                        <DrawerItem text="Help" icon={<HelpIcon fontSize="small"/>} href="/admin/help" isSub />
-                        <DrawerItem text="Suppliers" icon={<LocalShippingIcon fontSize="small"/>} href="/admin/suppliers" isSub />
-                        <DrawerItem text="Locations" icon={<LocationOnIcon fontSize="small"/>} href="/admin/settings/locations" isSub />
+                        <DrawerItem text="General" icon={<SettingsIcon fontSize="small" />} href="/admin/settings" isSub />
+                        <DrawerItem text="Categories" icon={<CategoryIcon fontSize="small" />} href="/admin/categories" isSub />
+                        <DrawerItem text="Reporting Config" icon={<AssessmentIcon fontSize="small" />} href="/admin/settings/reporting" isSub />
+                        <DrawerItem text="Ordering" icon={<LocalShippingIcon fontSize="small" />} href="/admin/settings/ordering" isSub />
+                        <DrawerItem text="Users" icon={<GroupIcon fontSize="small" />} href="/admin/users" isSub />
+                        <DrawerItem text="Billing" icon={<PaymentIcon fontSize="small" />} href="/admin/billing" isSub />
+                        <DrawerItem text="Help" icon={<HelpIcon fontSize="small" />} href="/admin/help" isSub />
+                        <DrawerItem text="Suppliers" icon={<LocalShippingIcon fontSize="small" />} href="/admin/suppliers" isSub />
+                        <DrawerItem text="Locations" icon={<LocationOnIcon fontSize="small" />} href="/admin/settings/locations" isSub />
                     </List>
                 </Collapse>
 
@@ -239,10 +319,10 @@ export default function AdminNav({ user, children }: { user: NavUser, children: 
                         <MenuIcon />
                     </IconButton>
                     <Box sx={{ flexGrow: 1 }} />
-                    
+
                     {myLocations.length > 0 && (
                         <>
-                            <Box 
+                            <Box
                                 sx={{ display: 'flex', alignItems: 'center', cursor: 'pointer', mr: 2, '&:hover': { color: 'primary.main' } }}
                                 onClick={(e) => myLocations.length > 1 && setAnchorElLoc(e.currentTarget)}
                             >
@@ -279,21 +359,20 @@ export default function AdminNav({ user, children }: { user: NavUser, children: 
                         onClose={() => setAnchorElProfile(null)}
                     >
                         <MenuItem disabled sx={{ opacity: '1 !important', fontWeight: 'bold' }}>UI Theme</MenuItem>
-                        <MenuItem onClick={() => { fetch('/api/user/theme', { method: 'POST', body: JSON.stringify({ theme: 'dark' })}).then(() => window.location.reload()) }}>Dark</MenuItem>
-                        <MenuItem onClick={() => { fetch('/api/user/theme', { method: 'POST', body: JSON.stringify({ theme: 'light' })}).then(() => window.location.reload()) }}>Light</MenuItem>
-                        <MenuItem onClick={() => { fetch('/api/user/theme', { method: 'POST', body: JSON.stringify({ theme: 'blue' })}).then(() => window.location.reload()) }}>Deep Blue</MenuItem>
-                        <MenuItem onClick={() => { fetch('/api/user/theme', { method: 'POST', body: JSON.stringify({ theme: 'default' })}).then(() => window.location.reload()) }}>Org Default</MenuItem>
+                        <MenuItem onClick={() => { fetch('/api/user/theme', { method: 'POST', body: JSON.stringify({ theme: 'dark' }) }).then(() => window.location.reload()) }}>Dark</MenuItem>
+                        <MenuItem onClick={() => { fetch('/api/user/theme', { method: 'POST', body: JSON.stringify({ theme: 'light' }) }).then(() => window.location.reload()) }}>Light</MenuItem>
+                        <MenuItem onClick={() => { fetch('/api/user/theme', { method: 'POST', body: JSON.stringify({ theme: 'blue' }) }).then(() => window.location.reload()) }}>Deep Blue</MenuItem>
+                        <MenuItem onClick={() => { fetch('/api/user/theme', { method: 'POST', body: JSON.stringify({ theme: 'default' }) }).then(() => window.location.reload()) }}>Org Default</MenuItem>
                     </Menu>
                 </Toolbar>
             </AppBar>
-            
+
             <Box component="nav" sx={{ width: { sm: drawerWidth }, flexShrink: { sm: 0 }, zIndex: 1200 }}>
-                {/* Mobile Drawer */}
                 <Drawer
                     variant="temporary"
                     open={mobileOpen}
                     onClose={handleDrawerToggle}
-                    ModalProps={{ keepMounted: true }} // Better open performance on mobile.
+                    ModalProps={{ keepMounted: true }}
                     sx={{
                         display: { xs: 'block', sm: 'none' },
                         '& .MuiDrawer-paper': { boxSizing: 'border-box', width: drawerWidth },
@@ -301,7 +380,6 @@ export default function AdminNav({ user, children }: { user: NavUser, children: 
                 >
                     {drawerContent}
                 </Drawer>
-                {/* Desktop Drawer */}
                 <Drawer
                     variant="permanent"
                     sx={{

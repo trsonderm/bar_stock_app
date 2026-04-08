@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import styles from '../admin.module.css';
 
 interface Item {
@@ -9,18 +9,16 @@ interface Item {
     name: string;
     type: string;
     unit_cost: number;
+    sale_price?: number;
 }
 
 export default function PricesClient() {
-    const router = useRouter();
     const [items, setItems] = useState<Item[]>([]);
     const [categories, setCategories] = useState<string[]>(['Liquor', 'Beer', 'Wine', 'Seltzer', 'THC']);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
-
-    // Local state for edits before save? Or save on blur. 
-    // We'll use a local map for "dirty" values to allow typing without jitter
-    // But for simplicity, we can just edit directly and save on blur.
+    // Local sale price edits before save
+    const [salePriceEdits, setSalePriceEdits] = useState<Record<number, string>>({});
 
     useEffect(() => {
         fetchItems();
@@ -38,81 +36,68 @@ export default function PricesClient() {
     const fetchItems = async () => {
         const res = await fetch('/api/inventory');
         const data = await res.json();
-        if (data.items) setItems(data.items);
+        if (data.items) {
+            setItems(data.items);
+            // Seed local edit state
+            const initial: Record<number, string> = {};
+            data.items.forEach((i: Item) => {
+                initial[i.id] = i.sale_price !== null && i.sale_price !== undefined ? String(i.sale_price) : '';
+            });
+            setSalePriceEdits(initial);
+        }
         setLoading(false);
     };
 
-    const handleLogout = async () => {
-        await fetch('/api/auth/logout', { method: 'POST' });
-        router.push('/');
-    };
+    const saveSalePrice = async (id: number) => {
+        const raw = salePriceEdits[id];
+        const num = raw === '' ? null : parseFloat(raw);
+        if (num !== null && isNaN(num)) return;
 
-    const handleDelete = async (id: number) => {
-        if (!confirm('Are you sure you want to delete this item? This action cannot be undone and will remove it from inventory.')) return;
-
-        try {
-            const res = await fetch(`/api/inventory?id=${id}`, { method: 'DELETE' });
-            if (res.ok) {
-                fetchItems(); // Reload
-            } else {
-                const err = await res.json();
-                alert(err.error || 'Failed to delete item');
-            }
-        } catch (e) {
-            console.error('Failed to delete item', e);
-            alert('Error deleting item');
-        }
-    };
-
-    const updatePrice = async (id: number, newCost: number) => {
         // Optimistic update
-        setItems(prev => prev.map(i => i.id === id ? { ...i, unit_cost: newCost } : i));
+        setItems(prev => prev.map(i => i.id === id ? { ...i, sale_price: num ?? undefined } : i));
 
         try {
             await fetch('/api/inventory', {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id, unit_cost: newCost })
+                body: JSON.stringify({ id, sale_price: num })
             });
-        } catch (e) {
-            console.error('Failed to update price', e);
-            fetchItems(); // Revert on error
+        } catch {
+            fetchItems();
         }
     };
 
-    // Calculate derived prices for display/input
-    const getSixPack = (unit: number) => (unit * 6).toFixed(2);
-    const getTwentyFourPack = (unit: number) => (unit * 24).toFixed(2);
-
-    const handlePriceChange = (id: number, val: string, packSize: 1 | 6 | 24) => {
-        const num = parseFloat(val);
-        if (isNaN(num)) return; // Ignore invalid
-
-        const unitCost = num / packSize;
-        updatePrice(id, parseFloat(unitCost.toFixed(4))); // Store with precision
+    const getMargin = (unitCost: number, salePrice: number) => {
+        if (!salePrice || salePrice <= 0) return null;
+        return ((salePrice - unitCost) / salePrice * 100).toFixed(1);
     };
 
     const filteredItems = items.filter(i => i.name.toLowerCase().includes(search.toLowerCase()));
 
-    // Dynamic grouping
     const grouped: Record<string, Item[]> = {};
     categories.forEach(cat => {
         grouped[cat] = filteredItems.filter(i => i.type === cat);
     });
-    // Catch-all for unknown categories?
-    // Not needed if we only allow creation via known categories.
 
     if (loading) return <div className={styles.container}>Loading...</div>;
 
     return (
         <div className={styles.card}>
-            <input
-                className={styles.input}
-                placeholder="Search items..."
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                style={{ marginBottom: '2rem' }}
-            />
+            <div style={{ marginBottom: '1.5rem' }}>
+                <p style={{ color: '#9ca3af', fontSize: '0.9rem', margin: '0 0 1rem 0' }}>
+                    Unit prices are set on the{' '}
+                    <Link href="/admin/products" style={{ color: '#3b82f6', textDecoration: 'underline' }}>
+                        Product List
+                    </Link>
+                    {' '}and are read-only here. Set a sale price per item to enable profit reporting.
+                </p>
+                <input
+                    className={styles.input}
+                    placeholder="Search items..."
+                    value={search}
+                    onChange={e => setSearch(e.target.value)}
+                />
+            </div>
 
             {Object.entries(grouped).map(([type, typeItems]) => (
                 typeItems.length > 0 && (
@@ -120,92 +105,93 @@ export default function PricesClient() {
                         <h2 className={styles.cardTitle} style={{ borderBottom: '1px solid #374151', paddingBottom: '0.5rem', marginBottom: '1rem', color: '#d97706' }}>
                             {type}
                         </h2>
-                        <table className={styles.table}>
-                            <thead>
-                                <tr>
-                                    <th style={{ width: '40%' }}>Name</th>
-                                    <th style={{ width: '20%' }}>Unit Cost ($)</th>
-                                    {/* Dynamic Columns based on Type */}
-                                    {type === 'Beer' && <th style={{ width: '20%' }}>6-Pack Price</th>}
-                                    {type === 'Beer' && <th style={{ width: '20%' }}>24-Pack Price</th>}
-                                    {(type === 'Liquor' || type === 'Wine') && <th style={{ width: '40%' }}>Bottle Price ($)</th>}
-                                    <th style={{ width: '50px' }}>Action</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {typeItems.map(item => (
-                                    <tr key={item.id}>
-                                        <td>{item.name}</td>
-                                        <td>
-                                            <input
-                                                type="number"
-                                                step="0.01"
-                                                className={styles.input}
-                                                style={{ padding: '0.25rem', fontSize: '0.9em', width: '100px' }}
-                                                value={item.unit_cost || ''}
-                                                onChange={e => handlePriceChange(item.id, e.target.value, 1)}
-                                            />
-                                        </td>
-
-                                        {/* Beer Logic */}
-                                        {type === 'Beer' && (
-                                            <>
-                                                <td>
-                                                    <input
-                                                        type="number"
-                                                        step="0.01"
-                                                        className={styles.input}
-                                                        style={{ padding: '0.25rem', fontSize: '0.9em', width: '100px' }}
-                                                        value={item.unit_cost ? getSixPack(item.unit_cost) : ''}
-                                                        onChange={e => handlePriceChange(item.id, e.target.value, 6)}
-                                                    />
-                                                </td>
-                                                <td>
-                                                    <input
-                                                        type="number"
-                                                        step="0.01"
-                                                        className={styles.input}
-                                                        style={{ padding: '0.25rem', fontSize: '0.9em', width: '100px' }}
-                                                        value={item.unit_cost ? getTwentyFourPack(item.unit_cost) : ''}
-                                                        onChange={e => handlePriceChange(item.id, e.target.value, 24)}
-                                                    />
-                                                </td>
-                                            </>
-                                        )}
-
-                                        {/* Liquor/Wine Logic: Treat Unit as Bottle */}
-                                        {(type === 'Liquor' || type === 'Wine') && (
-                                            <td>
-                                                <input
-                                                    type="number"
-                                                    step="0.01"
-                                                    className={styles.input}
-                                                    style={{ padding: '0.25rem', fontSize: '0.9em', width: '100px' }}
-                                                    value={item.unit_cost || ''}
-                                                    onChange={e => handlePriceChange(item.id, e.target.value, 1)} // Same as unit
-                                                />
-                                            </td>
-                                        )}
-                                        <td>
-                                            <button
-                                                onClick={() => handleDelete(item.id)}
-                                                style={{
-                                                    background: '#ef4444',
-                                                    color: 'white',
-                                                    border: 'none',
-                                                    padding: '4px 8px',
-                                                    borderRadius: '4px',
-                                                    cursor: 'pointer',
-                                                    fontSize: '0.8rem'
-                                                }}
-                                            >
-                                                Delete
-                                            </button>
-                                        </td>
+                        <div className={styles.tableContainer}>
+                            <table className={styles.table}>
+                                <thead>
+                                    <tr>
+                                        <th style={{ width: '35%' }}>Name</th>
+                                        <th style={{ width: '20%' }}>
+                                            Unit Price ($)
+                                            <span style={{ fontSize: '0.75rem', color: '#6b7280', fontWeight: 'normal', marginLeft: '6px' }}>
+                                                (from product)
+                                            </span>
+                                        </th>
+                                        <th style={{ width: '20%' }}>Sale Price ($)</th>
+                                        <th style={{ width: '15%' }}>Margin</th>
+                                        <th style={{ width: '10%' }}>Actions</th>
                                     </tr>
-                                ))}
-                            </tbody>
-                        </table>
+                                </thead>
+                                <tbody>
+                                    {typeItems.map(item => {
+                                        const saleVal = salePriceEdits[item.id] ?? '';
+                                        const saleNum = parseFloat(saleVal);
+                                        const margin = !isNaN(saleNum) && saleNum > 0 ? getMargin(item.unit_cost || 0, saleNum) : null;
+                                        return (
+                                            <tr key={item.id}>
+                                                <td style={{ fontWeight: 600 }}>{item.name}</td>
+                                                <td>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                        <span style={{ color: '#e5e7eb', fontWeight: 600 }}>
+                                                            ${Number(item.unit_cost || 0).toFixed(2)}
+                                                        </span>
+                                                        <Link
+                                                            href={`/admin/products`}
+                                                            style={{ fontSize: '0.75rem', color: '#3b82f6', whiteSpace: 'nowrap' }}
+                                                        >
+                                                            Edit →
+                                                        </Link>
+                                                    </div>
+                                                </td>
+                                                <td>
+                                                    <input
+                                                        type="number"
+                                                        step="0.01"
+                                                        min="0"
+                                                        className={styles.input}
+                                                        style={{ padding: '0.25rem', fontSize: '0.9em', width: '100px', marginBottom: 0 }}
+                                                        value={saleVal}
+                                                        placeholder="0.00"
+                                                        onChange={e => setSalePriceEdits(prev => ({ ...prev, [item.id]: e.target.value }))}
+                                                        onBlur={() => saveSalePrice(item.id)}
+                                                    />
+                                                </td>
+                                                <td>
+                                                    {margin !== null ? (
+                                                        <span style={{
+                                                            color: parseFloat(margin) >= 0 ? '#10b981' : '#ef4444',
+                                                            fontWeight: 600,
+                                                            fontSize: '0.9rem'
+                                                        }}>
+                                                            {margin}%
+                                                        </span>
+                                                    ) : (
+                                                        <span style={{ color: '#4b5563' }}>—</span>
+                                                    )}
+                                                </td>
+                                                <td>
+                                                    <Link
+                                                        href="/admin/products"
+                                                        style={{
+                                                            background: '#374151',
+                                                            color: '#d1d5db',
+                                                            border: 'none',
+                                                            padding: '4px 8px',
+                                                            borderRadius: '4px',
+                                                            cursor: 'pointer',
+                                                            fontSize: '0.8rem',
+                                                            textDecoration: 'none',
+                                                            display: 'inline-block'
+                                                        }}
+                                                    >
+                                                        Edit Product
+                                                    </Link>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 )
             ))}

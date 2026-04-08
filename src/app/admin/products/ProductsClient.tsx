@@ -23,6 +23,11 @@ interface Item {
     stock_options?: number[];
     include_in_audit?: boolean;
     assigned_locations?: number[];
+    stock_unit_label?: string;
+    stock_unit_size?: number;
+    order_unit_label?: string;
+    order_unit_size?: number;
+    use_category_qty_defaults?: boolean;
 }
 
 interface Category {
@@ -53,11 +58,16 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
         unit_cost: '',
         quantity: '',
         order_size: [{ label: 'Unit', amount: 1 }] as OrderSizeOption[],
-        low_stock_threshold: '5' as string | null, // '5' or null (for global) or custom string
+        low_stock_threshold: '5' as string | null,
         track_quantity: true,
         include_in_audit: true,
         stock_options: [] as number[],
-        assignedLocations: [] as number[]
+        assignedLocations: [] as number[],
+        use_category_qty_defaults: true,
+        stock_unit_label: 'unit',
+        stock_unit_size: '1',
+        order_unit_label: 'case',
+        order_unit_size: '1',
     });
 
     // Temp input for stock options
@@ -125,7 +135,12 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
             track_quantity: true,
             include_in_audit: true,
             stock_options: [],
-            assignedLocations: []
+            assignedLocations: [],
+            use_category_qty_defaults: true,
+            stock_unit_label: 'unit',
+            stock_unit_size: '1',
+            order_unit_label: 'case',
+            order_unit_size: '1',
         });
         setTempOptionInput('');
         setTempOrderLabel('Pack');
@@ -168,7 +183,12 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
             track_quantity: true, // Assuming true if it exists, or check quantity
             include_in_audit: item.include_in_audit !== undefined ? item.include_in_audit : true,
             stock_options: Array.isArray(item.stock_options) ? item.stock_options : [],
-            assignedLocations: item.assigned_locations || []
+            assignedLocations: item.assigned_locations || [],
+            use_category_qty_defaults: item.use_category_qty_defaults !== false,
+            stock_unit_label: item.stock_unit_label || 'unit',
+            stock_unit_size: String(item.stock_unit_size ?? 1),
+            order_unit_label: item.order_unit_label || 'case',
+            order_unit_size: String(item.order_unit_size ?? 1),
         });
 
         setShowModal(true);
@@ -178,7 +198,7 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
         e.preventDefault();
         try {
             const body = {
-                id: editingId, // Undefined for Create
+                id: editingId,
                 name: formData.name,
                 type: formData.type,
                 secondary_type: formData.secondary_type || undefined,
@@ -192,7 +212,12 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                 include_in_audit: formData.include_in_audit,
                 stock_options: formData.stock_options.length > 0 ? formData.stock_options : null,
                 assignedLocations: formData.assignedLocations,
-                add_to_all_locations: addToAllLocations
+                add_to_all_locations: addToAllLocations,
+                use_category_qty_defaults: formData.use_category_qty_defaults,
+                stock_unit_label: formData.use_category_qty_defaults ? undefined : formData.stock_unit_label,
+                stock_unit_size: formData.use_category_qty_defaults ? undefined : parseInt(formData.stock_unit_size || '1'),
+                order_unit_label: formData.use_category_qty_defaults ? undefined : formData.order_unit_label,
+                order_unit_size: formData.use_category_qty_defaults ? undefined : parseInt(formData.order_unit_size || '1'),
             };
 
             const url = '/api/inventory' + (overrideOrgId ? `?orgId=${overrideOrgId}` : '');
@@ -682,6 +707,78 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                                     <p className="text-xs text-gray-500 mt-1">Leave empty to use category defaults.</p>
                                 </div>
                             )}
+
+                            {/* Quantity Units Section */}
+                            <div style={{ marginBottom: '1rem', padding: '1rem', background: '#1e293b', borderRadius: '0.5rem', border: '1px solid #334155' }}>
+                                <label className={styles.statLabel} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', marginBottom: '0.75rem' }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={formData.use_category_qty_defaults}
+                                        onChange={e => setFormData({ ...formData, use_category_qty_defaults: e.target.checked })}
+                                        style={{ width: '16px', height: '16px' }}
+                                    />
+                                    <span style={{ color: 'white', fontWeight: 600 }}>Use Category Quantity Defaults</span>
+                                </label>
+                                {!formData.use_category_qty_defaults && (
+                                    <div>
+                                        <p style={{ fontSize: '0.8rem', color: '#9ca3af', marginBottom: '0.75rem' }}>
+                                            Configure how this product is stocked vs. how it&apos;s ordered.
+                                            Example: 6 beers = 1 6-pack, ordered by case (24).
+                                        </p>
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                                            <div>
+                                                <label className={styles.statLabel}>Stock Unit Label</label>
+                                                <input
+                                                    className={styles.input}
+                                                    placeholder="e.g. bottle, can"
+                                                    value={formData.stock_unit_label}
+                                                    onChange={e => setFormData({ ...formData, stock_unit_label: e.target.value })}
+                                                    style={{ marginBottom: 0 }}
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className={styles.statLabel}>Stock Unit Size</label>
+                                                <input
+                                                    className={styles.input}
+                                                    type="number"
+                                                    min="1"
+                                                    placeholder="1"
+                                                    value={formData.stock_unit_size}
+                                                    onChange={e => setFormData({ ...formData, stock_unit_size: e.target.value })}
+                                                    style={{ marginBottom: 0 }}
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className={styles.statLabel}>Order Unit Label</label>
+                                                <input
+                                                    className={styles.input}
+                                                    placeholder="e.g. case, keg"
+                                                    value={formData.order_unit_label}
+                                                    onChange={e => setFormData({ ...formData, order_unit_label: e.target.value })}
+                                                    style={{ marginBottom: 0 }}
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className={styles.statLabel}>Order Unit Size</label>
+                                                <input
+                                                    className={styles.input}
+                                                    type="number"
+                                                    min="1"
+                                                    placeholder="24"
+                                                    value={formData.order_unit_size}
+                                                    onChange={e => setFormData({ ...formData, order_unit_size: e.target.value })}
+                                                    style={{ marginBottom: 0 }}
+                                                />
+                                            </div>
+                                        </div>
+                                        {formData.order_unit_size && formData.stock_unit_label && (
+                                            <p style={{ fontSize: '0.8rem', color: '#10b981', marginTop: '0.5rem' }}>
+                                                1 {formData.order_unit_label || 'order unit'} = {formData.order_unit_size} {formData.stock_unit_label}(s)
+                                            </p>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
 
                             <div style={{ marginBottom: '1rem' }}>
                                 <label className={styles.statLabel}>Low Stock Alert</label>

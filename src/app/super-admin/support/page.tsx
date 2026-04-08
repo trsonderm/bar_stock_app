@@ -17,6 +17,20 @@ export default function SupportPage() {
     const [selectedTicket, setSelectedTicket] = useState<any | null>(null);
     const [loading, setLoading] = useState(true);
 
+    const [showSettings, setShowSettings] = useState(false);
+    const [showCreate, setShowCreate] = useState(false);
+    const [settings, setSettings] = useState({
+        auto_reply: true,
+        sla_hours: '24',
+        operating_hours: '9AM-5PM EST'
+    });
+
+    const [createForm, setCreateForm] = useState({
+        subject: '',
+        description: '',
+        priority: 'Normal'
+    });
+
     React.useEffect(() => {
         fetch('/api/support/tickets')
             .then(res => res.json())
@@ -27,12 +41,59 @@ export default function SupportPage() {
                 setLoading(false);
             })
             .catch(() => setLoading(false));
+
+        // Stub fetch settings for settings panel
+        fetch('/api/super-admin/settings')
+            .then(res => res.json())
+            .then(data => {
+                if (data.settings && data.settings.help_desk) {
+                    try {
+                        const hd = JSON.parse(data.settings.help_desk);
+                        setSettings(hd);
+                    } catch (e) {}
+                }
+            });
     }, []);
 
     const actions = [
-        { label: 'Ticket Settings', variant: 'secondary' as const },
-        { label: 'Create Ticket', variant: 'primary' as const },
+        { label: 'Ticket Settings', variant: 'secondary' as const, onClick: () => setShowSettings(true) },
+        { label: 'Create Ticket', variant: 'primary' as const, onClick: () => setShowCreate(true) },
     ];
+
+    const handleSaveSettings = async () => {
+        try {
+            await fetch('/api/super-admin/settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ help_desk: JSON.stringify(settings) })
+            });
+            setShowSettings(false);
+            alert('Help Desk Settings Saved!');
+        } catch (e) {
+            alert('Failed to save settings');
+        }
+    };
+
+    const handleCreateTicket = async () => {
+        try {
+            // Usually hits /api/support/tickets but we simulate it internally to the org
+            const res = await fetch('/api/support/tickets', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(createForm)
+            });
+            if (res.ok) {
+                setShowCreate(false);
+                setCreateForm({ subject: '', description: '', priority: 'Normal' });
+                alert('Ticket Created!');
+                window.location.reload();
+            } else {
+                alert('Failed to create ticket');
+            }
+        } catch (e) {
+            alert('Error');
+        }
+    };
 
     return (
         <div className="flex flex-col h-screen overflow-hidden bg-slate-950">
@@ -190,6 +251,66 @@ export default function SupportPage() {
                     )}
                 </div>
             </div>
+
+            {/* Modals */}
+            {showSettings && (
+                <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
+                    <div className="bg-slate-900 border border-slate-700 p-6 rounded-xl w-full max-w-md">
+                        <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2"><AlertCircle className="w-5 h-5 text-blue-400" /> Help Desk Settings</h2>
+                        <div className="space-y-4">
+                            <div>
+                                <label className="flex items-center gap-2 text-sm font-medium text-slate-300">
+                                    <input type="checkbox" checked={settings.auto_reply} onChange={e => setSettings({...settings, auto_reply: e.target.checked})} className="rounded bg-slate-800 border-slate-700 text-blue-500 focus:ring-blue-500" />
+                                    Enable Auto-Reply for New Tickets
+                                </label>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-slate-300 mb-1">Target SLA (Hours)</label>
+                                <input type="number" value={settings.sla_hours} onChange={e => setSettings({...settings, sla_hours: e.target.value})} className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-white" />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-slate-300 mb-1">Available Operating Hours</label>
+                                <input type="text" value={settings.operating_hours} onChange={e => setSettings({...settings, operating_hours: e.target.value})} className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-white" placeholder="e.g. 9AM-5PM EST" />
+                            </div>
+                            <div className="flex gap-2 pt-4">
+                                <button onClick={handleSaveSettings} className="flex-1 bg-blue-600 hover:bg-blue-500 text-white rounded-lg py-2 font-medium">Save Settings</button>
+                                <button onClick={() => setShowSettings(false)} className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg py-2 font-medium">Cancel</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {showCreate && (
+                <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
+                    <div className="bg-slate-900 border border-slate-700 p-6 rounded-xl w-full max-w-md">
+                        <h2 className="text-xl font-bold text-white mb-4">Open New Support Ticket</h2>
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-slate-300 mb-1">Subject</label>
+                                <input type="text" value={createForm.subject} onChange={e => setCreateForm({...createForm, subject: e.target.value})} className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-white" placeholder="Brief summary of the issue..." />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-slate-300 mb-1">Priority</label>
+                                <select value={createForm.priority} onChange={e => setCreateForm({...createForm, priority: e.target.value})} className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-white">
+                                    <option>Low</option>
+                                    <option>Normal</option>
+                                    <option>High</option>
+                                    <option>Critical</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-slate-300 mb-1">Description</label>
+                                <textarea value={createForm.description} onChange={e => setCreateForm({...createForm, description: e.target.value})} className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-white h-24 resize-none" placeholder="Elaborate on the issue..."></textarea>
+                            </div>
+                            <div className="flex gap-2 pt-4">
+                                <button onClick={handleCreateTicket} className="flex-1 bg-blue-600 hover:bg-blue-500 text-white rounded-lg py-2 font-medium">Submit Ticket</button>
+                                <button onClick={() => setShowCreate(false)} className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg py-2 font-medium">Cancel</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

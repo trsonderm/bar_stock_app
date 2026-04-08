@@ -47,9 +47,14 @@ CREATE TABLE IF NOT EXISTS categories (
     id SERIAL PRIMARY KEY,
     organization_id INTEGER REFERENCES organizations(id),
     name TEXT NOT NULL,
-    stock_options JSONB, -- storing as JSONB for better querying if needed, or keeping TEXT if legacy code expects it. Let's use JSONB.
+    stock_options JSONB,
     sub_categories JSONB,
     enable_low_stock_reporting BOOLEAN DEFAULT TRUE,
+    -- Default quantity unit templates for items in this category
+    default_stock_unit_label VARCHAR(50) DEFAULT 'unit',
+    default_stock_unit_size INT DEFAULT 1,
+    default_order_unit_label VARCHAR(50) DEFAULT 'case',
+    default_order_unit_size INT DEFAULT 1,
     UNIQUE(name, organization_id)
 );
 
@@ -61,13 +66,20 @@ CREATE TABLE IF NOT EXISTS items (
     secondary_type TEXT,
     description TEXT,
     unit_cost DECIMAL(10,2) DEFAULT 0,
+    sale_price DECIMAL(10,2),
     supplier TEXT,
-    track_quantity INTEGER DEFAULT 1, -- Could be Boolean, but keeping Integer 0/1 for easier migration if code relies on 1
+    track_quantity INTEGER DEFAULT 1,
     order_size INTEGER DEFAULT 1,
     low_stock_threshold INTEGER DEFAULT 5,
-    stock_options JSONB, -- For product-specific overrides (like Kegs)
+    stock_options JSONB,
     include_in_audit BOOLEAN DEFAULT TRUE,
     category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
+    -- Quantity unit config (per-product override)
+    stock_unit_label VARCHAR(50) DEFAULT 'unit',
+    stock_unit_size INT DEFAULT 1,
+    order_unit_label VARCHAR(50) DEFAULT 'case',
+    order_unit_size INT DEFAULT 1,
+    use_category_qty_defaults BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -107,8 +119,15 @@ CREATE TABLE IF NOT EXISTS purchase_orders (
     organization_id INTEGER REFERENCES organizations(id),
     supplier_id INTEGER REFERENCES suppliers(id),
     status TEXT DEFAULT 'PENDING',
+    tracking_status VARCHAR(50) DEFAULT 'PENDING',
     expected_delivery_date TIMESTAMP,
     details JSONB,
+    submitted_by INTEGER REFERENCES users(id),
+    resubmit_of INTEGER REFERENCES purchase_orders(id),
+    archived_at TIMESTAMPTZ,
+    resubmit_note TEXT,
+    confirmed_by INTEGER REFERENCES users(id),
+    confirmed_at TIMESTAMPTZ,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -116,7 +135,32 @@ CREATE TABLE IF NOT EXISTS purchase_order_items (
     id SERIAL PRIMARY KEY,
     purchase_order_id INTEGER REFERENCES purchase_orders(id) ON DELETE CASCADE,
     item_id INTEGER REFERENCES items(id),
-    quantity INTEGER
+    quantity INTEGER,
+    received_quantity INTEGER,
+    confirmed_at TIMESTAMPTZ
+);
+
+CREATE TABLE IF NOT EXISTS saved_reports (
+    id SERIAL PRIMARY KEY,
+    organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    config JSONB NOT NULL DEFAULT '{}',
+    is_scheduled BOOLEAN DEFAULT FALSE,
+    schedule_config JSONB,
+    next_run_at TIMESTAMPTZ,
+    created_by INTEGER REFERENCES users(id),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS report_runs (
+    id SERIAL PRIMARY KEY,
+    report_id INTEGER REFERENCES saved_reports(id) ON DELETE CASCADE,
+    organization_id INTEGER NOT NULL,
+    ran_at TIMESTAMPTZ DEFAULT NOW(),
+    status VARCHAR(20) DEFAULT 'success',
+    recipients_json JSONB DEFAULT '[]'
 );
 
 CREATE TABLE IF NOT EXISTS signatures (

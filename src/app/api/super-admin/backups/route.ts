@@ -1,43 +1,61 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { scheduler } from '@/lib/scheduler';
-import fs from 'fs';
+import { db } from '@/lib/db';
+import { exec } from 'child_process';
+import util from 'util';
 import path from 'path';
+import fs from 'fs';
+import { sendEmail } from '@/lib/mail';
 
-// START Scheduler if not started (Next.js serverless makes this tricky, usually better in separate worker or custom server)
-// But for this simple app, we can lazy init. Warning: Serverless functions might kill it. 
-// In Docker container mode with `next start`, the process stays alive, so a singleton works okay if hit at least once.
-scheduler.start();
-
-export async function GET(req: NextRequest) {
-    const session = await getSession();
-    if (!session || !session.isSuperAdmin) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    try {
-        const backups = scheduler.getBackups().sort((a, b) => b.created.getTime() - a.created.getTime());
-        return NextResponse.json({ backups });
-    } catch (e) {
-        return NextResponse.json({ error: 'Internal Error' }, { status: 500 });
-    }
-}
+const execAsync = util.promisify(exec);
 
 export async function POST(req: NextRequest) {
     const session = await getSession();
-    if (!session || !session.isSuperAdmin) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!session?.isSuperAdmin) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const backupDir = path.join(process.cwd(), 'backups');
+    
+    // Ensure backups dir exists
+    if (!fs.existsSync(backupDir)) {
+        fs.mkdirSync(backupDir, { recursive: true });
     }
 
-    const { action } = await req.json();
-
+    const backupFile = path.join(backupDir, `backup-${timestamp}.sql`);
+    
     try {
-        if (action === 'backup') {
-            await scheduler.runBackup();
-            return NextResponse.json({ success: true });
-        }
-        return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
+        // We will assume the local pg_dump command exists and database credentials match the .env
+        // Wait, for Bar Stock App, what is the DB URI?
+        // postgresql://postgres:postgres@localhost:5432/topshelf
+        const dbUrl = process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/topshelf';
+        
+        // Use pg_dump with the schema and data only
+        const command = `pg_dump --clean --if-exists --format=c --dbname="${dbUrl}" --file="${backupFile}"`;
+        await execAsync(command);
+        
+        await db.query(`
+            INSERT INTO activity_logs (organization_id, user_id, action, details)
+            VALUES (null, $1, 'MANUAL_DB_BACKUP', $2)
+        `, [session.id, JSON.stringify({ file: backupFile })]);
+
+        // Send Email Alert
+        await sendEmail('notifications', {
+            to: (session as any).email || 'superadmin@topshelfinventory.com',
+            subject: 'Database Backup Completed',
+            text: \`A manual database backup was just completed and stored at: \${backupFile}\`,
+            html: \`<p>A manual database backup was just completed.</p><p><strong>File:</strong> \${backupFile}</p>\`
+        });
+
+        return NextResponse.json({ success: true, file: backupFile });
     } catch (e: any) {
-        return NextResponse.json({ error: e.message || 'Failed' }, { status: 500 });
+        console.error('Backup failed:', e);
+        
+        await sendEmail('notifications', {
+            to: 'superadmin@topshelfinventory.com', // Fallback, could grab from users
+            subject: 'CRITICAL: Database Backup FAILED',
+            text: \`A database backup failed to execute: \n\n\${e.message}\`
+        });
+
+        return NextResponse.json({ error: 'pg_dump failed: ' + e.message }, { status: 500 });
     }
 }

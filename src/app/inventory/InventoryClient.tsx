@@ -102,12 +102,18 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
     const [allowCustomIncrement, setAllowCustomIncrement] = useState(false);
     const [loading, setLoading] = useState(false);
 
-    // Pending Orders Check-In State
+    // Pending Orders Check-In State (legacy)
     const [pendingOrders, setPendingOrders] = useState<any[]>([]);
     const [showPendingModal, setShowPendingModal] = useState(false);
     const [selectedOrder, setSelectedOrder] = useState<any>(null);
     const [checkInQuantities, setCheckInQuantities] = useState<Record<number, number>>({});
     const [checkingIn, setCheckingIn] = useState(false);
+
+    // Incoming orders banner
+    const [incomingOrders, setIncomingOrders] = useState<any[]>([]);
+    const [showIncomingDetail, setShowIncomingDetail] = useState(false);
+    const [incomingDetailItems, setIncomingDetailItems] = useState<any[]>([]);
+    const [incomingDetailOrder, setIncomingDetailOrder] = useState<any>(null);
 
     // Cost Edit State
     const [editingItem, setEditingItem] = useState<Item | null>(null);
@@ -154,7 +160,30 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
         fetchItems();
         fetchActivity();
         fetchCat();
+        fetchIncomingOrders();
     }, [sort, sortDir]);
+
+    const fetchIncomingOrders = async () => {
+        try {
+            const res = await fetch('/api/inventory/pending-orders');
+            if (res.ok) {
+                const data = await res.json();
+                setIncomingOrders(data.orders || []);
+            }
+        } catch { }
+    };
+
+    const openIncomingDetail = async (order: any) => {
+        setIncomingDetailOrder(order);
+        setShowIncomingDetail(true);
+        try {
+            const res = await fetch(`/api/admin/orders/${order.id}`);
+            if (res.ok) {
+                const data = await res.json();
+                setIncomingDetailItems(data.items || []);
+            }
+        } catch { }
+    };
 
     const fetchCat = async () => {
         try {
@@ -449,6 +478,47 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
             </TopNav>
 
             <Container maxWidth="xl" sx={{ pb: 6 }}>
+
+                {/* Incoming Orders Banner */}
+                {incomingOrders.length > 0 && (
+                    <Box sx={{
+                        mb: 3,
+                        p: 1.5,
+                        borderRadius: 2,
+                        background: 'linear-gradient(90deg, rgba(59,130,246,0.15) 0%, rgba(16,185,129,0.1) 100%)',
+                        border: '1px solid rgba(59,130,246,0.3)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        flexWrap: 'wrap',
+                        gap: 1
+                    }}>
+                        <Typography variant="body2" sx={{ color: '#93c5fd', fontWeight: 600 }}>
+                            📦 {incomingOrders.length} incoming order{incomingOrders.length > 1 ? 's' : ''} pending
+                            {incomingOrders[0]?.supplier_name ? ` from ${incomingOrders[0].supplier_name}` : ''}
+                        </Typography>
+                        <Box sx={{ display: 'flex', gap: 1 }}>
+                            {incomingOrders.map((o: any) => (
+                                <Button
+                                    key={o.id}
+                                    size="small"
+                                    variant="outlined"
+                                    sx={{ borderColor: 'rgba(59,130,246,0.5)', color: '#93c5fd', fontSize: '0.75rem' }}
+                                    onClick={() => {
+                                        if (canAddStock) {
+                                            window.location.href = '/admin/orders/tracking';
+                                        } else {
+                                            openIncomingDetail(o);
+                                        }
+                                    }}
+                                >
+                                    {canAddStock ? `Receive Order #${o.id}` : `View Order #${o.id}`}
+                                </Button>
+                            ))}
+                        </Box>
+                    </Box>
+                )}
+
                 {/* Header Welcome Title */}
                 <Box sx={{ mb: 4 }}>
                     <Typography variant="h4" fontWeight="bold" color="primary">{user.firstName}</Typography>
@@ -954,6 +1024,42 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
                     ) : (
                         <Button onClick={() => setShowPendingModal(false)}>Close</Button>
                     )}
+                </DialogActions>
+            </Dialog>
+
+            {/* View-Only Incoming Order Detail Modal (non add_stock users) */}
+            <Dialog open={showIncomingDetail} onClose={() => setShowIncomingDetail(false)} maxWidth="sm" fullWidth>
+                <DialogTitle>
+                    Incoming Order {incomingDetailOrder ? `#${incomingDetailOrder.id}` : ''}
+                    {incomingDetailOrder?.supplier_name && ` — ${incomingDetailOrder.supplier_name}`}
+                </DialogTitle>
+                <DialogContent>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                        This order is pending receipt. Contact your admin to process it.
+                    </Typography>
+                    {incomingDetailItems.length === 0 ? (
+                        <Typography color="text.secondary">Loading items...</Typography>
+                    ) : (
+                        <Box component="table" sx={{ width: '100%', borderCollapse: 'collapse' }}>
+                            <Box component="thead">
+                                <Box component="tr" sx={{ borderBottom: '1px solid', borderColor: 'divider' }}>
+                                    <Box component="th" sx={{ textAlign: 'left', p: 1, color: 'text.secondary', fontSize: '0.8rem' }}>Item</Box>
+                                    <Box component="th" sx={{ textAlign: 'center', p: 1, color: 'text.secondary', fontSize: '0.8rem' }}>Expected Qty</Box>
+                                </Box>
+                            </Box>
+                            <Box component="tbody">
+                                {incomingDetailItems.map((item: any) => (
+                                    <Box component="tr" key={item.id} sx={{ borderBottom: '1px solid', borderColor: 'divider' }}>
+                                        <Box component="td" sx={{ p: 1 }}>{item.item_name}</Box>
+                                        <Box component="td" sx={{ p: 1, textAlign: 'center', fontWeight: 700 }}>{item.quantity}</Box>
+                                    </Box>
+                                ))}
+                            </Box>
+                        </Box>
+                    )}
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setShowIncomingDetail(false)}>Close</Button>
                 </DialogActions>
             </Dialog>
 

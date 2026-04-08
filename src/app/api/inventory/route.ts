@@ -11,9 +11,11 @@ export async function GET(req: NextRequest) {
         if (!session || !session.organizationId) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
-        const organizationId = session.organizationId;
-
         const { searchParams } = new URL(req.url);
+        let organizationId = session.organizationId;
+        if (session.isSuperAdmin && searchParams.get('orgId')) {
+            organizationId = parseInt(searchParams.get('orgId') as string, 10);
+        }
         const sort = searchParams.get('sort') || 'usage';
 
         // Determine Location Context
@@ -36,11 +38,16 @@ export async function GET(req: NextRequest) {
         // Refactored Query for Multi-tenancy
         // Usage of $1 for organizationId (reused) and $2 for LocationId
         let query = `
-      SELECT 
-        i.id, i.name, i.type, i.secondary_type, i.unit_cost, i.supplier,
+      SELECT
+        i.id, i.name, i.type, i.secondary_type, i.unit_cost, i.sale_price, i.supplier,
         i.order_size, i.low_stock_threshold,
         COALESCE(i.stock_options, '[]') as stock_options,
         COALESCE(i.include_in_audit, true) as include_in_audit,
+        COALESCE(i.stock_unit_label, 'unit') as stock_unit_label,
+        COALESCE(i.stock_unit_size, 1) as stock_unit_size,
+        COALESCE(i.order_unit_label, 'case') as order_unit_label,
+        COALESCE(i.order_unit_size, 1) as order_unit_size,
+        COALESCE(i.use_category_qty_defaults, true) as use_category_qty_defaults,
         MAX(isp.supplier_id) as supplier_id,
         COALESCE(SUM(inv.quantity), 0) as quantity,
         COALESCE(MAX(usage_stats.usage_count), 0) as usage_count,
@@ -85,7 +92,11 @@ export async function POST(req: NextRequest) {
         const session = await getSession();
         if (!session || !session.organizationId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-        const organizationId = session.organizationId;
+        const { searchParams } = new URL(req.url);
+        let organizationId = session.organizationId;
+        if (session.isSuperAdmin && searchParams.get('orgId')) {
+            organizationId = parseInt(searchParams.get('orgId') as string, 10);
+        }
         const canAddName = session.role === 'admin' || session.permissions.includes('add_item_name') || session.permissions.includes('manage_products') || session.permissions.includes('all');
 
         if (!canAddName) {
@@ -193,13 +204,17 @@ export async function PUT(req: NextRequest) {
         const session = await getSession();
         if (!session || !session.organizationId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-        const organizationId = session.organizationId;
+        const { searchParams } = new URL(req.url);
+        let organizationId = session.organizationId;
+        if (session.isSuperAdmin && searchParams.get('orgId')) {
+            organizationId = parseInt(searchParams.get('orgId') as string, 10);
+        }
         const canEdit = session.role === 'admin' || session.permissions.includes('add_item_name') || session.permissions.includes('manage_products') || session.permissions.includes('all');
         const canStock = session.role === 'admin' || session.permissions.includes('add_stock') || session.permissions.includes('all');
 
         if (!canEdit && !canStock) return NextResponse.json({ error: 'Permission denied' }, { status: 403 });
 
-        const { id, unit_cost, name, type, quantity, secondary_type, supplier, supplier_id, low_stock_threshold, order_size, stock_options, include_in_audit, assignedLocations } = await req.json();
+        const { id, unit_cost, sale_price, name, type, quantity, secondary_type, supplier, supplier_id, low_stock_threshold, order_size, stock_options, include_in_audit, assignedLocations, stock_unit_label, stock_unit_size, order_unit_label, order_unit_size, use_category_qty_defaults } = await req.json();
 
         if (!id) return NextResponse.json({ error: 'Missing ID' }, { status: 400 });
 
@@ -212,6 +227,30 @@ export async function PUT(req: NextRequest) {
             if (unit_cost !== undefined) {
                 updates.push(`unit_cost = $${pIdx++} `);
                 params.push(unit_cost);
+            }
+            if (sale_price !== undefined) {
+                updates.push(`sale_price = $${pIdx++} `);
+                params.push(sale_price);
+            }
+            if (stock_unit_label !== undefined) {
+                updates.push(`stock_unit_label = $${pIdx++} `);
+                params.push(stock_unit_label);
+            }
+            if (stock_unit_size !== undefined) {
+                updates.push(`stock_unit_size = $${pIdx++} `);
+                params.push(stock_unit_size);
+            }
+            if (order_unit_label !== undefined) {
+                updates.push(`order_unit_label = $${pIdx++} `);
+                params.push(order_unit_label);
+            }
+            if (order_unit_size !== undefined) {
+                updates.push(`order_unit_size = $${pIdx++} `);
+                params.push(order_unit_size);
+            }
+            if (use_category_qty_defaults !== undefined) {
+                updates.push(`use_category_qty_defaults = $${pIdx++} `);
+                params.push(use_category_qty_defaults);
             }
             if (name !== undefined) {
                 updates.push(`name = $${pIdx++} `);
@@ -379,10 +418,14 @@ export async function DELETE(req: NextRequest) {
 
         const { searchParams } = new URL(req.url);
         const id = searchParams.get('id');
+        let organizationId = session.organizationId;
+        if (session.isSuperAdmin && searchParams.get('orgId')) {
+            organizationId = parseInt(searchParams.get('orgId') as string, 10);
+        }
 
         if (!id) return NextResponse.json({ error: 'Missing ID' }, { status: 400 });
 
-        const result = await db.execute('DELETE FROM items WHERE id = $1 AND organization_id = $2', [id, session.organizationId]);
+        const result = await db.execute('DELETE FROM items WHERE id = $1 AND organization_id = $2', [id, organizationId]);
 
         if (result.rowCount === 0) {
             return NextResponse.json({ error: 'Item not found' }, { status: 404 });

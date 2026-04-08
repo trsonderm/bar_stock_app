@@ -9,7 +9,11 @@ export async function GET(req: NextRequest) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        const organizationId = session.organizationId;
+        const { searchParams } = new URL(req.url);
+        let organizationId = session.organizationId;
+        if (session.isSuperAdmin && searchParams.get('orgId')) {
+            organizationId = parseInt(searchParams.get('orgId') as string, 10);
+        }
 
         // Check if user_locations table exists to prevent 500s if schema is wrong
         // actually just wrapping in try/catch is enough to return json error
@@ -56,7 +60,11 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        const organizationId = session.organizationId;
+        const { searchParams } = new URL(req.url);
+        let organizationId = session.organizationId;
+        if (session.isSuperAdmin && searchParams.get('orgId')) {
+            organizationId = parseInt(searchParams.get('orgId') as string, 10);
+        }
         const body = await req.json();
         const { firstName, lastName, pin, email, password, permissions = [], role = 'user', phone, bio, notes, assignedLocations = [] } = body;
 
@@ -138,7 +146,11 @@ export async function PUT(req: NextRequest) {
         const session = await getSession();
         if (!session || !session.organizationId || session.role !== 'admin') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-        const organizationId = session.organizationId;
+        const { searchParams } = new URL(req.url);
+        let organizationId = session.organizationId;
+        if (session.isSuperAdmin && searchParams.get('orgId')) {
+            organizationId = parseInt(searchParams.get('orgId') as string, 10);
+        }
         const body = await req.json(); // Read once
         const { id, firstName, lastName, pin, email, password, permissions = [], role = 'user', phone, bio, notes, assignedLocations } = body;
 
@@ -250,7 +262,11 @@ export async function DELETE(req: NextRequest) {
         const session = await getSession();
         if (!session || !session.organizationId || session.role !== 'admin') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-        const organizationId = session.organizationId;
+        const { searchParams } = new URL(req.url);
+        let organizationId = session.organizationId;
+        if (session.isSuperAdmin && searchParams.get('orgId')) {
+            organizationId = parseInt(searchParams.get('orgId') as string, 10);
+        }
         const { id } = await req.json();
         if (id === session.id) return NextResponse.json({ error: 'Cannot delete yourself' }, { status: 400 });
 

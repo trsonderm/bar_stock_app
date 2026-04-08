@@ -2,9 +2,36 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { ArrowRight, BarChart3, ShieldCheck, Smartphone, Users, Clock, TrendingUp } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { ArrowRight, BarChart3, ShieldCheck, Smartphone, Users, Clock, TrendingUp, Check, X } from 'lucide-react';
+
+const FEATURES = [
+    { label: 'Unlimited Items & Users', base: true, pro: true },
+    { label: 'Multi-Location Support', base: true, pro: true },
+    { label: 'Stock View & Adjustments', base: true, pro: true },
+    { label: 'Manual Ordering', base: true, pro: true },
+    { label: 'Order Tracking & Receiving', base: true, pro: true },
+    { label: 'Inventory Audit', base: true, pro: true },
+    { label: 'Employee Scheduling', base: true, pro: true },
+    { label: 'Standard Reports', base: true, pro: true },
+    { label: 'Bottle Level Tracking', base: true, pro: true },
+    { label: 'Standard Support (48h)', base: true, pro: true },
+    { label: 'AI Smart Ordering', base: false, pro: true },
+    { label: 'Custom Report Builder', base: false, pro: true },
+    { label: 'Report Scheduler & Auto-Delivery', base: false, pro: true },
+    { label: 'Advanced Analytics & Profit Reports', base: false, pro: true },
+    { label: 'Same-Day Priority Support', base: false, pro: true },
+    { label: 'Free Setup Assistance', base: false, pro: true },
+];
 
 export default function LandingPage() {
+    const router = useRouter();
+    const [slugInput, setSlugInput] = useState('');
+
+    const handleGoToOrg = () => {
+        const slug = slugInput.trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
+        if (slug) router.push(`/o/${slug}`);
+    };
 
     return (
         <div className="min-h-screen bg-gray-900 text-white font-sans selection:bg-amber-500 selection:text-white">
@@ -17,6 +44,8 @@ export default function LandingPage() {
                         </div>
                         <div className="hidden md:block">
                             <div className="ml-10 flex items-baseline space-x-8">
+                                <a href="#features" className="text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium transition-colors">Features</a>
+                                <a href="#pricing" className="text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium transition-colors">Pricing</a>
                                 <Link href="/login" className="text-gray-300 hover:text-white px-3 py-2 rounded-md text-sm font-medium transition-colors">Login</Link>
                                 <Link href="/register" className="bg-amber-600 hover:bg-amber-500 text-white px-6 py-2 rounded-full text-sm font-bold transition-all shadow-lg hover:shadow-amber-500/20">Get Started</Link>
                             </div>
@@ -44,9 +73,9 @@ export default function LandingPage() {
                         <Link href="/register" className="flex items-center px-8 py-4 border border-transparent text-lg font-bold rounded-full text-white bg-amber-600 hover:bg-amber-500 md:text-xl transition-all shadow-xl hover:shadow-amber-500/30">
                             Start Free Trial <ArrowRight className="ml-2 h-5 w-5" />
                         </Link>
-                        <Link href="#features" className="flex items-center px-8 py-4 border border-gray-600 text-lg font-medium rounded-full text-gray-300 hover:bg-gray-800 transition-all">
+                        <a href="#features" className="flex items-center px-8 py-4 border border-gray-600 text-lg font-medium rounded-full text-gray-300 hover:bg-gray-800 transition-all">
                             Learn More
-                        </Link>
+                        </a>
                     </div>
                 </div>
             </header>
@@ -60,13 +89,26 @@ export default function LandingPage() {
                             <p className="text-gray-400">Enter your organization slug to access your dedicated portal.</p>
                         </div>
                         <div className="w-full md:w-auto flex-1">
-                            <form action="/api/organizations/check-slug" method="GET" className="flex gap-2"> {/* Placeholder action, will be handled by client/JS later or direct navigation */}
+                            <div className="flex gap-2">
                                 <div className="relative flex-grow">
                                     <span className="absolute left-3 top-3 text-gray-500">/o/</span>
-                                    <input type="text" placeholder="club-name" className="w-full bg-gray-900 border border-gray-600 rounded-lg py-3 pl-10 pr-4 text-white focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none transition-all placeholder-gray-600" />
+                                    <input
+                                        type="text"
+                                        placeholder="club-name"
+                                        value={slugInput}
+                                        onChange={e => setSlugInput(e.target.value)}
+                                        onKeyDown={e => e.key === 'Enter' && handleGoToOrg()}
+                                        className="w-full bg-gray-900 border border-gray-600 rounded-lg py-3 pl-10 pr-4 text-white focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none transition-all placeholder-gray-600"
+                                    />
                                 </div>
-                                <button type="button" className="bg-gray-700 hover:bg-gray-600 text-white px-6 py-3 rounded-lg font-medium transition-colors">Go</button>
-                            </form>
+                                <button
+                                    type="button"
+                                    onClick={handleGoToOrg}
+                                    className="bg-amber-600 hover:bg-amber-500 text-white px-6 py-3 rounded-lg font-medium transition-colors"
+                                >
+                                    Go
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -80,11 +122,7 @@ export default function LandingPage() {
                             <div className="relative group">
                                 <div className="absolute -inset-1 bg-gradient-to-r from-amber-600 to-amber-400 rounded-2xl blur opacity-25 group-hover:opacity-50 transition duration-1000"></div>
                                 <div className="relative rounded-2xl overflow-hidden border border-gray-700 shadow-2xl h-[400px]">
-                                    <img
-                                        src="/dashboard-mockup.png"
-                                        alt="TopShelf Dashboard"
-                                        className="w-full h-full object-cover transform group-hover:scale-105 transition duration-700"
-                                    />
+                                    <img src="/dashboard-mockup.png" alt="TopShelf Dashboard" className="w-full h-full object-cover transform group-hover:scale-105 transition duration-700" />
                                 </div>
                                 <p className="mt-4 text-center text-sm text-gray-400 font-medium tracking-wide uppercase">Powerful Desktop Command Center</p>
                             </div>
@@ -93,11 +131,7 @@ export default function LandingPage() {
                             <div className="relative group max-w-sm mx-auto">
                                 <div className="absolute -inset-1 bg-gradient-to-r from-blue-600 to-cyan-400 rounded-3xl blur opacity-25 group-hover:opacity-50 transition duration-1000"></div>
                                 <div className="relative rounded-3xl overflow-hidden border border-gray-700 shadow-2xl h-[400px]">
-                                    <img
-                                        src="/mobile-app.png"
-                                        alt="Mobile Scanning App"
-                                        className="w-full h-full object-cover transform group-hover:scale-105 transition duration-700"
-                                    />
+                                    <img src="/mobile-app.png" alt="Mobile App" className="w-full h-full object-cover transform group-hover:scale-105 transition duration-700" />
                                 </div>
                                 <p className="mt-4 text-center text-sm text-gray-400 font-medium tracking-wide uppercase">Fast Mobile Barcode Scanning</p>
                             </div>
@@ -115,88 +149,80 @@ export default function LandingPage() {
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                        {/* Feature 1: AI Smart Ordering */}
                         <div className="p-8 bg-gray-800 rounded-2xl border border-gray-700 hover:border-amber-500/50 transition-colors group">
                             <div className="w-12 h-12 bg-amber-500/10 rounded-xl flex items-center justify-center mb-6 group-hover:bg-amber-500/20 transition-colors">
                                 <BarChart3 className="text-amber-500 h-6 w-6" />
                             </div>
-                            <h3 className="text-xl font-bold text-white mb-3">AI Smart Ordering</h3>
-                            <p className="text-gray-400 text-sm">Predictive algorithms analyze stock movement to generate automatic smart orders. We track supplier days, par levels, and average usage to tell you exactly what you need to order and when, preventing over-ordering.</p>
+                            <h3 className="text-xl font-bold text-white mb-3">AI Smart Ordering <span className="text-xs bg-purple-900/40 text-purple-400 px-2 py-0.5 rounded-full ml-1 font-normal">Pro</span></h3>
+                            <p className="text-gray-400 text-sm">Predictive algorithms analyze stock movement to generate automatic smart orders, preventing over-ordering and stockouts.</p>
                         </div>
 
-                        {/* Feature 2: Advanced Reporting */}
+                        <div className="p-8 bg-gray-800 rounded-2xl border border-gray-700 hover:border-amber-500/50 transition-colors group">
+                            <div className="w-12 h-12 bg-amber-500/10 rounded-xl flex items-center justify-center mb-6 group-hover:bg-amber-500/20 transition-colors">
+                                <BarChart3 className="text-amber-500 h-6 w-6" />
+                            </div>
+                            <h3 className="text-xl font-bold text-white mb-3">Custom Report Builder <span className="text-xs bg-purple-900/40 text-purple-400 px-2 py-0.5 rounded-full ml-1 font-normal">Pro</span></h3>
+                            <p className="text-gray-400 text-sm">Drag-and-drop report builder with live previews. Schedule reports to auto-deliver to any recipients — daily, weekly, or monthly.</p>
+                        </div>
+
                         <div className="p-8 bg-gray-800 rounded-2xl border border-gray-700 hover:border-amber-500/50 transition-colors group">
                             <div className="w-12 h-12 bg-amber-500/10 rounded-xl flex items-center justify-center mb-6 group-hover:bg-amber-500/20 transition-colors">
                                 <ShieldCheck className="text-amber-500 h-6 w-6" />
                             </div>
-                            <h3 className="text-xl font-bold text-white mb-3">Automated Daily Reports</h3>
-                            <p className="text-gray-400 text-sm">Set up scheduled reporting to automatically receive end-of-day closing reports right in your inbox. See real-time run-out predictions, employee usage breakdowns, low stock alerts, and 30-day historical trend graphs tracking your most profitable stock.</p>
+                            <h3 className="text-xl font-bold text-white mb-3">Order Tracking & Receiving</h3>
+                            <p className="text-gray-400 text-sm">Place orders and track them from submission to delivery. Confirm received quantities item by item — inventory updates automatically.</p>
                         </div>
 
-                        {/* Feature 3: Employee Scheduling */}
                         <div className="p-8 bg-gray-800 rounded-2xl border border-gray-700 hover:border-amber-500/50 transition-colors group">
                             <div className="w-12 h-12 bg-amber-500/10 rounded-xl flex items-center justify-center mb-6 group-hover:bg-amber-500/20 transition-colors">
                                 <Users className="text-amber-500 h-6 w-6" />
                             </div>
                             <h3 className="text-xl font-bold text-white mb-3">Interactive Scheduling</h3>
-                            <p className="text-gray-400 text-sm">A best-in-class drag-and-drop employee scheduler built right in. Manage repeating shifts, substitute bartenders instantly, view flattened coverage gaps, and accurately track your weekly roster.</p>
+                            <p className="text-gray-400 text-sm">A best-in-class drag-and-drop employee scheduler built right in. Manage repeating shifts and track your weekly roster.</p>
                         </div>
 
-                        {/* Feature 4: Usage & Variances */}
                         <div className="p-8 bg-gray-800 rounded-2xl border border-gray-700 hover:border-amber-500/50 transition-colors group">
                             <div className="w-12 h-12 bg-amber-500/10 rounded-xl flex items-center justify-center mb-6 group-hover:bg-amber-500/20 transition-colors">
                                 <TrendingUp className="text-amber-500 h-6 w-6" />
                             </div>
                             <h3 className="text-xl font-bold text-white mb-3">Auditing & Variance</h3>
-                            <p className="text-gray-400 text-sm">Perform physical inventory audits and log POS sales to automatically generate variance reports. Catch over-pours, theft, and forgotten waste immediately with pinpoint accuracy across all your locations.</p>
+                            <p className="text-gray-400 text-sm">Perform physical inventory audits and automatically generate variance reports. Catch over-pours, theft, and waste with pinpoint accuracy.</p>
                         </div>
 
-                        {/* Feature 5: Shift Accountability */}
-                        <div className="p-8 bg-gray-800 rounded-2xl border border-gray-700 hover:border-amber-500/50 transition-colors group">
-                            <div className="w-12 h-12 bg-amber-500/10 rounded-xl flex items-center justify-center mb-6 group-hover:bg-amber-500/20 transition-colors">
-                                <Clock className="text-amber-500 h-6 w-6" />
-                            </div>
-                            <h3 className="text-xl font-bold text-white mb-3">Shift Accountability</h3>
-                            <p className="text-gray-400 text-sm">Track exactly who poured what and when. The system links inventory transactions to the specific employee on duty, creating a transparent audit trail that improves accountability.</p>
-                        </div>
-
-                        {/* Feature 6: Terminal Operations */}
                         <div className="p-8 bg-gray-800 rounded-2xl border border-gray-700 hover:border-amber-500/50 transition-colors group">
                             <div className="w-12 h-12 bg-amber-500/10 rounded-xl flex items-center justify-center mb-6 group-hover:bg-amber-500/20 transition-colors">
                                 <Smartphone className="text-amber-500 h-6 w-6" />
                             </div>
                             <h3 className="text-xl font-bold text-white mb-3">Station Mode & Multi-Venue</h3>
-                            <p className="text-gray-400 text-sm">Manage multiple bars from one dashboard. Secure, persistent PIN-based login for bar terminals allows fast bartender access while locking down admin capabilities.</p>
+                            <p className="text-gray-400 text-sm">Manage multiple bars from one dashboard. Secure PIN-based login for bar terminals allows fast bartender access.</p>
                         </div>
                     </div>
                 </div>
             </section>
 
-            {/* Pricing w/ Yearly & Callout */}
-            <section className="py-24 bg-gray-900 border-t border-gray-800">
+            {/* Pricing */}
+            <section id="pricing" className="py-24 bg-gray-900 border-t border-gray-800">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
                     <span className="inline-block py-1 px-3 rounded-full bg-amber-500/10 text-amber-500 text-sm font-bold mb-4">
                         14-Day Free Trial
                     </span>
-                    <h2 className="text-3xl font-bold text-white mb-12">Simple, Transparent Pricing</h2>
+                    <h2 className="text-3xl font-bold text-white mb-4">Simple, Transparent Pricing</h2>
+                    <p className="text-gray-400 mb-12">No hidden fees. Cancel anytime.</p>
 
-                    <div className="flex justify-center mb-12">
-                        {/* Slider removed as requested */}
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-7xl mx-auto">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto mb-16">
                         {/* Base Edition */}
                         <div className="flex flex-col p-8 bg-gray-800 rounded-3xl border border-gray-700 hover:border-gray-600 transition-colors">
                             <h3 className="text-xl font-medium text-gray-300 mb-2">Base Edition</h3>
                             <div className="text-4xl font-bold text-white mb-1">
-                                $19.99
-                                <span className="text-lg text-gray-500 font-normal">/mo</span>
+                                $19.99<span className="text-lg text-gray-500 font-normal">/mo</span>
                             </div>
                             <div className="text-sm text-gray-400 mb-6 font-medium">Or $200/yr (Save 15%)</div>
-                            <ul className="space-y-4 mb-8 text-left flex-1 text-sm">
-                                <li className="flex items-center text-gray-300"><ShieldCheck className="w-5 h-5 text-amber-500 mr-3" /> Unlimited Items & Users</li>
-                                <li className="flex items-center text-gray-300"><ShieldCheck className="w-5 h-5 text-amber-500 mr-3" /> Multi-Location Support</li>
-                                <li className="flex items-center text-gray-300"><ShieldCheck className="w-5 h-5 text-amber-500 mr-3" /> Standard Support (48h)</li>
+                            <ul className="space-y-3 mb-8 text-left flex-1 text-sm">
+                                {FEATURES.filter(f => f.base).map(f => (
+                                    <li key={f.label} className="flex items-center text-gray-300">
+                                        <Check className="w-4 h-4 text-amber-500 mr-3 flex-shrink-0" /> {f.label}
+                                    </li>
+                                ))}
                             </ul>
                             <Link href="/register?plan=base" className="block w-full py-4 rounded-xl bg-gray-700 hover:bg-gray-600 text-white font-bold transition-colors">
                                 Start Base Plan
@@ -208,32 +234,54 @@ export default function LandingPage() {
                             <div className="text-amber-500 text-xs font-bold uppercase tracking-wide mb-2">Recommended</div>
                             <h3 className="text-xl font-medium text-white mb-2">Pro Edition</h3>
                             <div className="text-4xl font-bold text-white mb-1">
-                                $29.99
-                                <span className="text-lg text-gray-500 font-normal">/mo</span>
+                                $29.99<span className="text-lg text-gray-500 font-normal">/mo</span>
                             </div>
                             <div className="text-sm text-amber-500/80 mb-6 font-medium">Or $300/yr (Save 15%)</div>
-                            <ul className="space-y-4 mb-8 text-left flex-1 text-sm">
-                                <li className="flex items-center text-white"><BarChart3 className="w-5 h-5 text-amber-500 mr-3" /> Advanced Reporting & Analytics</li>
-                                <li className="flex items-center text-white"><Smartphone className="w-5 h-5 text-amber-500 mr-3" /> AI Smart Ordering</li>
-                                <li className="flex items-center text-white"><ShieldCheck className="w-5 h-5 text-amber-500 mr-3" /> Same-Day Priority Support</li>
-                                <li className="flex items-center text-white"><Users className="w-5 h-5 text-amber-500 mr-3" /> Free Setup Assistance</li>
+                            <ul className="space-y-3 mb-8 text-left flex-1 text-sm">
+                                {FEATURES.map(f => (
+                                    <li key={f.label} className="flex items-center text-white">
+                                        <Check className="w-4 h-4 text-amber-500 mr-3 flex-shrink-0" />
+                                        {f.label}
+                                        {!f.base && <span className="ml-2 text-xs bg-purple-900/40 text-purple-400 px-1.5 py-0.5 rounded-full">Pro</span>}
+                                    </li>
+                                ))}
                             </ul>
                             <Link href="/register?plan=pro" className="block w-full py-4 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold transition-colors shadow-lg">
                                 Start Pro Plan
                             </Link>
                         </div>
 
-                        {/* Enterprise / Custom (Optional, replacing Yearly) */}
+                        {/* Enterprise */}
                         <div className="flex flex-col p-8 bg-gray-800 rounded-3xl border border-gray-700 hover:border-gray-600 transition-colors">
                             <h3 className="text-xl font-medium text-gray-300 mb-2">Enterprise</h3>
                             <div className="text-4xl font-bold text-white mb-6">Custom</div>
                             <p className="text-gray-400 text-sm mb-6 flex-1">
-                                Need custom integrations, white-labeling, or dedicated account management? Let's talk.
+                                Need custom integrations, white-labeling, or dedicated account management? Let&apos;s talk.
                             </p>
                             <Link href="mailto:sales@topshelf.com" className="block w-full py-4 rounded-xl bg-gray-700 hover:bg-gray-600 text-white font-bold transition-colors">
                                 Contact Sales
                             </Link>
                         </div>
+                    </div>
+
+                    {/* Feature comparison table */}
+                    <div className="max-w-3xl mx-auto bg-gray-800/50 rounded-2xl border border-gray-700 overflow-hidden">
+                        <div className="grid grid-cols-3 px-6 py-4 border-b border-gray-700 bg-gray-800">
+                            <div className="text-left text-gray-400 text-sm font-semibold">Feature</div>
+                            <div className="text-center text-gray-300 text-sm font-semibold">Base</div>
+                            <div className="text-center text-amber-400 text-sm font-semibold">Pro</div>
+                        </div>
+                        {FEATURES.map((f, i) => (
+                            <div key={f.label} className={`grid grid-cols-3 px-6 py-3 border-b border-gray-700/50 ${i % 2 === 0 ? 'bg-gray-800/20' : ''}`}>
+                                <div className="text-left text-gray-300 text-sm">{f.label}</div>
+                                <div className="text-center">
+                                    {f.base ? <Check className="w-4 h-4 text-amber-500 mx-auto" /> : <X className="w-4 h-4 text-gray-600 mx-auto" />}
+                                </div>
+                                <div className="text-center">
+                                    <Check className="w-4 h-4 text-amber-500 mx-auto" />
+                                </div>
+                            </div>
+                        ))}
                     </div>
                 </div>
             </section>

@@ -11,6 +11,12 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Permission denied' }, { status: 403 });
         }
 
+        const { searchParams } = new URL(req.url);
+        let organizationId = session.organizationId;
+        if (session.isSuperAdmin && searchParams.get('orgId')) {
+            organizationId = parseInt(searchParams.get('orgId') as string, 10);
+        }
+
         const formData = await req.formData();
         const file = formData.get('file') as File;
 
@@ -82,10 +88,11 @@ export async function POST(req: NextRequest) {
                     threshold = 5;
                 }
 
-                if (!name || !type) continue;
+                if (!name) continue;
+                if (!type) type = 'Uncategorized';
 
                 // Check existing
-                const existing = await db.one('SELECT id FROM items WHERE name = $1', [name]);
+                const existing = await db.one('SELECT id FROM items WHERE name = $1 AND organization_id = $2', [name, organizationId]);
                 if (existing) {
                     skipCount++;
                     continue;
@@ -93,14 +100,17 @@ export async function POST(req: NextRequest) {
 
                 // Insert Item
                 const res = await db.one(
-                    'INSERT INTO items (name, type, secondary_type, unit_cost, order_size, low_stock_threshold) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
-                    [name, type, secType, cost, orderSize, threshold]
+                    'INSERT INTO items (name, type, secondary_type, unit_cost, order_size, low_stock_threshold, organization_id) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id',
+                    [name, type, secType, cost, JSON.stringify([orderSize]), threshold, organizationId]
                 );
 
-                // Insert Stock (Location 1 default)
+                // Insert Stock (Calculate default Location for this ORG instead of assuming 1)
+                const locReq = await db.one('SELECT id FROM locations WHERE organization_id = $1 LIMIT 1', [organizationId]);
+                const locId = locReq ? locReq.id : 1; 
+
                 await db.execute(
-                    'INSERT INTO inventory (item_id, location_id, quantity) VALUES ($1, 1, $2)',
-                    [res.id, qty]
+                    'INSERT INTO inventory (item_id, location_id, quantity, organization_id) VALUES ($1, $2, $3, $4)',
+                    [res.id, locId, qty, organizationId]
                 );
 
                 successCount++;
@@ -108,8 +118,8 @@ export async function POST(req: NextRequest) {
 
             // Log action
             await db.execute(
-                'INSERT INTO activity_logs (user_id, action, details) VALUES ($1, $2, $3)',
-                [session.id, 'IMPORT_CSV', JSON.stringify({ success: successCount, skipped: skipCount })]
+                'INSERT INTO activity_logs (organization_id, user_id, action, details) VALUES ($1, $2, $3, $4)',
+                [organizationId, session.id, 'IMPORT_CSV', JSON.stringify({ success: successCount, skipped: skipCount })]
             );
 
             await db.execute('COMMIT');

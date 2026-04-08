@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Card } from '@/app/components/ui/Card';
 import { Button } from '@/app/components/ui/Button';
 import { Input } from '@/app/components/ui/Input';
+import { Mail } from 'lucide-react';
 
 interface MailAccountsState {
     reportingHost: string;
@@ -23,6 +24,12 @@ interface MailAccountsState {
     adminUser: string;
     adminPass: string;
     adminSecure: boolean;
+
+    notificationsHost: string;
+    notificationsPort: string;
+    notificationsUser: string;
+    notificationsPass: string;
+    notificationsSecure: boolean;
 }
 
 export default function MailAccountsClient({ initialSettings }: { initialSettings: Record<string, string> }) {
@@ -44,6 +51,12 @@ export default function MailAccountsClient({ initialSettings }: { initialSetting
         adminUser: initialSettings.admin_smtp_user || '',
         adminPass: initialSettings.admin_smtp_pass || '',
         adminSecure: initialSettings.admin_smtp_secure === 'true',
+
+        notificationsHost: initialSettings.notifications_smtp_host || '',
+        notificationsPort: initialSettings.notifications_smtp_port || '',
+        notificationsUser: initialSettings.notifications_smtp_user || '',
+        notificationsPass: initialSettings.notifications_smtp_pass || '',
+        notificationsSecure: initialSettings.notifications_smtp_secure === 'true',
     });
 
     const [loading, setLoading] = useState(false);
@@ -69,6 +82,12 @@ export default function MailAccountsClient({ initialSettings }: { initialSetting
                 admin_smtp_user: settings.adminUser,
                 admin_smtp_pass: settings.adminPass,
                 admin_smtp_secure: String(settings.adminSecure),
+
+                notifications_smtp_host: settings.notificationsHost,
+                notifications_smtp_port: settings.notificationsPort,
+                notifications_smtp_user: settings.notificationsUser,
+                notifications_smtp_pass: settings.notificationsPass,
+                notifications_smtp_secure: String(settings.notificationsSecure),
             };
 
             const res = await fetch('/api/super-admin/settings', {
@@ -85,9 +104,14 @@ export default function MailAccountsClient({ initialSettings }: { initialSetting
         setLoading(false);
     };
 
-    const renderCard = (title: string, subtitle: string, prefix: 'reporting' | 'support' | 'admin') => (
+    const handleTestEmail = async (prefix: string) => {
+        alert(`Initiating Test Email for ${prefix.toUpperCase()} account route. (Simulated in this demo via API wrapper)`);
+        // Actual implementation would POST to '/api/super-admin/mail-test' with the specific prefix config.
+    };
+
+    const renderCard = (title: string, subtitle: string, prefix: 'reporting' | 'support' | 'admin' | 'notifications') => (
         <Card title={title} subtitle={subtitle}>
-            <div className="space-y-2">
+            <div className="space-y-2 pb-4">
                 <Input
                     label="SMTP Host"
                     placeholder="mail.example.com"
@@ -124,6 +148,15 @@ export default function MailAccountsClient({ initialSettings }: { initialSetting
                     onChange={e => setSettings({ ...settings, [`${prefix}Pass`]: e.target.value })}
                 />
             </div>
+            
+            <div className="pt-4 mt-2 border-t border-slate-800 flex justify-end">
+                <button 
+                    onClick={() => handleTestEmail(prefix)}
+                    className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-blue-400 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                >
+                    <Mail className="w-4 h-4" /> Send Test Email
+                </button>
+            </div>
         </Card>
     );
 
@@ -144,14 +177,13 @@ export default function MailAccountsClient({ initialSettings }: { initialSetting
                 </Button>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 <div className="space-y-8">
                     {renderCard('Reporting Mail', 'System delivery bound for usage reports', 'reporting')}
+                    {renderCard('Notifications', 'Automated alerts (Database maintenance loops)', 'notifications')}
                 </div>
                 <div className="space-y-8">
                     {renderCard('Support Desk', 'Customer service feedback loops', 'support')}
-                </div>
-                <div className="space-y-8">
                     {renderCard('Site Administrators', 'Critical alerts routing', 'admin')}
                 </div>
             </div>

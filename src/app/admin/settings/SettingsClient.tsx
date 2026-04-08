@@ -28,10 +28,11 @@ export default function SettingsClient() {
         ai_ordering_enabled: 'false',
         ai_ordering_email: '',
         ai_ordering_phone: '',
-        stock_count_mode: 'CATEGORY', // 'CATEGORY' or 'PRODUCT'
-
+        stock_count_mode: 'CATEGORY',
         allow_custom_increment: 'false',
-        workday_start: '06:00'
+        workday_start: '06:00',
+        profit_reporting_mode: 'off',           // 'off' | 'per_item' | 'total'
+        order_confirmation_recipients: '[]',    // JSON array of user IDs
     });
 
     const [users, setUsers] = useState<any[]>([]);
@@ -490,6 +491,80 @@ export default function SettingsClient() {
 
                 <div className={styles.card} style={{ gridColumn: 'span 2' }}>
                     <SignatureManager />
+                </div>
+
+                {/* Profit Reporting Mode */}
+                <div className={styles.card} style={{ gridColumn: 'span 2' }}>
+                    <div className={styles.cardTitle}>Profit Reporting</div>
+                    <p style={{ color: '#9ca3af', fontSize: '0.9rem', marginBottom: '1rem' }}>
+                        When sale prices are set on items, choose how profit is shown in reports.
+                        Sale prices are configured on the <a href="/admin/prices" style={{ color: '#3b82f6' }}>Prices</a> page.
+                    </p>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', background: '#1f2937', padding: '1rem', borderRadius: '0.5rem', border: '1px solid #374151', marginBottom: '1rem' }}>
+                        {[
+                            { value: 'off', label: 'Off', desc: 'Do not show profit in reports.' },
+                            { value: 'per_item', label: 'Per Item', desc: 'Show profit/loss for each item in reports.' },
+                            { value: 'total', label: 'Total Profit', desc: 'Show aggregate profit/loss totals in reports.' },
+                        ].map(opt => (
+                            <label key={opt.value} style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', cursor: 'pointer' }}>
+                                <input
+                                    type="radio"
+                                    name="profit_reporting_mode"
+                                    value={opt.value}
+                                    checked={(settings as any).profit_reporting_mode === opt.value}
+                                    onChange={handleChange}
+                                    style={{ width: '18px', height: '18px', marginTop: '2px' }}
+                                />
+                                <div>
+                                    <div style={{ color: 'white', fontWeight: 600 }}>{opt.label}</div>
+                                    <div style={{ fontSize: '0.8rem', color: '#9ca3af' }}>{opt.desc}</div>
+                                </div>
+                            </label>
+                        ))}
+                    </div>
+                    <button onClick={handleSubmit} disabled={saving} style={{ padding: '0.5rem 1rem', background: '#3b82f6', color: 'white', borderRadius: '0.25rem', border: 'none', cursor: 'pointer' }}>
+                        Save
+                    </button>
+                </div>
+
+                {/* Order Confirmation Recipients */}
+                <div className={styles.card} style={{ gridColumn: 'span 2' }}>
+                    <div className={styles.cardTitle}>Order Confirmation Notifications</div>
+                    <p style={{ color: '#9ca3af', fontSize: '0.9rem', marginBottom: '1rem' }}>
+                        Select users who will receive an email when an incoming order is confirmed received (with item counts).
+                    </p>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', background: '#1f2937', padding: '1rem', borderRadius: '0.5rem', border: '1px solid #374151', marginBottom: '1rem', maxHeight: '220px', overflowY: 'auto' }}>
+                        {users.length === 0 && <span style={{ color: '#6b7280', fontSize: '0.9rem' }}>No users found.</span>}
+                        {users.map((u: any) => {
+                            let recipList: number[] = [];
+                            try { recipList = JSON.parse((settings as any).order_confirmation_recipients || '[]'); } catch {}
+                            const checked = recipList.includes(u.id);
+                            return (
+                                <label key={u.id} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: 'pointer', color: 'white' }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={checked}
+                                        onChange={e => {
+                                            let list: number[] = [];
+                                            try { list = JSON.parse((settings as any).order_confirmation_recipients || '[]'); } catch {}
+                                            if (e.target.checked) {
+                                                list = [...list, u.id];
+                                            } else {
+                                                list = list.filter((id: number) => id !== u.id);
+                                            }
+                                            setSettings(prev => ({ ...prev, order_confirmation_recipients: JSON.stringify(list) }));
+                                        }}
+                                        style={{ width: '16px', height: '16px' }}
+                                    />
+                                    <span>{u.first_name} {u.last_name}</span>
+                                    {u.email && <span style={{ color: '#6b7280', fontSize: '0.8rem' }}>({u.email})</span>}
+                                </label>
+                            );
+                        })}
+                    </div>
+                    <button onClick={handleSubmit} disabled={saving} style={{ padding: '0.5rem 1rem', background: '#3b82f6', color: 'white', borderRadius: '0.25rem', border: 'none', cursor: 'pointer' }}>
+                        Save Recipients
+                    </button>
                 </div>
 
                 <div className={styles.card} style={{ gridColumn: 'span 2' }}>

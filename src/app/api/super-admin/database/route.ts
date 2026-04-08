@@ -102,6 +102,23 @@ export async function POST(req: NextRequest) {
 
     try {
         const body = await req.json();
+
+        // Custom Report Builder intercepts
+        if (body.action === 'query') {
+            const result = await db.query(body.query);
+            return NextResponse.json({ result: Array.isArray(result) ? result : [result] });
+        }
+
+        if (body.action === 'tables') {
+            const tables = await db.query(`
+                SELECT table_name 
+                FROM information_schema.tables 
+                WHERE table_schema = 'public' 
+                ORDER BY table_name
+            `);
+            return NextResponse.json({ tables: tables.map((t: any) => t.table_name) });
+        }
+
         const { table, data } = body; // data is { col: val }
 
         // Sanitize Table

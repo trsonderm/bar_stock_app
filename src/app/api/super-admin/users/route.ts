@@ -9,13 +9,12 @@ export async function GET(req: NextRequest) {
 
     const search = req.nextUrl.searchParams.get('search') || '';
 
-    // Fetch all users with their Org Name
-    // JOIN organizations.
     const users = await db.query(`
-        SELECT u.id, u.first_name, u.last_name, u.email, u.role, u.organization_id, o.name as organization_name
+        SELECT u.id, u.first_name, u.last_name, u.email, u.role, u.organization_id, o.name as organization_name, u.is_active, u.is_archived
         FROM users u
         LEFT JOIN organizations o ON u.organization_id = o.id
         WHERE (u.first_name ILIKE $1 OR u.last_name ILIKE $1 OR u.email ILIKE $1)
+        AND u.is_archived = false
         ORDER BY u.id ASC
         LIMIT 100
     `, [`%${search}%`]);
@@ -23,24 +22,66 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ users });
 }
 
+export async function POST(req: NextRequest) {
+    const session = await getSession();
+    if (!session?.isSuperAdmin) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    try {
+        const { first_name, last_name, email, password, role, organization_id } = await req.json();
+
+        // Defaults to user if empty
+        const finalRole = role || 'user';
+        const password_hash = password ? hashPassword(password) : null;
+
+        const res = await db.one(`
+            INSERT INTO users (first_name, last_name, email, password_hash, role, organization_id)
+            VALUES ($1, $2, $3, $4, $5, $6) RETURNING id
+        `, [first_name, last_name, email || null, password_hash, finalRole, organization_id || null]);
+
+        return NextResponse.json({ success: true, id: res.id });
+    } catch (e: any) {
+        return NextResponse.json({ error: 'Failed to create user: ' + e.message }, { status: 500 });
+    }
+}
+
 export async function PUT(req: NextRequest) {
     const session = await getSession();
     if (!session?.isSuperAdmin) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const { id, password, role, organization_id } = await req.json();
+    const { id, first_name, last_name, email, password, role, organization_id, is_active } = await req.json();
+
+    const updates = [];
+    const params = [];
+    let pIdx = 1;
+
+    if (first_name !== undefined) { updates.push(`first_name = $${pIdx++}`); params.push(first_name); }
+    if (last_name !== undefined) { updates.push(`last_name = $${pIdx++}`); params.push(last_name); }
+    if (email !== undefined) { updates.push(`email = $${pIdx++}`); params.push(email); }
+    if (role !== undefined) { updates.push(`role = $${pIdx++}`); params.push(role); }
+    if (organization_id !== undefined) { updates.push(`organization_id = $${pIdx++}`); params.push(organization_id); }
+    if (is_active !== undefined) { updates.push(`is_active = $${pIdx++}`); params.push(is_active); }
 
     if (password) {
-        const hash = await hashPassword(password);
-        await db.query('UPDATE users SET password_hash = $1 WHERE id = $2', [hash, id]);
+        const hash = hashPassword(password);
+        updates.push(`password_hash = $${pIdx++}`); params.push(hash);
     }
 
-    if (role) {
-        await db.query('UPDATE users SET role = $1 WHERE id = $2', [role, id]);
+    if (updates.length > 0) {
+        params.push(id);
+        await db.execute(`UPDATE users SET ${updates.join(', ')} WHERE id = $${pIdx}`, params);
     }
 
-    if (organization_id) {
-        await db.query('UPDATE users SET organization_id = $1 WHERE id = $2', [organization_id, id]);
-    }
+    return NextResponse.json({ success: true });
+}
+
+export async function DELETE(req: NextRequest) {
+    const session = await getSession();
+    if (!session?.isSuperAdmin) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    const { id } = await req.json();
+    if (id === session.id) return NextResponse.json({ error: 'Cannot archive yourself' }, { status: 400 });
+
+    await db.execute('UPDATE users SET is_archived = true WHERE id = $1', [id]);
 
     return NextResponse.json({ success: true });
 }
