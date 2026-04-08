@@ -106,16 +106,10 @@ export async function POST(req: NextRequest) {
 
         if (!name || !type) return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
 
-        // Check for duplicate IN THIS ORG
-        const existing = await db.one('SELECT id FROM items WHERE name = $1 AND organization_id = $2', [name, organizationId]);
-        if (existing) {
+        // Check for duplicate IN THIS ORG (use query not one — one throws on no result)
+        const existingRows = await db.query('SELECT id FROM items WHERE name = $1 AND organization_id = $2 LIMIT 1', [name, organizationId]);
+        if (existingRows.length > 0) {
             return NextResponse.json({ error: 'Item already exists' }, { status: 400 });
-        }
-
-        const validCat = await db.one('SELECT name FROM categories WHERE name = $1 AND organization_id = $2', [type, organizationId]);
-
-        if (!validCat) {
-            // Logic kept from previous: Warn or ignore
         }
 
         // Insert and Return ID
@@ -284,10 +278,10 @@ export async function PUT(req: NextRequest) {
             if (updates.length > 0) {
                 params.push(id);
                 params.push(organizationId);
-                // Last two params are ID and OrgID
-                // Indexes are pIdx and pIdx+1
                 await db.execute(
-                    `UPDATE items SET ${updates.join(', ')} WHERE id = $${pIdx} AND organization_id = $${pIdx + 1} `,
+                    `UPDATE items SET ${updates.join(', ')}
+                     WHERE id = $${pIdx}
+                       AND (organization_id = $${pIdx + 1} OR organization_id IS NULL)`,
                     params
                 );
             }
@@ -345,8 +339,11 @@ export async function PUT(req: NextRequest) {
             }
             console.log(`[PUT Inventory] Using location ${targetLocationId}`);
 
-            // Get current quantity and threshold
-            const itemOwner = await db.one('SELECT id, name, low_stock_threshold FROM items WHERE id = $1 AND organization_id = $2', [id, organizationId]);
+            // Get current quantity and threshold (allow global items with org_id IS NULL)
+            const itemOwner = await db.one(`
+                SELECT id, name, low_stock_threshold FROM items
+                WHERE id = $1 AND (organization_id = $2 OR organization_id IS NULL)
+            `, [id, organizationId]);
             if (!itemOwner) {
                 console.error('[PUT Inventory] Item not found for org', id, organizationId);
                 return NextResponse.json({ error: 'Item not found' }, { status: 404 });

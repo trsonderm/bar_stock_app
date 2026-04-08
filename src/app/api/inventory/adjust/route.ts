@@ -24,8 +24,12 @@ export async function POST(req: NextRequest) {
         await db.execute('BEGIN');
 
         try {
-            // 0. Verify Item/Location ownership
-            const item = await db.one('SELECT name FROM items WHERE id = $1 AND organization_id = $2', [itemId, organizationId]);
+            // 0. Verify Item exists (allow org-scoped items OR global items with org_id IS NULL)
+            const item = await db.one(`
+                SELECT name FROM items
+                WHERE id = $1
+                  AND (organization_id = $2 OR organization_id IS NULL)
+            `, [itemId, organizationId]);
             if (!item) {
                 console.error(`[Adjust Inventory] Item ${itemId} not found for org ${organizationId}`);
                 throw new Error('Item not found in this organization');
