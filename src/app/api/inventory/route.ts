@@ -324,12 +324,40 @@ export async function PUT(req: NextRequest) {
             if (updates.length > 0) {
                 params.push(id);
                 params.push(organizationId);
-                await db.execute(
-                    `UPDATE items SET ${updates.join(', ')}
-                     WHERE id = $${pIdx}
-                       AND (organization_id = $${pIdx + 1} OR organization_id IS NULL)`,
-                    params
-                );
+                try {
+                    await db.execute(
+                        `UPDATE items SET ${updates.join(', ')}
+                         WHERE id = $${pIdx}
+                           AND (organization_id = $${pIdx + 1} OR organization_id IS NULL)`,
+                        params
+                    );
+                } catch (fullUpdateErr: any) {
+                    // Full UPDATE failed — likely a migration-added column doesn't exist yet.
+                    // Fall back to only the original-schema safe columns.
+                    console.warn('[PUT] Full items UPDATE failed, trying safe fallback:', fullUpdateErr.message);
+                    const safeUpdates: string[] = [];
+                    const safeParams: any[] = [];
+                    let sIdx = 1;
+                    if (name !== undefined) { safeUpdates.push(`name = $${sIdx++}`); safeParams.push(name); }
+                    if (type !== undefined) { safeUpdates.push(`type = $${sIdx++}`); safeParams.push(type); }
+                    if (secondary_type !== undefined) { safeUpdates.push(`secondary_type = $${sIdx++}`); safeParams.push(secondary_type); }
+                    if (supplier !== undefined) { safeUpdates.push(`supplier = $${sIdx++}`); safeParams.push(supplier); }
+                    if (order_size !== undefined) { safeUpdates.push(`order_size = $${sIdx++}`); safeParams.push(JSON.stringify(Array.isArray(order_size) ? order_size : [order_size])); }
+                    if (low_stock_threshold !== undefined) { safeUpdates.push(`low_stock_threshold = $${sIdx++}`); safeParams.push(low_stock_threshold); }
+                    if (stock_options !== undefined) { safeUpdates.push(`stock_options = $${sIdx++}`); safeParams.push(stock_options ? JSON.stringify(stock_options) : null); }
+                    if (include_in_audit !== undefined) { safeUpdates.push(`include_in_audit = $${sIdx++}`); safeParams.push(include_in_audit); }
+                    if (unit_cost !== undefined) { safeUpdates.push(`unit_cost = $${sIdx++}`); safeParams.push(unit_cost); }
+                    if (safeUpdates.length > 0) {
+                        safeParams.push(id);
+                        safeParams.push(organizationId);
+                        await db.execute(
+                            `UPDATE items SET ${safeUpdates.join(', ')}
+                             WHERE id = $${sIdx}
+                               AND (organization_id = $${sIdx + 1} OR organization_id IS NULL)`,
+                            safeParams
+                        );
+                    }
+                }
             }
 
             // include_in_low_stock_alerts — separate update so pre-migration DBs don't block the whole save
