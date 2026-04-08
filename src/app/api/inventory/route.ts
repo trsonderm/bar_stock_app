@@ -294,12 +294,13 @@ export async function PUT(req: NextRequest) {
             }
 
             // Auto-link logic for Updates
-            if (supplier_id) {
+            const validSupplierId = supplier_id && !isNaN(Number(supplier_id)) ? Number(supplier_id) : null;
+            if (validSupplierId) {
                 await db.execute(`
                     INSERT INTO item_suppliers(item_id, supplier_id, is_preferred)
-        VALUES($1, $2, true)
+                    VALUES($1, $2, true)
                     ON CONFLICT(item_id, supplier_id) DO UPDATE SET is_preferred = true
-            `, [id, supplier_id]);
+                `, [id, validSupplierId]);
             }
 
             // Location Sync logic

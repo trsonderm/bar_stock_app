@@ -529,8 +529,8 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                                         className={styles.input}
                                         value={formData.supplier_id || ''}
                                         onChange={e => {
-                                            const id = parseInt(e.target.value);
-                                            const name = suppliers.find(s => s.id === id)?.name;
+                                            const id = e.target.value ? parseInt(e.target.value) : undefined;
+                                            const name = id ? suppliers.find(s => s.id === id)?.name : '';
                                             setFormData({ ...formData, supplier_id: id, supplier: name || '' });
                                         }}
                                     >
