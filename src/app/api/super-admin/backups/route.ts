@@ -42,8 +42,8 @@ export async function POST(req: NextRequest) {
         await sendEmail('notifications', {
             to: (session as any).email || 'superadmin@topshelfinventory.com',
             subject: 'Database Backup Completed',
-            text: \`A manual database backup was just completed and stored at: \${backupFile}\`,
-            html: \`<p>A manual database backup was just completed.</p><p><strong>File:</strong> \${backupFile}</p>\`
+            text: `A manual database backup was just completed and stored at: ${backupFile}`,
+            html: `<p>A manual database backup was just completed.</p><p><strong>File:</strong> ${backupFile}</p>`
         });
 
         return NextResponse.json({ success: true, file: backupFile });
@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
         await sendEmail('notifications', {
             to: 'superadmin@topshelfinventory.com', // Fallback, could grab from users
             subject: 'CRITICAL: Database Backup FAILED',
-            text: \`A database backup failed to execute: \n\n\${e.message}\`
+            text: `A database backup failed to execute: \n\n${e.message}`
         });
 
         return NextResponse.json({ error: 'pg_dump failed: ' + e.message }, { status: 500 });
