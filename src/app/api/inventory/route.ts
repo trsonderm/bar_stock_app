@@ -320,10 +320,6 @@ export async function PUT(req: NextRequest) {
                 updates.push(`include_in_audit = $${pIdx++} `);
                 params.push(include_in_audit);
             }
-            if (include_in_low_stock_alerts !== undefined) {
-                updates.push(`include_in_low_stock_alerts = $${pIdx++} `);
-                params.push(include_in_low_stock_alerts);
-            }
 
             if (updates.length > 0) {
                 params.push(id);
@@ -336,9 +332,27 @@ export async function PUT(req: NextRequest) {
                 );
             }
 
-            // Auto-link logic for Updates
+            // include_in_low_stock_alerts — separate update so pre-migration DBs don't block the whole save
+            if (include_in_low_stock_alerts !== undefined) {
+                try {
+                    await db.execute(
+                        `UPDATE items SET include_in_low_stock_alerts = $1
+                         WHERE id = $2 AND (organization_id = $3 OR organization_id IS NULL)`,
+                        [include_in_low_stock_alerts, id, organizationId]
+                    );
+                } catch (e) {
+                    console.warn('[PUT] include_in_low_stock_alerts update failed (column may not exist yet):', (e as any).message);
+                }
+            }
+
+            // Auto-link logic for Updates — clear old preferred first, then set new one
             const validSupplierId = supplier_id && !isNaN(Number(supplier_id)) ? Number(supplier_id) : null;
             if (validSupplierId) {
+                // Clear any existing preferred supplier for this item
+                await db.execute(
+                    `UPDATE item_suppliers SET is_preferred = false WHERE item_id = $1`,
+                    [id]
+                );
                 await db.execute(`
                     INSERT INTO item_suppliers(item_id, supplier_id, is_preferred)
                     VALUES($1, $2, true)
