@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import styles from '../admin.module.css';
-import { Smartphone, Trash2, Edit } from 'lucide-react';
+import { Smartphone, Trash2, Edit, Upload, X, Image } from 'lucide-react';
 import NotificationSettings from '@/components/NotificationSettings';
 import SignatureManager from '@/components/SignatureManager';
 
@@ -83,12 +83,34 @@ export default function SettingsClient() {
     const [saving, setSaving] = useState(false);
     const [registeringDevice, setRegisteringDevice] = useState(false);
 
+    // Branding
+    const [branding, setBranding] = useState({
+        logo_url: null as string | null,
+        brand_color: '#f59e0b',
+        brand_name: '',
+        logo_position: 'left' as 'left' | 'center' | 'right',
+    });
+    const [brandingSaving, setBrandingSaving] = useState(false);
+    const [logoFile, setLogoFile] = useState<File | null>(null);
+    const [logoPreview, setLogoPreview] = useState<string | null>(null);
+    const logoInputRef = useRef<HTMLInputElement>(null);
+
     useEffect(() => {
         fetch('/api/admin/settings')
             .then(res => res.json())
             .then(data => {
                 setSettings(prev => ({ ...prev, ...data.settings }));
                 setLoading(false);
+            });
+        fetch('/api/admin/branding')
+            .then(r => r.json())
+            .then(d => {
+                if (d.logo_url !== undefined) setBranding({
+                    logo_url: d.logo_url,
+                    brand_color: d.brand_color || '#f59e0b',
+                    brand_name: d.brand_name || '',
+                    logo_position: d.logo_position || 'left',
+                });
             });
         fetchOptions();
         fetchUsers();
@@ -211,11 +233,176 @@ export default function SettingsClient() {
         }
     };
 
+    const handleBrandingSave = async () => {
+        setBrandingSaving(true);
+        try {
+            const fd = new FormData();
+            if (logoFile) fd.append('logo', logoFile);
+            fd.append('brand_color', branding.brand_color);
+            fd.append('brand_name', branding.brand_name);
+            fd.append('logo_position', branding.logo_position);
+            const res = await fetch('/api/admin/branding', { method: 'POST', body: fd });
+            if (res.ok) {
+                const d = await res.json();
+                setBranding(prev => ({ ...prev, logo_url: d.settings?.logo_url ?? prev.logo_url }));
+                setLogoFile(null);
+                setLogoPreview(null);
+                alert('Branding saved!');
+            } else alert('Failed to save branding');
+        } finally {
+            setBrandingSaving(false);
+        }
+    };
+
+    const handleRemoveLogo = async () => {
+        if (!confirm('Remove logo?')) return;
+        await fetch('/api/admin/branding', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ remove_logo: true }),
+        });
+        setBranding(prev => ({ ...prev, logo_url: null }));
+        setLogoPreview(null);
+        setLogoFile(null);
+    };
+
     if (loading) return <div className={styles.container}>Loading...</div>;
 
     return (
         <>
             <div className={styles.grid}>
+
+                {/* Branding Section */}
+                <div className={styles.card} style={{ gridColumn: 'span 2' }}>
+                    <div className={styles.cardTitle} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <Image size={20} color="#f59e0b" /> Branding
+                    </div>
+                    <p style={{ color: '#9ca3af', marginBottom: '1.5rem', fontSize: '0.9rem' }}>
+                        Your logo and brand colors appear on printed orders and reports.
+                    </p>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+                        {/* Logo Upload */}
+                        <div>
+                            <label className={styles.statLabel}>Company Logo</label>
+                            <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                {(logoPreview || branding.logo_url) && (
+                                    <div style={{ position: 'relative', display: 'inline-block' }}>
+                                        <img
+                                            src={logoPreview || branding.logo_url!}
+                                            alt="Logo"
+                                            style={{ maxHeight: '80px', maxWidth: '200px', objectFit: 'contain', background: '#fff', padding: '8px', borderRadius: '6px', border: '1px solid #374151' }}
+                                        />
+                                        <button
+                                            onClick={() => { setLogoPreview(null); setLogoFile(null); if (!logoPreview) handleRemoveLogo(); }}
+                                            style={{ position: 'absolute', top: '-6px', right: '-6px', background: '#ef4444', border: 'none', borderRadius: '50%', width: '20px', height: '20px', cursor: 'pointer', color: 'white', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                        >×</button>
+                                    </div>
+                                )}
+                                <input
+                                    ref={logoInputRef}
+                                    type="file"
+                                    accept="image/*"
+                                    style={{ display: 'none' }}
+                                    onChange={e => {
+                                        const f = e.target.files?.[0];
+                                        if (!f) return;
+                                        setLogoFile(f);
+                                        const reader = new FileReader();
+                                        reader.onload = ev => setLogoPreview(ev.target?.result as string);
+                                        reader.readAsDataURL(f);
+                                    }}
+                                />
+                                <button
+                                    onClick={() => logoInputRef.current?.click()}
+                                    style={{ padding: '0.5rem 1rem', background: '#1f2937', border: '1px dashed #4b5563', borderRadius: '0.5rem', color: '#9ca3af', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem' }}
+                                >
+                                    <Upload size={14} /> {branding.logo_url ? 'Replace Logo' : 'Upload Logo'}
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Brand Name */}
+                        <div>
+                            <label className={styles.statLabel}>Company Name (on documents)</label>
+                            <input
+                                className={styles.input}
+                                style={{ width: '100%', marginTop: '0.5rem' }}
+                                value={branding.brand_name}
+                                onChange={e => setBranding(prev => ({ ...prev, brand_name: e.target.value }))}
+                                placeholder="e.g. The Downtown Bar"
+                            />
+                        </div>
+
+                        {/* Brand Color */}
+                        <div>
+                            <label className={styles.statLabel}>Accent Color</label>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginTop: '0.5rem' }}>
+                                <input
+                                    type="color"
+                                    value={branding.brand_color}
+                                    onChange={e => setBranding(prev => ({ ...prev, brand_color: e.target.value }))}
+                                    style={{ width: '48px', height: '36px', border: 'none', borderRadius: '4px', cursor: 'pointer', background: 'transparent' }}
+                                />
+                                <input
+                                    className={styles.input}
+                                    value={branding.brand_color}
+                                    onChange={e => setBranding(prev => ({ ...prev, brand_color: e.target.value }))}
+                                    style={{ width: '110px' }}
+                                    placeholder="#f59e0b"
+                                />
+                                <span style={{ color: '#6b7280', fontSize: '0.8rem' }}>Used on document headers</span>
+                            </div>
+                        </div>
+
+                        {/* Logo Position */}
+                        <div>
+                            <label className={styles.statLabel}>Logo Position on Documents</label>
+                            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+                                {(['left', 'center', 'right'] as const).map(pos => (
+                                    <button
+                                        key={pos}
+                                        onClick={() => setBranding(prev => ({ ...prev, logo_position: pos }))}
+                                        style={{
+                                            flex: 1,
+                                            padding: '0.5rem',
+                                            background: branding.logo_position === pos ? branding.brand_color : '#1f2937',
+                                            color: branding.logo_position === pos ? 'white' : '#9ca3af',
+                                            border: `1px solid ${branding.logo_position === pos ? branding.brand_color : '#374151'}`,
+                                            borderRadius: '0.375rem',
+                                            cursor: 'pointer',
+                                            textTransform: 'capitalize',
+                                            fontWeight: branding.logo_position === pos ? 700 : 400,
+                                            fontSize: '0.85rem',
+                                        }}
+                                    >
+                                        {pos}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Preview Banner */}
+                    {(logoPreview || branding.logo_url || branding.brand_name) && (
+                        <div style={{ marginTop: '1.5rem', background: '#fff', borderRadius: '0.5rem', padding: '1rem 1.5rem', border: `3px solid ${branding.brand_color}`, display: 'flex', alignItems: 'center', justifyContent: branding.logo_position === 'center' ? 'center' : branding.logo_position === 'right' ? 'flex-end' : 'flex-start', gap: '1rem' }}>
+                            {(logoPreview || branding.logo_url) && (
+                                <img src={logoPreview || branding.logo_url!} alt="Logo" style={{ height: '48px', objectFit: 'contain' }} />
+                            )}
+                            {branding.brand_name && (
+                                <span style={{ color: branding.brand_color, fontWeight: 700, fontSize: '1.2rem', fontFamily: 'sans-serif' }}>{branding.brand_name}</span>
+                            )}
+                        </div>
+                    )}
+
+                    <button
+                        onClick={handleBrandingSave}
+                        disabled={brandingSaving}
+                        style={{ marginTop: '1.5rem', padding: '0.6rem 1.5rem', background: branding.brand_color, color: 'white', border: 'none', borderRadius: '0.5rem', cursor: brandingSaving ? 'not-allowed' : 'pointer', fontWeight: 700, opacity: brandingSaving ? 0.7 : 1 }}
+                    >
+                        {brandingSaving ? 'Saving...' : 'Save Branding'}
+                    </button>
+                </div>
 
                 {/* Organization & App Section */}
                 <div className={styles.card} style={{ gridColumn: 'span 2' }}>
