@@ -83,6 +83,9 @@ export default function UserSchedulerClient() {
     // Drag & Drop State
     const [draggedSchedule, setDraggedSchedule] = useState<Schedule | null>(null);
 
+    // Delete confirmation modal
+    const [deleteConfirm, setDeleteConfirm] = useState<{ id: number; schedule: Schedule } | null>(null);
+
     useEffect(() => {
         fetch('/api/admin/users').then(r => r.json()).then(d => setUsers(d.users || []));
         fetch('/api/admin/schedule/shifts').then(r => r.json()).then(d => setShifts(d.shifts || []));
@@ -427,18 +430,24 @@ export default function UserSchedulerClient() {
         }
     };
 
-    const handleDelete = async (id: number, schedule?: Schedule) => {
-        let strat = editModalOpen ? modifyStrategy : 'instance';
-
-        if (!editModalOpen && schedule?.recurring_group_id) {
-            const result = window.confirm("This is a repeating shift. Click 'OK' to delete ALL occurrences in this series, or 'Cancel' to delete ONLY this specific shift.");
-            strat = result ? 'all' : 'instance';
-        } else if (!editModalOpen) {
-            if (!confirm('Are you sure you want to delete this shift?')) return;
+    const handleDelete = (id: number, schedule?: Schedule) => {
+        // If called from edit modal, use the already-chosen modifyStrategy
+        if (editModalOpen && schedule) {
+            executeDelete(id, schedule, modifyStrategy);
+            return;
         }
+        // For non-recurring: simple confirm
+        if (!schedule?.recurring_group_id) {
+            if (!confirm('Delete this shift?')) return;
+            executeDelete(id, schedule, 'instance');
+            return;
+        }
+        // Recurring: show proper modal
+        setDeleteConfirm({ id, schedule });
+    };
 
+    const executeDelete = async (id: number, schedule: Schedule | undefined, strat: 'instance' | 'following' | 'all') => {
         const payload: any = { id };
-
         if (schedule?.recurring_group_id) {
             payload.modifyStrategy = strat;
             payload.recurringGroupId = schedule.recurring_group_id;
@@ -451,11 +460,11 @@ export default function UserSchedulerClient() {
             body: JSON.stringify(payload)
         });
 
+        setDeleteConfirm(null);
+        setEditModalOpen(false);
         if (activeTab === 'weekly') fetchSchedules(weekStart, 7);
         else if (activeTab === 'monthly') fetchSchedules(currentDate, 35);
         else fetchSchedules(currentDate, 1);
-
-        setEditModalOpen(false); // Close edit modal if open
     };
 
     const handleNotify = async () => {
@@ -1091,6 +1100,59 @@ export default function UserSchedulerClient() {
                     </div>
                 </div>
             )}
+            {/* Delete Recurring Confirmation Modal */}
+            {deleteConfirm && (
+                <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[60] p-4">
+                    <div className="bg-gray-800 rounded-xl max-w-sm w-full p-6 shadow-2xl border border-gray-600">
+                        <div className="flex items-center gap-3 mb-4">
+                            <div className="w-10 h-10 rounded-full bg-red-900/50 flex items-center justify-center flex-shrink-0">
+                                <Trash2 size={18} className="text-red-400" />
+                            </div>
+                            <div>
+                                <h3 className="text-white font-bold text-lg">Delete Repeating Shift</h3>
+                                <p className="text-gray-400 text-sm">
+                                    {deleteConfirm.schedule.first_name} {deleteConfirm.schedule.last_name} &mdash; {deleteConfirm.schedule.shift_name}
+                                </p>
+                            </div>
+                        </div>
+                        <p className="text-gray-300 text-sm mb-5">
+                            This shift repeats. How would you like to delete it?
+                        </p>
+                        <div className="flex flex-col gap-2 mb-5">
+                            <button
+                                onClick={() => executeDelete(deleteConfirm.id, deleteConfirm.schedule, 'instance')}
+                                className="w-full text-left px-4 py-3 rounded-lg bg-gray-700 hover:bg-gray-600 border border-gray-600 transition-colors"
+                            >
+                                <div className="font-semibold text-white text-sm">This shift only</div>
+                                <div className="text-gray-400 text-xs mt-0.5">Remove just this single occurrence</div>
+                            </button>
+                            <button
+                                onClick={() => executeDelete(deleteConfirm.id, deleteConfirm.schedule, 'following')}
+                                className="w-full text-left px-4 py-3 rounded-lg bg-gray-700 hover:bg-gray-600 border border-gray-600 transition-colors"
+                            >
+                                <div className="font-semibold text-white text-sm">This and all following shifts</div>
+                                <div className="text-gray-400 text-xs mt-0.5">
+                                    Remove from {new Date(deleteConfirm.schedule.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })} onwards
+                                </div>
+                            </button>
+                            <button
+                                onClick={() => executeDelete(deleteConfirm.id, deleteConfirm.schedule, 'all')}
+                                className="w-full text-left px-4 py-3 rounded-lg bg-red-900/30 hover:bg-red-900/50 border border-red-800/50 transition-colors"
+                            >
+                                <div className="font-semibold text-red-300 text-sm">All shifts in this series</div>
+                                <div className="text-gray-400 text-xs mt-0.5">Remove every occurrence of this repeating shift</div>
+                            </button>
+                        </div>
+                        <button
+                            onClick={() => setDeleteConfirm(null)}
+                            className="w-full py-2 text-sm text-gray-400 hover:text-white transition-colors"
+                        >
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            )}
+
             {/* Edit Shift Modal */}
             {editModalOpen && editingSchedule && (
                 <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
