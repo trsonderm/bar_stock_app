@@ -223,7 +223,7 @@ export default function SettingsClient() {
                         <div style={{ marginBottom: '1rem' }}>
                             <label className={styles.statLabel}>Organization URL ID (Subdomain)</label>
                             <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                                <span style={{ color: '#9ca3af' }}>https://fosters.com/</span>
+                                <span style={{ color: '#9ca3af' }}>https://www.topshelfinventory.com/o/</span>
                                 <input
                                     value={settings.subdomain || ''}
                                     onChange={(e) => setSettings(prev => ({ ...prev, subdomain: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '') }))}

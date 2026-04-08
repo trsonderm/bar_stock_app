@@ -1,5 +1,6 @@
 import { getSession } from '@/lib/auth';
 import { redirect } from 'next/navigation';
+import { Suspense } from 'react';
 import ReportBuilderClient from './ReportBuilderClient';
 
 export default async function ReportBuilderPage() {
@@ -9,5 +10,9 @@ export default async function ReportBuilderPage() {
     const isPro = session.subscriptionPlan === 'pro' || session.subscriptionPlan === 'free_trial' || session.isSuperAdmin;
     if (!isPro) redirect('/admin/billing');
 
-    return <ReportBuilderClient user={session} />;
+    return (
+        <Suspense fallback={null}>
+            <ReportBuilderClient user={session} />
+        </Suspense>
+    );
 }

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { BarChart2, Table, Hash, Plus, Trash2, GripVertical, Save, Clock, Eye, ChevronLeft, RefreshCw } from 'lucide-react';
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import styles from '../../admin.module.css';
@@ -69,7 +70,11 @@ const defaultSection = (): ReportSection => ({
 });
 
 export default function ReportBuilderClient({ user }: { user: any }) {
+    const searchParams = useSearchParams();
+    const loadId = searchParams.get('load');
+
     const [reportName, setReportName] = useState('My Custom Report');
+    const [loadedReportId, setLoadedReportId] = useState<number | null>(null);
     const [sections, setSections] = useState<ReportSection[]>([defaultSection()]);
     const [selectedId, setSelectedId] = useState<string | null>(sections[0].id);
 
@@ -96,6 +101,32 @@ export default function ReportBuilderClient({ user }: { user: any }) {
         fetchSaved();
         fetch('/api/admin/users').then(r => r.json()).then(d => setUsers(d.users || []));
         fetch('/api/user/locations').then(r => r.json()).then(d => setLocations(d.locations || []));
+
+        if (loadId) {
+            fetch(`/api/admin/reports/saved/${loadId}`)
+                .then(r => r.json())
+                .then(d => {
+                    if (!d.report) return;
+                    const r = d.report;
+                    const config = typeof r.config === 'string' ? JSON.parse(r.config) : r.config;
+                    const loadedSections: ReportSection[] = (config.sections || []).map((s: any) => ({
+                        ...s,
+                        id: s.id || uid(),
+                        previewData: undefined,
+                        loading: false,
+                    }));
+                    setReportName(r.name || 'My Custom Report');
+                    setLoadedReportId(r.id);
+                    setSections(loadedSections.length ? loadedSections : [defaultSection()]);
+                    setSelectedId(loadedSections[0]?.id || null);
+                    setIsScheduled(r.is_scheduled || false);
+                    if (r.schedule_config) {
+                        const sc = typeof r.schedule_config === 'string' ? JSON.parse(r.schedule_config) : r.schedule_config;
+                        setScheduleConfig(sc);
+                    }
+                })
+                .catch(() => {});
+        }
     }, []);
 
     const fetchSaved = async () => {
@@ -166,10 +197,13 @@ export default function ReportBuilderClient({ user }: { user: any }) {
         setSaving(true);
         try {
             const config = { sections: sections.map(({ previewData, loading, ...s }) => s) };
-            const res = await fetch('/api/admin/reports/saved', {
-                method: 'POST',
+            const payload = { name: reportName, config, is_scheduled: isScheduled, schedule_config: isScheduled ? scheduleConfig : null };
+            const url = loadedReportId ? `/api/admin/reports/saved/${loadedReportId}` : '/api/admin/reports/saved';
+            const method = loadedReportId ? 'PUT' : 'POST';
+            const res = await fetch(url, {
+                method,
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name: reportName, config, is_scheduled: isScheduled, schedule_config: isScheduled ? scheduleConfig : null })
+                body: JSON.stringify(payload)
             });
             if (res.ok) {
                 alert('Report saved!');

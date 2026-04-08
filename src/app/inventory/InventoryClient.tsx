@@ -627,20 +627,21 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
 
                                 <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
                                     {(() => {
-                                        let options = [1];
-                                        if (item.stock_options) {
-                                            let parsed = item.stock_options;
-                                            if (typeof parsed === 'string') { try { parsed = JSON.parse(parsed); } catch { } }
-                                            if (Array.isArray(parsed) && parsed.length > 0) {
-                                                options = parsed.map((p: any) => parseInt(p)).filter((n: number) => !isNaN(n));
-                                            }
-                                        } else {
+                                        let options: number[] = [];
+                                        // Try item-level stock_options first
+                                        let itemOpts = item.stock_options;
+                                        if (typeof itemOpts === 'string') { try { itemOpts = JSON.parse(itemOpts); } catch { } }
+                                        if (Array.isArray(itemOpts) && itemOpts.length > 0) {
+                                            options = itemOpts.map((p: any) => parseInt(p)).filter((n: number) => !isNaN(n));
+                                        }
+                                        // Fall back to category stock_options
+                                        if (options.length === 0) {
                                             const cat = categories.find(c => c.name === item.type);
                                             if (cat && cat.stock_options) {
-                                                let parsed = cat.stock_options;
-                                                if (typeof parsed === 'string') { try { parsed = JSON.parse(parsed); } catch { } }
-                                                if (Array.isArray(parsed) && parsed.length > 0) {
-                                                    options = parsed.map((p: any) => parseInt(p)).filter((n: number) => !isNaN(n));
+                                                let catOpts = cat.stock_options;
+                                                if (typeof catOpts === 'string') { try { catOpts = JSON.parse(catOpts); } catch { } }
+                                                if (Array.isArray(catOpts) && catOpts.length > 0) {
+                                                    options = catOpts.map((p: any) => parseInt(p)).filter((n: number) => !isNaN(n));
                                                 }
                                             }
                                         }

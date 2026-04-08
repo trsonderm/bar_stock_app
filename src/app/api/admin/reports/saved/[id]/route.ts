@@ -2,6 +2,26 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
 
+export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
+    const session = await getSession();
+    if (!session || !session.organizationId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const isPro = session.subscriptionPlan === 'pro' || session.subscriptionPlan === 'free_trial' || session.isSuperAdmin;
+    if (!isPro) return NextResponse.json({ error: 'Pro subscription required' }, { status: 403 });
+
+    const reportId = parseInt(params.id);
+    try {
+        const report = await db.one(
+            'SELECT * FROM saved_reports WHERE id = $1 AND organization_id = $2',
+            [reportId, session.organizationId]
+        );
+        if (!report) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+        return NextResponse.json({ report });
+    } catch (e) {
+        console.error('Saved report GET error:', e);
+        return NextResponse.json({ error: 'Internal Error' }, { status: 500 });
+    }
+}
+
 export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
     const session = await getSession();
     if (!session || !session.organizationId || session.role !== 'admin') {

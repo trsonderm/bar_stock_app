@@ -7,7 +7,7 @@ import Image from 'next/image';
 
 // We need to fetch org details
 async function getOrganization(slug: string) {
-    const org = await db.one('SELECT * FROM organizations WHERE subdomain = ?', [slug]);
+    const org = await db.one('SELECT * FROM organizations WHERE subdomain = $1', [slug]);
     return org;
 }
 
