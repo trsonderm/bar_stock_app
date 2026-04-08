@@ -136,3 +136,22 @@ WHERE tracking_status IS NULL OR tracking_status = 'PENDING';
 UPDATE purchase_orders
 SET tracking_status = 'RECEIVED'
 WHERE status = 'DELIVERED' AND (tracking_status = 'PENDING' OR tracking_status = 'DELIVERED');
+
+-- =========================================================
+-- 7. Convert items.order_size from INTEGER to JSONB
+-- =========================================================
+DO $$ BEGIN
+  IF (SELECT data_type FROM information_schema.columns
+      WHERE table_name = 'items' AND column_name = 'order_size') = 'integer' THEN
+    ALTER TABLE items ALTER COLUMN order_size TYPE JSONB
+    USING CASE
+      WHEN order_size IS NULL THEN NULL
+      ELSE jsonb_build_array(
+        jsonb_build_object(
+          'label', CASE WHEN order_size = 1 THEN 'Unit' ELSE order_size::text END,
+          'amount', order_size
+        )
+      )
+    END;
+  END IF;
+END $$;

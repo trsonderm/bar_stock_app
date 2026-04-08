@@ -69,7 +69,7 @@ CREATE TABLE IF NOT EXISTS items (
     sale_price DECIMAL(10,2),
     supplier TEXT,
     track_quantity INTEGER DEFAULT 1,
-    order_size INTEGER DEFAULT 1,
+    order_size JSONB DEFAULT '[{"label":"Unit","amount":1}]',
     low_stock_threshold INTEGER DEFAULT 5,
     stock_options JSONB,
     include_in_audit BOOLEAN DEFAULT TRUE,
