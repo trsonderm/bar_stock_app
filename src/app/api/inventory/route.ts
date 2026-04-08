@@ -48,16 +48,14 @@ export async function GET(req: NextRequest) {
         COALESCE(i.order_unit_size, 1) as order_unit_size,
         COALESCE(i.use_category_qty_defaults, true) as use_category_qty_defaults,
         MAX(isp.supplier_id) as supplier_id,
-        ils.supplier_id as location_supplier_id,
+        (SELECT ils.supplier_id FROM item_location_suppliers ils WHERE ils.item_id = i.id AND ils.location_id = $2 LIMIT 1) as location_supplier_id,
         COALESCE(SUM(inv.quantity), 0) as quantity,
         COALESCE(MAX(usage_stats.usage_count), 0) as usage_count,
         (SELECT json_agg(location_id) FROM inventory WHERE item_id = i.id) as assigned_locations,
-        ilp.sale_price as location_sale_price
+        (SELECT ilp.sale_price FROM item_location_prices ilp WHERE ilp.item_id = i.id AND ilp.location_id = $2 LIMIT 1) as location_sale_price
       FROM items i
       LEFT JOIN inventory inv ON i.id = inv.item_id AND inv.location_id = $2
       LEFT JOIN item_suppliers isp ON i.id = isp.item_id AND isp.is_preferred = true
-      LEFT JOIN item_location_suppliers ils ON i.id = ils.item_id AND ils.location_id = $2
-      LEFT JOIN item_location_prices ilp ON i.id = ilp.item_id AND ilp.location_id = $2
       LEFT JOIN (
         SELECT
             (details->>'itemId')::int as item_id,
@@ -72,7 +70,7 @@ export async function GET(req: NextRequest) {
             SELECT 1 FROM items i2 WHERE i2.name = i.name AND i2.organization_id = $1
         ))
       )
-      GROUP BY i.id, usage_stats.usage_count, ils.supplier_id, ilp.sale_price
+      GROUP BY i.id, usage_stats.usage_count
     `;
 
         if (sort === 'usage') {
@@ -81,7 +79,50 @@ export async function GET(req: NextRequest) {
             query += ` ORDER BY i.name ASC`;
         }
 
-        const items = await db.query(query, [organizationId, locationId]);
+        let items: any[];
+        try {
+            items = await db.query(query, [organizationId, locationId]);
+        } catch (e: any) {
+            // If new columns/tables don't exist yet (pre-migration), fall back to a simpler query
+            console.warn('[Inventory GET] Full query failed, falling back:', e.message);
+            const fallbackQuery = `
+              SELECT
+                i.id, i.name, i.type, i.secondary_type, i.unit_cost, i.sale_price, i.supplier,
+                i.order_size, i.low_stock_threshold,
+                COALESCE(i.stock_options, '[]') as stock_options,
+                COALESCE(i.include_in_audit, true) as include_in_audit,
+                true as include_in_low_stock_alerts,
+                COALESCE(i.stock_unit_label, 'unit') as stock_unit_label,
+                COALESCE(i.stock_unit_size, 1) as stock_unit_size,
+                COALESCE(i.order_unit_label, 'case') as order_unit_label,
+                COALESCE(i.order_unit_size, 1) as order_unit_size,
+                COALESCE(i.use_category_qty_defaults, true) as use_category_qty_defaults,
+                MAX(isp.supplier_id) as supplier_id,
+                NULL::int as location_supplier_id,
+                COALESCE(SUM(inv.quantity), 0) as quantity,
+                COALESCE(MAX(usage_stats.usage_count), 0) as usage_count,
+                (SELECT json_agg(location_id) FROM inventory WHERE item_id = i.id) as assigned_locations,
+                NULL::numeric as location_sale_price
+              FROM items i
+              LEFT JOIN inventory inv ON i.id = inv.item_id AND inv.location_id = $2
+              LEFT JOIN item_suppliers isp ON i.id = isp.item_id AND isp.is_preferred = true
+              LEFT JOIN (
+                SELECT (details->>'itemId')::int as item_id, COUNT(*) as usage_count
+                FROM activity_logs WHERE action = 'SUBTRACT_STOCK' AND organization_id = $1
+                GROUP BY (details->>'itemId')::int
+              ) usage_stats ON i.id = usage_stats.item_id
+              WHERE (
+                i.organization_id = $1
+                OR (i.organization_id IS NULL AND NOT EXISTS (
+                  SELECT 1 FROM items i2 WHERE i2.name = i.name AND i2.organization_id = $1
+                ))
+              )
+              GROUP BY i.id, usage_stats.usage_count
+              ${sort === 'usage' ? 'ORDER BY usage_count DESC, i.name ASC' : 'ORDER BY i.name ASC'}
+            `;
+            items = await db.query(fallbackQuery, [organizationId, locationId]);
+        }
+
         return NextResponse.json({ items });
 
     } catch (error) {
@@ -305,39 +346,46 @@ export async function PUT(req: NextRequest) {
                 `, [id, validSupplierId]);
             }
 
-            // Per-location supplier
-            const putLocId = bodyLocationId || (req.cookies.get('current_location_id')?.value ? parseInt(req.cookies.get('current_location_id')!.value) : null);
+            // Per-location supplier (non-fatal — table may not exist until migration runs)
+            const putLocId = bodyLocationId ? parseInt(bodyLocationId) : (req.cookies.get('current_location_id')?.value ? parseInt(req.cookies.get('current_location_id')!.value) : null);
             if (location_supplier_id !== undefined && putLocId) {
-                const validLocSupplierId = location_supplier_id && !isNaN(Number(location_supplier_id)) ? Number(location_supplier_id) : null;
-                if (validLocSupplierId) {
-                    await db.execute(`
-                        INSERT INTO item_location_suppliers (organization_id, item_id, location_id, supplier_id)
-                        VALUES ($1, $2, $3, $4)
-                        ON CONFLICT (item_id, location_id) DO UPDATE SET supplier_id = $4
-                    `, [organizationId, id, putLocId, validLocSupplierId]);
-                } else {
-                    // null means "use global supplier" — remove location-specific override
-                    await db.execute(
-                        'DELETE FROM item_location_suppliers WHERE item_id = $1 AND location_id = $2',
-                        [id, putLocId]
-                    );
+                try {
+                    const validLocSupplierId = location_supplier_id && !isNaN(Number(location_supplier_id)) ? Number(location_supplier_id) : null;
+                    if (validLocSupplierId) {
+                        await db.execute(`
+                            INSERT INTO item_location_suppliers (organization_id, item_id, location_id, supplier_id)
+                            VALUES ($1, $2, $3, $4)
+                            ON CONFLICT (item_id, location_id) DO UPDATE SET supplier_id = $4
+                        `, [organizationId, id, putLocId, validLocSupplierId]);
+                    } else {
+                        await db.execute(
+                            'DELETE FROM item_location_suppliers WHERE item_id = $1 AND location_id = $2',
+                            [id, putLocId]
+                        );
+                    }
+                } catch (e) {
+                    console.warn('[PUT] item_location_suppliers write failed (table may not exist yet):', (e as any).message);
                 }
             }
 
-            // Per-location sale price
+            // Per-location sale price (non-fatal)
             if (location_sale_price !== undefined && putLocId) {
-                const priceVal = location_sale_price !== null ? parseFloat(location_sale_price) : null;
-                if (priceVal !== null && !isNaN(priceVal)) {
-                    await db.execute(`
-                        INSERT INTO item_location_prices (organization_id, item_id, location_id, sale_price)
-                        VALUES ($1, $2, $3, $4)
-                        ON CONFLICT (item_id, location_id) DO UPDATE SET sale_price = $4
-                    `, [organizationId, id, putLocId, priceVal]);
-                } else {
-                    await db.execute(
-                        'DELETE FROM item_location_prices WHERE item_id = $1 AND location_id = $2',
-                        [id, putLocId]
-                    );
+                try {
+                    const priceVal = location_sale_price !== null ? parseFloat(location_sale_price) : null;
+                    if (priceVal !== null && !isNaN(priceVal)) {
+                        await db.execute(`
+                            INSERT INTO item_location_prices (organization_id, item_id, location_id, sale_price)
+                            VALUES ($1, $2, $3, $4)
+                            ON CONFLICT (item_id, location_id) DO UPDATE SET sale_price = $4
+                        `, [organizationId, id, putLocId, priceVal]);
+                    } else {
+                        await db.execute(
+                            'DELETE FROM item_location_prices WHERE item_id = $1 AND location_id = $2',
+                            [id, putLocId]
+                        );
+                    }
+                } catch (e) {
+                    console.warn('[PUT] item_location_prices write failed (table may not exist yet):', (e as any).message);
                 }
             }
 
