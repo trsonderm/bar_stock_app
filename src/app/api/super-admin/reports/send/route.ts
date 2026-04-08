@@ -14,35 +14,35 @@ export async function POST(req: NextRequest) {
         }
 
         // Generate an HTML Table
-        let htmlContext = \`<h2>Custom Report: \${table}</h2>\n\`;
-        htmlContext += \`<table border="1" cellpadding="5" cellspacing="0" style="border-collapse: collapse; font-family: monospace;">\n\`;
-        
+        let htmlContext = `<h2>Custom Report: ${table}</h2>\n`;
+        htmlContext += `<table border="1" cellpadding="5" cellspacing="0" style="border-collapse: collapse; font-family: monospace;">\n`;
+
         // Headers
-        htmlContext += \`<thead><tr>\`;
+        htmlContext += `<thead><tr>`;
         for (const col of columns) {
-            htmlContext += \`<th style="background-color: #f3f4f6; color: #374151;">\${col}</th>\`;
+            htmlContext += `<th style="background-color: #f3f4f6; color: #374151;">${col}</th>`;
         }
-        htmlContext += \`</tr></thead>\n\`;
+        htmlContext += `</tr></thead>\n`;
 
         // Body
-        htmlContext += \`<tbody>\`;
+        htmlContext += `<tbody>`;
         for (const row of rows) {
-            htmlContext += \`<tr>\`;
+            htmlContext += `<tr>`;
             for (const col of columns) {
-                htmlContext += \`<td>\${String(row[col])}</td>\`;
+                htmlContext += `<td>${String(row[col])}</td>`;
             }
-            htmlContext += \`</tr>\n\`;
+            htmlContext += `</tr>\n`;
         }
-        htmlContext += \`</tbody></table>\`;
+        htmlContext += `</tbody></table>`;
 
-        htmlContext += \`<p style="color: #6b7280; font-size: 12px; margin-top: 20px;">Generated automatically by the Bar Stock App Custom Report Builder.</p>\`;
+        htmlContext += `<p style="color: #6b7280; font-size: 12px; margin-top: 20px;">Generated automatically by the Bar Stock App Custom Report Builder.</p>`;
 
         // Dispatch via 'reporting' tier
         const targetEmail = (session as any).email || 'superadmin@topshelfinventory.com';
-        
+
         const success = await sendEmail('reporting', {
             to: targetEmail,
-            subject: \`Data Report \${new Date().toLocaleDateString()}: \${table}\`,
+            subject: `Data Report ${new Date().toLocaleDateString()}: ${table}`,
             html: htmlContext
         });
 
