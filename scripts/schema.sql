@@ -27,6 +27,8 @@ CREATE TABLE IF NOT EXISTS users (
     bio TEXT,
     notes TEXT,
     notification_preferences JSONB DEFAULT '{}',
+    is_active BOOLEAN DEFAULT TRUE,
+    is_archived BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email) WHERE email IS NOT NULL;

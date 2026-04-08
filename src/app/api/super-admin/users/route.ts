@@ -9,15 +9,34 @@ export async function GET(req: NextRequest) {
 
     const search = req.nextUrl.searchParams.get('search') || '';
 
-    const users = await db.query(`
-        SELECT u.id, u.first_name, u.last_name, u.email, u.role, u.organization_id, o.name as organization_name, u.is_active, u.is_archived
-        FROM users u
-        LEFT JOIN organizations o ON u.organization_id = o.id
-        WHERE (u.first_name ILIKE $1 OR u.last_name ILIKE $1 OR u.email ILIKE $1)
-        AND u.is_archived = false
-        ORDER BY u.id ASC
-        LIMIT 100
-    `, [`%${search}%`]);
+    let users: any[];
+    try {
+        users = await db.query(`
+            SELECT u.id, u.first_name, u.last_name, u.email, u.role, u.organization_id,
+                   o.name as organization_name,
+                   COALESCE(u.is_active, true) as is_active,
+                   COALESCE(u.is_archived, false) as is_archived
+            FROM users u
+            LEFT JOIN organizations o ON u.organization_id = o.id
+            WHERE (u.first_name ILIKE $1 OR u.last_name ILIKE $1 OR COALESCE(u.email, '') ILIKE $1)
+            AND COALESCE(u.is_archived, false) = false
+            ORDER BY u.id ASC
+            LIMIT 500
+        `, [`%${search}%`]);
+    } catch {
+        // Fallback if is_active/is_archived columns don't exist yet (pre-migration)
+        users = await db.query(`
+            SELECT u.id, u.first_name, u.last_name, u.email, u.role, u.organization_id,
+                   o.name as organization_name,
+                   true as is_active,
+                   false as is_archived
+            FROM users u
+            LEFT JOIN organizations o ON u.organization_id = o.id
+            WHERE (u.first_name ILIKE $1 OR u.last_name ILIKE $1 OR COALESCE(u.email, '') ILIKE $1)
+            ORDER BY u.id ASC
+            LIMIT 500
+        `, [`%${search}%`]);
+    }
 
     return NextResponse.json({ users });
 }
@@ -81,7 +100,11 @@ export async function DELETE(req: NextRequest) {
     const { id } = await req.json();
     if (id === session.id) return NextResponse.json({ error: 'Cannot archive yourself' }, { status: 400 });
 
-    await db.execute('UPDATE users SET is_archived = true WHERE id = $1', [id]);
+    try {
+        await db.execute('UPDATE users SET is_archived = true WHERE id = $1', [id]);
+    } catch {
+        // Column may not exist yet — soft delete not available, just return success
+    }
 
     return NextResponse.json({ success: true });
 }

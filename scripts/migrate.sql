@@ -192,7 +192,18 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_column THEN NULL; END $$;
 
 -- =========================================================
--- 11. Include item in low stock alerts flag
+-- 11. Users: is_active + is_archived columns
+-- =========================================================
+DO $$ BEGIN
+  ALTER TABLE users ADD COLUMN is_active BOOLEAN DEFAULT TRUE;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE users ADD COLUMN is_archived BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
+-- =========================================================
+-- 12. Include item in low stock alerts flag
 -- =========================================================
 DO $$ BEGIN
   ALTER TABLE items ADD COLUMN include_in_low_stock_alerts BOOLEAN DEFAULT TRUE;
