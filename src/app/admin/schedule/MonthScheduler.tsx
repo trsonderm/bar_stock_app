@@ -6,7 +6,7 @@ interface Props {
     users: any[];
     shifts: any[];
     schedules: any[];
-    onDelete: (id: number) => void;
+    onDelete: (id: number, schedule: any) => void;
     onEdit: (schedule: any) => void;
     onDateChange: (date: Date) => void;
 }
@@ -94,7 +94,7 @@ export default function MonthScheduler({ currentDate, users, shifts, schedules, 
                                             >
                                                 <span className="truncate">{schedule.first_name}</span>
                                                 <button
-                                                    onClick={(e) => { e.stopPropagation(); onDelete(schedule.id); }}
+                                                    onClick={(e) => { e.stopPropagation(); onDelete(schedule.id, schedule); }}
                                                     className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-300"
                                                 >
                                                     <X size={10} />
