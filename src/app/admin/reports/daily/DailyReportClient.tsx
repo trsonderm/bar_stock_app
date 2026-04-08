@@ -1,23 +1,33 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import styles from '../../admin.module.css';
 import DateRangePicker from '@/components/DateRangePicker';
+
+interface UserStat { name: string; items: number; cost: number; }
+interface ItemStat { name: string; quantity: number; cost: number; }
 
 interface ReportData {
     date: string;
-    summary: {
-        total_cost: number;
-        total_items: number;
-        top_user: string;
-    };
-    user_breakdown: Array<{ name: string, items: number, cost: number }>;
-    item_breakdown: Array<{ name: string, quantity: number, cost: number }>;
-    alerts: {
-        low_stock: Array<{ name: string, quantity: number, low_stock_threshold: number }>;
-        run_out: Array<{ name: string, quantity: number, reason: string }>;
-    };
     is_preview: boolean;
+    summary: {
+        total_usage_cost: number;
+        total_usage_items: number;
+        total_restock_cost: number;
+        total_restock_items: number;
+        net_value_change: number;
+    };
+    usage: {
+        by_user: UserStat[];
+        by_item: ItemStat[];
+    };
+    restock: {
+        by_user: UserStat[];
+        by_item: ItemStat[];
+    };
+    alerts: {
+        low_stock: Array<{ name: string; quantity: number; low_stock_threshold: number }>;
+        run_out: Array<{ name: string; quantity: number; reason: string }>;
+    };
 }
 
 export default function DailyReportClient() {
@@ -26,7 +36,6 @@ export default function DailyReportClient() {
     const [loading, setLoading] = useState(true);
     const [showPicker, setShowPicker] = useState(false);
 
-    // Close picker if clicked outside
     const pickerRef = useRef<HTMLDivElement>(null);
     useEffect(() => {
         function handleClickOutside(event: MouseEvent) {
@@ -34,8 +43,8 @@ export default function DailyReportClient() {
                 setShowPicker(false);
             }
         }
-        document.addEventListener("mousedown", handleClickOutside);
-        return () => document.removeEventListener("mousedown", handleClickOutside);
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
     const fetchData = async () => {
@@ -55,17 +64,18 @@ export default function DailyReportClient() {
         }
     };
 
-    useEffect(() => {
-        fetchData();
-    }, [date]);
+    useEffect(() => { fetchData(); }, [date]);
 
     if (loading) return <div className="text-white text-center p-12">Loading Daily Report...</div>;
     if (!data) return <div className="text-white text-center p-12">Failed to load data.</div>;
 
+    const topUser = data.usage.by_user[0]?.name || '—';
+    const totalUsageCost = data.summary.total_usage_cost || 0;
+
     return (
         <div className="p-6 max-w-7xl mx-auto">
             {/* Header */}
-            <div className="flex justify-between items-center mb-8">
+            <div className="flex justify-between items-center mb-8 flex-wrap gap-4">
                 <div>
                     <h1 className="text-3xl font-bold text-white mb-2">Daily Closing Report</h1>
                     <p className="text-gray-400">Overview of usage, costs, and stock health for the trading day.</p>
@@ -81,7 +91,6 @@ export default function DailyReportClient() {
                             {date}
                             <span className="text-[10px] text-gray-500 ml-2">▼</span>
                         </button>
-
                         {showPicker && (
                             <div className="absolute top-10 right-0 z-50 shadow-2xl drop-shadow-2xl">
                                 <DateRangePicker
@@ -95,32 +104,11 @@ export default function DailyReportClient() {
                             </div>
                         )}
                     </div>
-
-                    <button
-                        onClick={fetchData}
-                        className="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded font-bold text-sm"
-                    >
+                    <button onClick={fetchData} className="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded font-bold text-sm">
                         Refresh
                     </button>
                 </div>
             </div>
-
-            {/* Preview Banner */}
-            {data.is_preview && (
-                <div className="bg-gradient-to-r from-indigo-900 to-purple-900 border border-indigo-500 rounded-lg p-4 mb-8 flex justify-between items-center shadow-lg">
-                    <div>
-                        <h3 className="font-bold text-white text-lg flex items-center gap-2">
-                            ✨ Preview Mode Active
-                        </h3>
-                        <p className="text-indigo-200 text-sm">
-                            No data found for this date yet. Showing sample data to demonstrate report capabilities.
-                        </p>
-                    </div>
-                    <div className="bg-white/10 px-4 py-2 rounded text-indigo-100 text-xs font-mono">
-                        FAKE DATA
-                    </div>
-                </div>
-            )}
 
             {/* Summary Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
@@ -128,16 +116,16 @@ export default function DailyReportClient() {
                     <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
                         <span className="text-6xl">💰</span>
                     </div>
-                    <h3 className="text-gray-400 font-bold text-sm uppercase mb-1">Total Bottle Cost</h3>
-                    <p className="text-4xl font-bold text-white">${data.summary.total_cost.toFixed(2)}</p>
-                    {/* <p className="text-green-500 text-xs mt-2 font-bold">+0% vs yesterday</p> */}
+                    <h3 className="text-gray-400 font-bold text-sm uppercase mb-1">Total Usage Cost</h3>
+                    <p className="text-4xl font-bold text-white">${totalUsageCost.toFixed(2)}</p>
+                    <p className="text-gray-500 text-xs mt-2">Stock value consumed today</p>
                 </div>
                 <div className="bg-gray-800 border border-gray-700 p-6 rounded-xl relative overflow-hidden group">
                     <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
                         <span className="text-6xl">📦</span>
                     </div>
                     <h3 className="text-gray-400 font-bold text-sm uppercase mb-1">Items Used</h3>
-                    <p className="text-4xl font-bold text-white">{data.summary.total_items}</p>
+                    <p className="text-4xl font-bold text-white">{data.summary.total_usage_items}</p>
                     <p className="text-gray-500 text-xs mt-2">Units subtracted from stock</p>
                 </div>
                 <div className="bg-gray-800 border border-gray-700 p-6 rounded-xl relative overflow-hidden group">
@@ -145,14 +133,21 @@ export default function DailyReportClient() {
                         <span className="text-6xl">🏆</span>
                     </div>
                     <h3 className="text-gray-400 font-bold text-sm uppercase mb-1">Top User</h3>
-                    <p className="text-4xl font-bold text-white truncate">{data.summary.top_user}</p>
+                    <p className="text-4xl font-bold text-white truncate">{topUser}</p>
                     <p className="text-indigo-400 text-xs mt-2 font-bold">Highest value moved</p>
                 </div>
             </div>
 
+            {/* Net Value Change Banner */}
+            <div className={`rounded-lg p-4 mb-8 flex justify-between items-center ${data.summary.net_value_change >= 0 ? 'bg-green-900/20 border border-green-800' : 'bg-red-900/20 border border-red-800'}`}>
+                <span className="text-white font-bold">Net Stock Value Change Today</span>
+                <span className={`text-2xl font-bold font-mono ${data.summary.net_value_change >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                    {data.summary.net_value_change >= 0 ? '+' : ''}${data.summary.net_value_change.toFixed(2)}
+                </span>
+            </div>
+
             {/* Main Content Grid */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-
                 {/* User Breakdown */}
                 <div className="bg-gray-800 border border-gray-700 rounded-xl overflow-hidden flex flex-col">
                     <div className="p-4 border-b border-gray-700 bg-gray-900/50 flex justify-between items-center">
@@ -170,7 +165,7 @@ export default function DailyReportClient() {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-700">
-                                {data.user_breakdown.map((u, i) => (
+                                {data.usage.by_user.map((u, i) => (
                                     <tr key={i} className="hover:bg-white/5 transition-colors">
                                         <td className="p-4 font-medium text-white">{u.name}</td>
                                         <td className="p-4 text-center text-gray-300">{u.items}</td>
@@ -179,13 +174,13 @@ export default function DailyReportClient() {
                                             <div className="w-full bg-gray-700 rounded-full h-1.5">
                                                 <div
                                                     className="bg-purple-500 h-1.5 rounded-full"
-                                                    style={{ width: `${Math.min(100, (u.cost / (data.summary.total_cost || 1)) * 100)}%` }}
-                                                ></div>
+                                                    style={{ width: `${Math.min(100, (u.cost / (totalUsageCost || 1)) * 100)}%` }}
+                                                />
                                             </div>
                                         </td>
                                     </tr>
                                 ))}
-                                {data.user_breakdown.length === 0 && (
+                                {data.usage.by_user.length === 0 && (
                                     <tr><td colSpan={4} className="p-8 text-center text-gray-500">No user activity recorded.</td></tr>
                                 )}
                             </tbody>
@@ -209,21 +204,21 @@ export default function DailyReportClient() {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-700">
-                                {data.item_breakdown.slice(0, 10).map((item, i) => (
+                                {data.usage.by_item.slice(0, 10).map((item, i) => (
                                     <tr key={i} className="hover:bg-white/5 transition-colors">
                                         <td className="p-4 font-medium text-white">{item.name}</td>
                                         <td className="p-4 text-center text-gray-300">{item.quantity}</td>
                                         <td className="p-4 text-right font-mono text-orange-400">${item.cost.toFixed(2)}</td>
                                     </tr>
                                 ))}
-                                {data.item_breakdown.length > 10 && (
+                                {data.usage.by_item.length > 10 && (
                                     <tr>
                                         <td colSpan={3} className="p-3 text-center text-gray-500 text-sm italic">
-                                            + {data.item_breakdown.length - 10} more items
+                                            + {data.usage.by_item.length - 10} more items
                                         </td>
                                     </tr>
                                 )}
-                                {data.item_breakdown.length === 0 && (
+                                {data.usage.by_item.length === 0 && (
                                     <tr><td colSpan={3} className="p-8 text-center text-gray-500">No items used.</td></tr>
                                 )}
                             </tbody>
@@ -232,10 +227,36 @@ export default function DailyReportClient() {
                 </div>
             </div>
 
-            {/* Alerts Section */}
+            {/* Restock Section */}
+            {data.restock.by_item.length > 0 && (
+                <div className="mb-8">
+                    <h2 className="text-xl font-bold text-white mb-4">Restocks Today</h2>
+                    <div className="bg-gray-800 border border-gray-700 rounded-xl overflow-hidden">
+                        <table className="w-full text-left">
+                            <thead className="bg-gray-900/30 text-xs text-gray-400 uppercase font-bold">
+                                <tr>
+                                    <th className="p-4">Item</th>
+                                    <th className="p-4 text-center">Qty Added</th>
+                                    <th className="p-4 text-right">Cost Value</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-700">
+                                {data.restock.by_item.map((item, i) => (
+                                    <tr key={i} className="hover:bg-white/5">
+                                        <td className="p-4 font-medium text-white">{item.name}</td>
+                                        <td className="p-4 text-center text-gray-300">{item.quantity}</td>
+                                        <td className="p-4 text-right font-mono text-blue-400">${item.cost.toFixed(2)}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
+
+            {/* Alerts */}
             <h2 className="text-xl font-bold text-white mb-4">Daily Stock Alerts</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Low Stock */}
                 <div className="bg-red-900/20 border border-red-900/50 rounded-xl p-6">
                     <h3 className="text-red-400 font-bold mb-4 flex items-center gap-2">
                         <span>⚠️</span> Low Stock Warnings
@@ -259,7 +280,6 @@ export default function DailyReportClient() {
                     </div>
                 </div>
 
-                {/* Run Out Prediction */}
                 <div className="bg-orange-900/20 border border-orange-900/50 rounded-xl p-6">
                     <h3 className="text-orange-400 font-bold mb-4 flex items-center gap-2">
                         <span>📉</span> Critical Run-Out Risk

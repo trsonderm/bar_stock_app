@@ -7,7 +7,8 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     if (!session || !session.organizationId || session.role !== 'admin') {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    if (session.subscriptionPlan !== 'pro' && !session.isSuperAdmin) {
+    const isPro = session.subscriptionPlan === 'pro' || session.subscriptionPlan === 'free_trial' || session.isSuperAdmin;
+    if (!isPro) {
         return NextResponse.json({ error: 'Pro subscription required' }, { status: 403 });
     }
 
