@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { pool } from '@/lib/db';
 import { getSession } from '@/lib/auth';
 
 export async function POST(req: NextRequest) {
@@ -10,7 +10,9 @@ export async function POST(req: NextRequest) {
         const organizationId = session.organizationId;
         const { itemId, change, locationId, bottleLevel } = await req.json();
 
-        if (!itemId || !change) return NextResponse.json({ error: 'Invalid data' }, { status: 400 });
+        if (!itemId || change === undefined || change === null || change === 0) {
+            return NextResponse.json({ error: 'Invalid data' }, { status: 400 });
+        }
 
         // Check permissions
         if (change > 0) {
@@ -20,109 +22,113 @@ export async function POST(req: NextRequest) {
 
         const action = change > 0 ? 'ADD_STOCK' : 'SUBTRACT_STOCK';
 
-        // Begin Transaction
-        await db.execute('BEGIN');
-
+        // Get a dedicated client so BEGIN/COMMIT stay on the same connection
+        const client = await pool.connect();
         try {
-            // 0. Verify Item exists (allow org-scoped items OR global items with org_id IS NULL)
-            const item = await db.one(`
+            await client.query('BEGIN');
+
+            // Verify item exists (allow global items with org_id IS NULL)
+            const itemRes = await client.query(`
                 SELECT name FROM items
                 WHERE id = $1
                   AND (organization_id = $2 OR organization_id IS NULL)
             `, [itemId, organizationId]);
+            const item = itemRes.rows[0];
             if (!item) {
-                console.error(`[Adjust Inventory] Item ${itemId} not found for org ${organizationId}`);
-                throw new Error('Item not found in this organization');
+                await client.query('ROLLBACK');
+                return NextResponse.json({ error: 'Item not found in this organization' }, { status: 404 });
             }
 
-            // Determine Location Context
-            // Priority: Payload > Cookie > Default (Sorted)
-            let targetLocationId = locationId;
+            // Determine target location
+            // Priority: payload > cookie > default (ORDER BY id ASC)
+            let targetLocationId: number | null = locationId || null;
 
             if (!targetLocationId) {
                 const cookieLoc = req.cookies.get('current_location_id')?.value;
-                if (cookieLoc) {
-                    targetLocationId = parseInt(cookieLoc);
-                }
+                if (cookieLoc) targetLocationId = parseInt(cookieLoc);
             }
 
-            let location = null;
             if (targetLocationId) {
-                location = await db.one('SELECT id FROM locations WHERE id = $1 AND organization_id = $2', [targetLocationId, organizationId]);
+                const locRes = await client.query(
+                    'SELECT id FROM locations WHERE id = $1 AND organization_id = $2',
+                    [targetLocationId, organizationId]
+                );
+                if (!locRes.rows[0]) targetLocationId = null;
             }
 
-            if (!location) {
-                // Try fallback to any location MATCHING GET LOGIC (ORDER BY ID ASC)
-                const anyLoc = await db.one('SELECT id FROM locations WHERE organization_id = $1 ORDER BY id ASC LIMIT 1', [organizationId]);
-                if (anyLoc) {
-                    targetLocationId = anyLoc.id;
-                    console.log(`[Adjust Inventory] Fallback to default location: ${targetLocationId}`);
-                } else {
-                    throw new Error('No location found for this organization');
+            if (!targetLocationId) {
+                const anyLoc = await client.query(
+                    'SELECT id FROM locations WHERE organization_id = $1 ORDER BY id ASC LIMIT 1',
+                    [organizationId]
+                );
+                if (!anyLoc.rows[0]) {
+                    await client.query('ROLLBACK');
+                    return NextResponse.json({ error: 'No location found for this organization' }, { status: 400 });
                 }
-            } else {
-                console.log(`[Adjust Inventory] Using location: ${targetLocationId}`);
+                targetLocationId = anyLoc.rows[0].id;
             }
 
-            // Update Inventory
-            // First check if row exists
-            const invExists = await db.one('SELECT id FROM inventory WHERE item_id = $1 AND location_id = $2', [itemId, targetLocationId]);
-
-            if (!invExists) {
-                console.log(`[Adjust Inventory] Creating new inventory record for item ${itemId} at loc ${targetLocationId}`);
-                await db.execute(
+            // Ensure inventory row exists
+            const invCheck = await client.query(
+                'SELECT id FROM inventory WHERE item_id = $1 AND location_id = $2',
+                [itemId, targetLocationId]
+            );
+            if (!invCheck.rows[0]) {
+                await client.query(
                     'INSERT INTO inventory (item_id, location_id, quantity, organization_id) VALUES ($1, $2, 0, $3)',
                     [itemId, targetLocationId, organizationId]
                 );
             }
 
-            // Perform Update
-            const updateRes = await db.one(`
-                UPDATE inventory 
-                SET quantity = GREATEST(0, quantity + $1) 
+            // Apply the change
+            const updateRes = await client.query(`
+                UPDATE inventory
+                SET quantity = GREATEST(0, quantity + $1)
                 WHERE item_id = $2 AND location_id = $3 AND organization_id = $4
                 RETURNING quantity
-             `, [change, itemId, targetLocationId, organizationId]);
+            `, [change, itemId, targetLocationId, organizationId]);
 
-            if (!updateRes) {
-                throw new Error('Failed to update inventory.');
+            if (!updateRes.rows[0]) {
+                await client.query('ROLLBACK');
+                return NextResponse.json({ error: 'Failed to update inventory' }, { status: 500 });
             }
+            const newQuantity = updateRes.rows[0].quantity;
 
-            const newQuantity = updateRes.quantity;
-
-            // 3. Log
-            const logRes = await db.one(`
-                INSERT INTO activity_logs (organization_id, user_id, action, details) 
-                VALUES ($1, $2, $3, $4) 
+            // Activity log
+            const logRes = await client.query(`
+                INSERT INTO activity_logs (organization_id, user_id, action, details)
+                VALUES ($1, $2, $3, $4)
                 RETURNING id
             `, [organizationId, session.id, action, JSON.stringify({
                 itemId,
                 itemName: item.name,
                 change: Math.abs(change),
-                quantity: Math.abs(change), // historic field naming
+                quantity: Math.abs(change),
                 quantityAfter: newQuantity,
                 locationId: targetLocationId,
                 bottleLevel
             })]);
 
-            // 4. Bottle Level Log (if provided)
-            if (bottleLevel) {
+            // Bottle level log (optional)
+            if (bottleLevel && logRes.rows[0]) {
                 try {
-                    await db.execute(
+                    await client.query(
                         'INSERT INTO bottle_level_logs (activity_log_id, option_label, user_id) VALUES ($1, $2, $3)',
-                        [logRes.id, bottleLevel, session.id]
+                        [logRes.rows[0].id, bottleLevel, session.id]
                     );
                 } catch (e) {
                     console.warn('Could not insert bottle level log', e);
                 }
             }
 
-            await db.execute('COMMIT');
+            await client.query('COMMIT');
             return NextResponse.json({ success: true });
 
         } catch (err) {
-            await db.execute('ROLLBACK');
+            await client.query('ROLLBACK').catch(() => {});
             throw err;
+        } finally {
+            client.release();
         }
 
     } catch (error: any) {
