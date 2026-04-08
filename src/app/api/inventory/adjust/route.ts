@@ -14,7 +14,6 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Invalid data' }, { status: 400 });
         }
 
-        // Check permissions
         if (change > 0) {
             const canAddStock = session.role === 'admin' || session.permissions.includes('add_stock') || session.permissions.includes('all');
             if (!canAddStock) return NextResponse.json({ error: 'Permission denied: Add Stock' }, { status: 403 });
@@ -22,30 +21,30 @@ export async function POST(req: NextRequest) {
 
         const action = change > 0 ? 'ADD_STOCK' : 'SUBTRACT_STOCK';
 
-        // Get a dedicated client so BEGIN/COMMIT stay on the same connection
         const client = await pool.connect();
         try {
             await client.query('BEGIN');
 
             // Verify item exists (allow global items with org_id IS NULL)
-            const itemRes = await client.query(`
-                SELECT name FROM items
-                WHERE id = $1
-                  AND (organization_id = $2 OR organization_id IS NULL)
-            `, [itemId, organizationId]);
+            const itemRes = await client.query(
+                `SELECT name FROM items WHERE id = $1 AND (organization_id = $2 OR organization_id IS NULL)`,
+                [itemId, organizationId]
+            );
             const item = itemRes.rows[0];
             if (!item) {
                 await client.query('ROLLBACK');
                 return NextResponse.json({ error: 'Item not found in this organization' }, { status: 404 });
             }
 
-            // Determine target location
-            // Priority: payload > cookie > default (ORDER BY id ASC)
-            let targetLocationId: number | null = locationId || null;
+            // Determine target location: payload > cookie > first location
+            let targetLocationId: number | null = locationId ? parseInt(locationId) : null;
 
             if (!targetLocationId) {
                 const cookieLoc = req.cookies.get('current_location_id')?.value;
-                if (cookieLoc) targetLocationId = parseInt(cookieLoc);
+                if (cookieLoc) {
+                    const parsed = parseInt(cookieLoc);
+                    if (!isNaN(parsed)) targetLocationId = parsed;
+                }
             }
 
             if (targetLocationId) {
@@ -68,25 +67,23 @@ export async function POST(req: NextRequest) {
                 targetLocationId = anyLoc.rows[0].id;
             }
 
-            // Ensure inventory row exists
-            const invCheck = await client.query(
-                'SELECT id FROM inventory WHERE item_id = $1 AND location_id = $2',
-                [itemId, targetLocationId]
+            // Upsert inventory row — ON CONFLICT DO NOTHING avoids race condition on rapid taps
+            await client.query(
+                `INSERT INTO inventory (item_id, location_id, quantity, organization_id)
+                 VALUES ($1, $2, 0, $3)
+                 ON CONFLICT (item_id, location_id) DO NOTHING`,
+                [itemId, targetLocationId, organizationId]
             );
-            if (!invCheck.rows[0]) {
-                await client.query(
-                    'INSERT INTO inventory (item_id, location_id, quantity, organization_id) VALUES ($1, $2, 0, $3)',
-                    [itemId, targetLocationId, organizationId]
-                );
-            }
 
-            // Apply the change
-            const updateRes = await client.query(`
-                UPDATE inventory
-                SET quantity = GREATEST(0, quantity + $1)
-                WHERE item_id = $2 AND location_id = $3 AND organization_id = $4
-                RETURNING quantity
-            `, [change, itemId, targetLocationId, organizationId]);
+            // Update quantity — do NOT filter by organization_id; UNIQUE(item_id, location_id)
+            // guarantees there is exactly one row to update regardless of which org owns it
+            const updateRes = await client.query(
+                `UPDATE inventory
+                 SET quantity = GREATEST(0, quantity + $1), organization_id = $4
+                 WHERE item_id = $2 AND location_id = $3
+                 RETURNING quantity`,
+                [change, itemId, targetLocationId, organizationId]
+            );
 
             if (!updateRes.rows[0]) {
                 await client.query('ROLLBACK');
@@ -95,21 +92,21 @@ export async function POST(req: NextRequest) {
             const newQuantity = updateRes.rows[0].quantity;
 
             // Activity log
-            const logRes = await client.query(`
-                INSERT INTO activity_logs (organization_id, user_id, action, details)
-                VALUES ($1, $2, $3, $4)
-                RETURNING id
-            `, [organizationId, session.id, action, JSON.stringify({
-                itemId,
-                itemName: item.name,
-                change: Math.abs(change),
-                quantity: Math.abs(change),
-                quantityAfter: newQuantity,
-                locationId: targetLocationId,
-                bottleLevel
-            })]);
+            const logRes = await client.query(
+                `INSERT INTO activity_logs (organization_id, user_id, action, details)
+                 VALUES ($1, $2, $3, $4) RETURNING id`,
+                [organizationId, session.id, action, JSON.stringify({
+                    itemId,
+                    itemName: item.name,
+                    change: Math.abs(change),
+                    quantity: Math.abs(change),
+                    quantityAfter: newQuantity,
+                    locationId: targetLocationId,
+                    bottleLevel
+                })]
+            );
 
-            // Bottle level log (optional)
+            // Bottle level log (optional, non-fatal)
             if (bottleLevel && logRes.rows[0]) {
                 try {
                     await client.query(
@@ -132,7 +129,7 @@ export async function POST(req: NextRequest) {
         }
 
     } catch (error: any) {
-        console.error('Inventory Adjust Error', error);
+        console.error('Inventory Adjust Error:', error);
         return NextResponse.json({ error: error.message || 'Internal Error' }, { status: 500 });
     }
 }
