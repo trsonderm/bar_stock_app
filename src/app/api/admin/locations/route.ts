@@ -4,12 +4,18 @@ import { getSession } from '@/lib/auth';
 
 export async function GET(req: NextRequest) {
     const session = await getSession();
-    if (!session || session.role !== 'admin') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!session || (session.role !== 'admin' && !session.isSuperAdmin)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     try {
+        const { searchParams } = new URL(req.url);
+        let organizationId = session.organizationId;
+        if (session.isSuperAdmin && searchParams.get('orgId')) {
+            organizationId = parseInt(searchParams.get('orgId') as string, 10);
+        }
+
         const locations = await db.query(
             'SELECT * FROM locations WHERE organization_id = $1 ORDER BY name ASC',
-            [session.organizationId]
+            [organizationId]
         );
         return NextResponse.json({ locations });
     } catch (e) {

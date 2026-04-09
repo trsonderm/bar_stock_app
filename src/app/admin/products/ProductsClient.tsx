@@ -94,14 +94,29 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
         fetch('/api/admin/settings').then(r => r.json()).then(d => {
             if (d.settings?.stock_count_mode) setStockMode(d.settings.stock_count_mode);
         });
-        fetch('/api/user/locations').then(r => r.json()).then(d => {
-            if (d.locations && d.locations.length > 0) {
-                setMyLocations(d.locations);
-                // Pick up current cookie location as default selection
-                const match = document.cookie.match(/(^| )current_location_id=([^;]+)/);
-                const cookieLocId = match ? parseInt(match[2]) : null;
-                const found = cookieLocId ? d.locations.find((l: any) => l.id === cookieLocId) : null;
-                setSelectedLocationId(found ? found.id : d.locations[0].id);
+
+        // When viewing another org as super admin, fetch that org's locations directly
+        // to avoid the user's own locations leaking into the orgId-scoped query
+        const locationsUrl = overrideOrgId
+            ? `/api/admin/locations?orgId=${overrideOrgId}`
+            : '/api/user/locations';
+
+        fetch(locationsUrl).then(r => r.json()).then(d => {
+            const locs: { id: number; name: string }[] = d.locations || [];
+            if (locs.length > 0) {
+                setMyLocations(locs);
+                if (overrideOrgId) {
+                    // Always use the first location of the target org — no cookie crossover
+                    setSelectedLocationId(locs[0].id);
+                } else {
+                    const match = document.cookie.match(/(^| )current_location_id=([^;]+)/);
+                    const cookieLocId = match ? parseInt(match[2]) : null;
+                    const found = cookieLocId ? locs.find((l: any) => l.id === cookieLocId) : null;
+                    setSelectedLocationId(found ? found.id : locs[0].id);
+                }
+            } else {
+                setMyLocations([]);
+                setSelectedLocationId(null);
             }
         });
     }, [overrideOrgId]);
