@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { sendEmail, getSmtpConfig } from '@/lib/mail';
+import { syslog } from '@/lib/syslog';
 
 type MailTier = 'reporting' | 'support' | 'admin' | 'notifications';
 
@@ -22,12 +23,21 @@ export async function POST(req: NextRequest) {
 
         const config = await getSmtpConfig(tier as MailTier);
         if (!config.host || !config.auth.user) {
-            return NextResponse.json({ error: `SMTP not configured for "${tier}" tier. Please save settings first.` }, { status: 400 });
+            await syslog.warn('email', `Mail test skipped — SMTP not configured for "${tier}" tier`, {
+                tier, to, triggeredBy: session.email,
+            });
+            return NextResponse.json({
+                error: `SMTP not configured for "${tier}" tier. Please save settings first.`,
+            }, { status: 400 });
         }
+
+        await syslog.info('email', `Mail test triggered for "${tier}" tier by ${session.email}`, {
+            tier, to, host: config.host, port: config.port, user: config.auth.user,
+        });
 
         const html = `
 <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:500px;margin:0 auto;padding:32px;background:white;border-radius:12px;border:1px solid #e2e8f0">
-  <h2 style="margin:0 0 16px;color:#0f172a">✅ TopShelf Mail Test Successful</h2>
+  <h2 style="margin:0 0 16px;color:#0f172a">&#x2705; TopShelf Mail Test Successful</h2>
   <p style="color:#475569;margin:0 0 16px">
     The <strong>${tier}</strong> SMTP route is working correctly.
   </p>
@@ -45,16 +55,21 @@ export async function POST(req: NextRequest) {
             to,
             subject: `[TopShelf] Test email — ${tier} tier`,
             html,
-            text: `TopShelf mail test successful.\nTier: ${tier}\nHost: ${config.host}\nSent at: ${new Date().toLocaleString()}`,
+            text: `TopShelf mail test.\nTier: ${tier}\nHost: ${config.host}\nSent at: ${new Date().toLocaleString()}`,
         });
 
         if (!success) {
-            return NextResponse.json({ error: 'Email send failed. Check server logs for SMTP error details.' }, { status: 500 });
+            // sendEmail already wrote the error log — just return the failure
+            return NextResponse.json({
+                error: 'Email send failed. Check System Logs for the full SMTP error.',
+            }, { status: 500 });
         }
 
         return NextResponse.json({ success: true });
     } catch (e: any) {
-        console.error('[mail-test]', e);
+        await syslog.error('email', `Unhandled error in mail-test route`, {
+            error: e.message, stack: e.stack?.split('\n').slice(0, 5).join('\n'),
+        });
         return NextResponse.json({ error: e.message || 'Internal Error' }, { status: 500 });
     }
 }

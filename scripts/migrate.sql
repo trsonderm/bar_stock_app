@@ -306,3 +306,19 @@ EXCEPTION WHEN OTHERS THEN NULL; END $$;
 DO $$ BEGIN
   ALTER TABLE inventory ALTER COLUMN organization_id SET NOT NULL;
 EXCEPTION WHEN OTHERS THEN NULL; END $$;
+
+-- =========================================================
+-- 17. System logs table for server-side event persistence
+-- =========================================================
+CREATE TABLE IF NOT EXISTS system_logs (
+  id          BIGSERIAL PRIMARY KEY,
+  level       VARCHAR(10)  NOT NULL DEFAULT 'info',   -- info | warn | error
+  category    VARCHAR(50)  NOT NULL DEFAULT 'system', -- email | auth | scheduler | api | system | database
+  message     TEXT         NOT NULL,
+  details     JSONB,
+  created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_system_logs_created_at ON system_logs (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_system_logs_level      ON system_logs (level);
+CREATE INDEX IF NOT EXISTS idx_system_logs_category   ON system_logs (category);
