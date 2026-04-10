@@ -143,6 +143,8 @@ WHERE status = 'DELIVERED' AND (tracking_status = 'PENDING' OR tracking_status =
 DO $$ BEGIN
   IF (SELECT data_type FROM information_schema.columns
       WHERE table_name = 'items' AND column_name = 'order_size') = 'integer' THEN
+    -- Drop the integer default before changing the type
+    ALTER TABLE items ALTER COLUMN order_size DROP DEFAULT;
     ALTER TABLE items ALTER COLUMN order_size TYPE JSONB
     USING CASE
       WHEN order_size IS NULL THEN NULL
