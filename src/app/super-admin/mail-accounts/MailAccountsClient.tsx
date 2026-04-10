@@ -60,6 +60,7 @@ export default function MailAccountsClient({ initialSettings }: { initialSetting
     });
 
     const [loading, setLoading] = useState(false);
+    const [testingTier, setTestingTier] = useState<string | null>(null);
 
     const handleSave = async () => {
         setLoading(true);
@@ -105,8 +106,26 @@ export default function MailAccountsClient({ initialSettings }: { initialSetting
     };
 
     const handleTestEmail = async (prefix: string) => {
-        alert(`Initiating Test Email for ${prefix.toUpperCase()} account route. (Simulated in this demo via API wrapper)`);
-        // Actual implementation would POST to '/api/super-admin/mail-test' with the specific prefix config.
+        const userEmail = prompt(`Send test email to (enter recipient address):`);
+        if (!userEmail?.trim()) return;
+        setTestingTier(prefix);
+        try {
+            const res = await fetch('/api/super-admin/mail-test', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tier: prefix, to: userEmail.trim() }),
+            });
+            const data = await res.json();
+            if (res.ok) {
+                alert(`✓ Test email sent to ${userEmail} via the ${prefix} tier.`);
+            } else {
+                alert(`Failed: ${data.error || 'Unknown error'}`);
+            }
+        } catch {
+            alert('Error sending test email');
+        } finally {
+            setTestingTier(null);
+        }
     };
 
     const renderCard = (title: string, subtitle: string, prefix: 'reporting' | 'support' | 'admin' | 'notifications') => (
@@ -150,11 +169,12 @@ export default function MailAccountsClient({ initialSettings }: { initialSetting
             </div>
             
             <div className="pt-4 mt-2 border-t border-slate-800 flex justify-end">
-                <button 
+                <button
                     onClick={() => handleTestEmail(prefix)}
-                    className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-blue-400 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                    disabled={testingTier === prefix}
+                    className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-blue-400 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
                 >
-                    <Mail className="w-4 h-4" /> Send Test Email
+                    <Mail className="w-4 h-4" /> {testingTier === prefix ? 'Sending...' : 'Send Test Email'}
                 </button>
             </div>
         </Card>

@@ -46,6 +46,14 @@ export async function POST(req: NextRequest) {
         }
 
         if (matchedUser) {
+            // Block login if email verification is required and not yet verified
+            if (email && password) {
+                const verifySetting = await db.one("SELECT value FROM system_settings WHERE key = 'require_email_verification'");
+                if (verifySetting?.value === 'true' && matchedUser.is_email_verified === false) {
+                    return NextResponse.json({ error: 'Please verify your email address before logging in. Check your inbox for the verification link.' }, { status: 403 });
+                }
+            }
+
             // Fetch Organization Plan
             const org = await db.one('SELECT subscription_plan FROM organizations WHERE id = $1', [matchedUser.organization_id || 1]);
             const subscriptionPlan = org ? org.subscription_plan : 'base';

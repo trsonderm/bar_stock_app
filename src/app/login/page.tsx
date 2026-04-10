@@ -15,6 +15,7 @@ function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const registered = searchParams.get('registered');
+  const verified = searchParams.get('verified');
 
   const executeLogin = async (payload: any) => {
     setLoading(true);
@@ -126,6 +127,11 @@ function LoginContent() {
       <h1 className={styles.title}>{mode === 'pin' ? 'Stock Login' : 'Admin Login'}</h1>
 
       {registered && <p className={styles.success}>Registration successful. Please login.</p>}
+      {verified === 'success' && <p className={styles.success}>✓ Email verified! Your account is now active. Please log in.</p>}
+      {verified === 'already' && <p className={styles.success}>✓ Email already verified. Please log in.</p>}
+      {verified === 'expired' && <p className={styles.error}>Verification link has expired. Please register again or contact support.</p>}
+      {verified === 'invalid' && <p className={styles.error}>Invalid verification link. Please check your email or contact support.</p>}
+      {verified === 'error' && <p className={styles.error}>An error occurred during verification. Please try again or contact support.</p>}
 
       {mode === 'pin' ? (
         <div className={styles.display}>

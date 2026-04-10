@@ -15,6 +15,8 @@ export default function RegisterPage() {
     });
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
+    const [verificationPending, setVerificationPending] = useState(false);
+    const [registeredEmail, setRegisteredEmail] = useState('');
     const router = useRouter();
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -42,10 +44,12 @@ export default function RegisterPage() {
             const data = await res.json();
 
             if (res.ok) {
-                // Auto-login or redirect to login? 
-                // Let's redirect to login for simplicity or assume auto-login if API returns token (which it doesn't usually on register unless we implement it).
-                // API will just return success.
-                router.push('/login?registered=true');
+                if (data.requiresVerification) {
+                    setRegisteredEmail(formData.email);
+                    setVerificationPending(true);
+                } else {
+                    router.push('/login?registered=true');
+                }
             } else {
                 setError(data.error || 'Registration failed');
             }
@@ -55,6 +59,28 @@ export default function RegisterPage() {
             setLoading(false);
         }
     };
+
+    if (verificationPending) {
+        return (
+            <div className={styles.container}>
+                <div className={styles.card} style={{ maxWidth: '420px', width: '100%', textAlign: 'center' }}>
+                    <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>✉️</div>
+                    <h1 className={styles.title} style={{ fontSize: '1.4rem' }}>Check your inbox</h1>
+                    <p style={{ color: '#94a3b8', marginBottom: '0.75rem', lineHeight: 1.6 }}>
+                        We sent a verification email to:
+                    </p>
+                    <p style={{ color: '#d97706', fontWeight: 600, marginBottom: '1rem', wordBreak: 'break-all' }}>
+                        {registeredEmail}
+                    </p>
+                    <p style={{ color: '#64748b', fontSize: '0.9rem', lineHeight: 1.6, marginBottom: '1.5rem' }}>
+                        Click the link in the email to activate your account. The link expires in 24 hours.
+                        If you don't see it, check your spam folder.
+                    </p>
+                    <a href="/login" className={styles.link}>Back to Login</a>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className={styles.container}>

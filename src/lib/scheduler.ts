@@ -1,4 +1,5 @@
 import { db } from './db';
+import { sendEmail } from './mail';
 import { exec } from 'child_process';
 import path from 'path';
 import fs from 'fs';
@@ -9,8 +10,10 @@ class Scheduler {
 
     constructor() {
         this.tasks = [
-            { name: 'Daily Cleanup', cron: '0 4 * * *', run: this.cleanupLogs }, // 4 AM
-            { name: 'Billing Check', cron: '0 5 * * *', run: this.checkBilling }, // 5 AM
+            { name: 'Daily Cleanup', cron: '0 4 * * *', run: () => this.cleanupLogs() },
+            { name: 'Billing Check', cron: '0 5 * * *', run: () => this.checkBilling() },
+            { name: 'Report Schedules', cron: '* * * * *', run: () => this.runDueReportSchedules() },
+            { name: 'Low Stock Alerts', cron: '* * * * *', run: () => this.runDueLowStockAlerts() },
         ];
     }
 
@@ -18,10 +21,9 @@ class Scheduler {
         if (this.interval) return;
         console.log('Scheduler Started');
 
-        // Simple checker every minute
         this.interval = setInterval(() => {
             const now = new Date();
-            if (now.getSeconds() < 2) { // Allow some drift but only run once per minute
+            if (now.getSeconds() < 2) {
                 this.checkTasks(now);
             }
         }, 1000 * 60);
@@ -33,7 +35,6 @@ class Scheduler {
     }
 
     private async checkTasks(now: Date) {
-        // Very basic cron parser: 'min hr * * *'
         const currentMin = now.getMinutes();
         const currentHr = now.getHours();
 
@@ -58,34 +59,34 @@ class Scheduler {
     // --- Tasks ---
 
     private async cleanupLogs() {
-        // Delete logs older than 90 days
-        await db.execute("DELETE FROM activity_logs WHERE timestamp < NOW() - INTERVAL '90 days'");
+        // Respect log_retention_days from system_settings
+        let days = 90;
+        try {
+            const row = await db.one("SELECT value FROM system_settings WHERE key = 'log_retention_days'");
+            if (row) days = parseInt(row.value) || 90;
+        } catch { }
+        await db.execute(`DELETE FROM activity_logs WHERE timestamp < NOW() - INTERVAL '${days} days'`);
     }
 
     private async checkBilling() {
         console.log("Checking for due invoices...");
-        // 1. Get all active organizations
-        // 2. Check if they have an invoice for this month
-        // 3. If not, generate one
         try {
             const orgs = await db.query("SELECT id, name, subscription_plan FROM organizations WHERE billing_status = 'active'");
             const now = new Date();
-            const currentMonth = now.toISOString().slice(0, 7); // YYYY-MM
+            const currentMonth = now.toISOString().slice(0, 7);
 
             for (const org of orgs) {
-                // Check invoice
                 const existingRows = await db.query(
                     "SELECT id FROM invoices WHERE organization_id = $1 AND TO_CHAR(created_at, 'YYYY-MM') = $2",
                     [org.id, currentMonth]
                 );
 
                 if (existingRows.length === 0) {
-                    console.log(`Generating Invoice for ${org.name}`);
                     const amount = org.subscription_plan === 'PRO' ? 49.00 : 0.00;
                     if (amount > 0) {
                         await db.execute(
                             "INSERT INTO invoices (organization_id, amount, status, due_date) VALUES ($1, $2, 'PENDING', $3)",
-                            [org.id, amount, new Date(now.getFullYear(), now.getMonth() + 1, 0)] // End of month
+                            [org.id, amount, new Date(now.getFullYear(), now.getMonth() + 1, 0)]
                         );
                     }
                 }
@@ -95,14 +96,310 @@ class Scheduler {
         }
     }
 
-    // --- Helpers ---
+    private async runDueReportSchedules() {
+        try {
+            const now = new Date();
+            const due = await db.query(`
+                SELECT rs.*, sr.name as report_name, sr.config as report_config,
+                       o.subscription_plan, o.settings as org_settings
+                FROM report_schedules rs
+                JOIN saved_reports sr ON rs.report_id::int = sr.id
+                JOIN organizations o ON rs.organization_id = o.id
+                WHERE rs.active = TRUE
+                  AND rs.next_run_at <= $1
+            `, [now]);
+
+            for (const schedule of due) {
+                try {
+                    await this.sendScheduledReport(schedule);
+
+                    // Advance next_run_at
+                    const next = new Date();
+                    next.setHours(8, 0, 0, 0);
+                    if (schedule.frequency === 'daily') next.setDate(next.getDate() + 1);
+                    else if (schedule.frequency === 'weekly') next.setDate(next.getDate() + 7);
+                    else if (schedule.frequency === 'monthly') {
+                        next.setMonth(next.getMonth() + 1);
+                        next.setDate(1);
+                    } else {
+                        next.setDate(next.getDate() + 1);
+                    }
+
+                    await db.execute(
+                        'UPDATE report_schedules SET next_run_at = $1 WHERE id = $2',
+                        [next, schedule.id]
+                    );
+                } catch (e) {
+                    console.error(`[Scheduler] Failed to send report schedule ${schedule.id}:`, e);
+                }
+            }
+        } catch (e) {
+            console.error('[Scheduler] runDueReportSchedules error:', e);
+        }
+    }
+
+    private async sendScheduledReport(schedule: any) {
+        const config = typeof schedule.report_config === 'string'
+            ? JSON.parse(schedule.report_config)
+            : schedule.report_config;
+
+        const recipients = schedule.recipients
+            ? schedule.recipients.split(',').map((r: string) => r.trim()).filter(Boolean)
+            : [];
+
+        if (recipients.length === 0) return;
+
+        // Build a simple HTML summary of the report sections
+        const sections: any[] = config?.sections || [];
+        let sectionsHtml = '';
+
+        for (const section of sections) {
+            try {
+                const rows = await this.fetchReportData(schedule.organization_id, section);
+                if (!rows || rows.length === 0) continue;
+
+                const cols = Object.keys(rows[0]);
+                const headerRow = cols.map(c => `<th style="padding:8px 12px;text-align:left;border-bottom:2px solid #e2e8f0;color:#64748b;font-size:12px;text-transform:uppercase">${c.replace(/_/g, ' ')}</th>`).join('');
+                const dataRows = rows.slice(0, 20).map((row: any) =>
+                    `<tr>${cols.map(c => `<td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;color:#1e293b;font-size:14px">${row[c] ?? ''}</td>`).join('')}</tr>`
+                ).join('');
+
+                sectionsHtml += `
+                    <div style="margin-bottom:32px">
+                        <h3 style="margin:0 0 12px;color:#0f172a;font-size:16px;font-weight:600">${section.title || section.dataSource || 'Report Section'}</h3>
+                        <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden">
+                            <thead><tr style="background:#f8fafc">${headerRow}</tr></thead>
+                            <tbody>${dataRows}</tbody>
+                        </table>
+                        ${rows.length > 20 ? `<p style="color:#64748b;font-size:12px;margin:8px 0 0">Showing 20 of ${rows.length} rows</p>` : ''}
+                    </div>`;
+            } catch { }
+        }
+
+        if (!sectionsHtml) sectionsHtml = '<p style="color:#64748b">No data available for this report period.</p>';
+
+        const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.topshelfinventory.com';
+        const html = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;padding:40px 20px">
+    <tr><td align="center">
+      <table width="700" cellpadding="0" cellspacing="0" style="background:white;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08)">
+        <tr>
+          <td style="background:linear-gradient(135deg,#1e293b 0%,#0f172a 100%);padding:32px 48px">
+            <h1 style="margin:0;color:white;font-size:20px;font-weight:700">TopShelf Inventory</h1>
+            <p style="margin:8px 0 0;color:#94a3b8;font-size:14px">Scheduled Report: ${schedule.report_name}</p>
+          </td>
+        </tr>
+        <tr><td style="padding:40px 48px">
+          <p style="margin:0 0 8px;color:#64748b;font-size:13px">Generated: ${new Date().toLocaleString()} &bull; Frequency: ${schedule.frequency}</p>
+          ${sectionsHtml}
+          <p style="margin:32px 0 0;text-align:center">
+            <a href="${appUrl}/admin/reports" style="background:#d97706;color:white;text-decoration:none;padding:12px 28px;border-radius:8px;font-size:14px;font-weight:600">View Full Report</a>
+          </p>
+        </td></tr>
+        <tr>
+          <td style="background:#f8fafc;padding:20px 48px;border-top:1px solid #e2e8f0;text-align:center">
+            <p style="margin:0;color:#94a3b8;font-size:12px">TopShelf Inventory &bull; notifications@topshelfinventory.com &bull; <a href="${appUrl}/admin/settings/reporting" style="color:#94a3b8">Manage Schedules</a></p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+
+        await sendEmail('reporting', {
+            to: recipients,
+            subject: `[TopShelf] ${schedule.report_name} — ${schedule.frequency.charAt(0).toUpperCase() + schedule.frequency.slice(1)} Report`,
+            html,
+            text: `TopShelf Scheduled Report: ${schedule.report_name}\nGenerated: ${new Date().toLocaleString()}\n\nView your full report at: ${appUrl}/admin/reports`,
+        });
+
+        console.log(`[Scheduler] Sent scheduled report "${schedule.report_name}" to ${recipients.join(', ')}`);
+    }
+
+    private async fetchReportData(organizationId: number, section: any): Promise<any[]> {
+        const { dataSource, groupBy, dateRange } = section;
+        const days = dateRange === '7d' ? 7 : dateRange === '30d' ? 30 : dateRange === '90d' ? 90 : 7;
+        const since = new Date(Date.now() - days * 86400000).toISOString();
+
+        if (dataSource === 'stock_usage') {
+            if (groupBy === 'item') {
+                return db.query(`
+                    SELECT i.name as item_name, SUM(ABS((al.details->>'quantity')::numeric)) as total_used
+                    FROM activity_logs al
+                    JOIN items i ON (al.details->>'itemId')::int = i.id
+                    WHERE al.action = 'SUBTRACT_STOCK' AND al.organization_id = $1 AND al.timestamp >= $2
+                    GROUP BY i.name ORDER BY total_used DESC LIMIT 50
+                `, [organizationId, since]);
+            }
+            if (groupBy === 'user') {
+                return db.query(`
+                    SELECT u.first_name || ' ' || u.last_name as user_name,
+                           COUNT(*) as transactions,
+                           SUM(ABS((al.details->>'quantity')::numeric)) as total_used
+                    FROM activity_logs al
+                    JOIN users u ON al.user_id = u.id
+                    WHERE al.action = 'SUBTRACT_STOCK' AND al.organization_id = $1 AND al.timestamp >= $2
+                    GROUP BY u.id, u.first_name, u.last_name ORDER BY total_used DESC
+                `, [organizationId, since]);
+            }
+        }
+        if (dataSource === 'low_stock') {
+            return db.query(`
+                SELECT i.name, i.type, i.low_stock_threshold, COALESCE(SUM(inv.quantity), 0) as current_stock
+                FROM items i
+                LEFT JOIN inventory inv ON i.id = inv.item_id
+                WHERE i.organization_id = $1
+                GROUP BY i.id, i.name, i.type, i.low_stock_threshold
+                HAVING COALESCE(SUM(inv.quantity), 0) <= COALESCE(i.low_stock_threshold, 5)
+                ORDER BY current_stock ASC
+            `, [organizationId]);
+        }
+        if (dataSource === 'inventory_value') {
+            return db.query(`
+                SELECT i.name, i.type, i.unit_cost,
+                       COALESCE(SUM(inv.quantity), 0) as quantity,
+                       ROUND(i.unit_cost * COALESCE(SUM(inv.quantity), 0), 2) as total_value
+                FROM items i
+                LEFT JOIN inventory inv ON i.id = inv.item_id
+                WHERE i.organization_id = $1
+                GROUP BY i.id, i.name, i.type, i.unit_cost
+                ORDER BY total_value DESC LIMIT 50
+            `, [organizationId]);
+        }
+        return [];
+    }
+
+    private async runDueLowStockAlerts() {
+        try {
+            // Get all orgs with low stock alerts enabled
+            const orgSettings = await db.query(`
+                SELECT s.organization_id,
+                       MAX(CASE WHEN s.key = 'low_stock_alert_enabled' THEN s.value END) as alert_enabled,
+                       MAX(CASE WHEN s.key = 'low_stock_alert_emails' THEN s.value END) as alert_emails,
+                       MAX(CASE WHEN s.key = 'low_stock_alert_time' THEN s.value END) as alert_time,
+                       MAX(CASE WHEN s.key = 'low_stock_alert_title' THEN s.value END) as alert_title,
+                       MAX(CASE WHEN s.key = 'low_stock_threshold' THEN s.value END) as threshold
+                FROM settings s
+                WHERE s.key IN ('low_stock_alert_enabled','low_stock_alert_emails','low_stock_alert_time','low_stock_alert_title','low_stock_threshold')
+                GROUP BY s.organization_id
+                HAVING MAX(CASE WHEN s.key = 'low_stock_alert_enabled' THEN s.value END) = 'true'
+            `);
+
+            const now = new Date();
+            const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+            for (const s of orgSettings) {
+                // Parse schedule — may be JSON or plain "HH:MM"
+                let scheduleTime = '14:00';
+                try {
+                    const parsed = s.alert_time ? JSON.parse(s.alert_time) : null;
+                    scheduleTime = parsed?.time || s.alert_time || '14:00';
+                } catch {
+                    scheduleTime = s.alert_time || '14:00';
+                }
+
+                if (scheduleTime !== currentTime) continue;
+
+                // Get recipients
+                let recipients: string[] = [];
+                try {
+                    const parsed = s.alert_emails ? JSON.parse(s.alert_emails) : null;
+                    if (parsed?.to) recipients = parsed.to;
+                    else if (typeof s.alert_emails === 'string') recipients = s.alert_emails.split(',').map((r: string) => r.trim()).filter(Boolean);
+                } catch {
+                    recipients = s.alert_emails ? s.alert_emails.split(',').map((r: string) => r.trim()).filter(Boolean) : [];
+                }
+
+                if (recipients.length === 0) continue;
+
+                const threshold = parseInt(s.threshold) || 5;
+                const lowItems = await db.query(`
+                    SELECT i.name, i.type, COALESCE(SUM(inv.quantity), 0) as quantity, i.low_stock_threshold
+                    FROM items i
+                    LEFT JOIN inventory inv ON i.id = inv.item_id
+                    WHERE (i.organization_id = $1 OR i.organization_id IS NULL)
+                    GROUP BY i.id, i.name, i.type, i.low_stock_threshold
+                    HAVING COALESCE(SUM(inv.quantity), 0) <= COALESCE(i.low_stock_threshold, $2)
+                    ORDER BY quantity ASC
+                `, [s.organization_id, threshold]);
+
+                if (lowItems.length === 0) continue;
+
+                const title = s.alert_title || 'URGENT: Low Stock Alert';
+                const rows = lowItems.map((item: any) =>
+                    `<tr>
+                        <td style="padding:10px 16px;border-bottom:1px solid #f1f5f9;color:#1e293b;font-weight:500">${item.name}</td>
+                        <td style="padding:10px 16px;border-bottom:1px solid #f1f5f9;color:#64748b">${item.type}</td>
+                        <td style="padding:10px 16px;border-bottom:1px solid #f1f5f9;color:${item.quantity <= 0 ? '#ef4444' : '#f59e0b'};font-weight:700">${item.quantity}</td>
+                        <td style="padding:10px 16px;border-bottom:1px solid #f1f5f9;color:#64748b">${item.low_stock_threshold ?? threshold}</td>
+                    </tr>`
+                ).join('');
+
+                const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.topshelfinventory.com';
+                const html = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;padding:40px 20px">
+    <tr><td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" style="background:white;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08)">
+        <tr>
+          <td style="background:linear-gradient(135deg,#7f1d1d 0%,#991b1b 100%);padding:32px 48px">
+            <h1 style="margin:0;color:white;font-size:20px;font-weight:700">⚠️ ${title}</h1>
+            <p style="margin:8px 0 0;color:#fca5a5;font-size:14px">${lowItems.length} item${lowItems.length > 1 ? 's' : ''} at or below threshold</p>
+          </td>
+        </tr>
+        <tr><td style="padding:40px 48px">
+          <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden">
+            <thead>
+              <tr style="background:#fef2f2">
+                <th style="padding:10px 16px;text-align:left;font-size:12px;color:#991b1b;text-transform:uppercase">Item</th>
+                <th style="padding:10px 16px;text-align:left;font-size:12px;color:#991b1b;text-transform:uppercase">Category</th>
+                <th style="padding:10px 16px;text-align:left;font-size:12px;color:#991b1b;text-transform:uppercase">In Stock</th>
+                <th style="padding:10px 16px;text-align:left;font-size:12px;color:#991b1b;text-transform:uppercase">Threshold</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+          <p style="margin:32px 0 0;text-align:center">
+            <a href="${appUrl}/inventory" style="background:#dc2626;color:white;text-decoration:none;padding:12px 28px;border-radius:8px;font-size:14px;font-weight:600">View Inventory</a>
+          </p>
+        </td></tr>
+        <tr>
+          <td style="background:#f8fafc;padding:20px 48px;border-top:1px solid #e2e8f0;text-align:center">
+            <p style="margin:0;color:#94a3b8;font-size:12px">TopShelf Inventory &bull; <a href="${appUrl}/admin/settings/reporting" style="color:#94a3b8">Manage Alerts</a></p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+
+                await sendEmail('reporting', {
+                    to: recipients,
+                    subject: title,
+                    html,
+                    text: `${title}\n\n${lowItems.map((i: any) => `${i.name}: ${i.quantity} (threshold: ${i.low_stock_threshold ?? threshold})`).join('\n')}\n\nView inventory: ${appUrl}/inventory`,
+                });
+
+                console.log(`[Scheduler] Sent low stock alert for org ${s.organization_id} to ${recipients.join(', ')}`);
+            }
+        } catch (e) {
+            console.error('[Scheduler] runDueLowStockAlerts error:', e);
+        }
+    }
 
     private async logRun(name: string, status: string, error?: string) {
-        // We could create a cron_logs table, or just console for now to save complexity
         console.log(`[CRON] ${name}: ${status} ${error || ''}`);
     }
 
-    // Public method to run manual backup
     async runBackup() {
         const backupDir = path.join(process.cwd(), 'backups');
         if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir, { recursive: true });
@@ -110,7 +407,6 @@ class Scheduler {
         const filename = `backup-${new Date().toISOString().split('T')[0]}-${Date.now()}.sql`;
         const filepath = path.join(backupDir, filename);
 
-        // This assumes pg_dump is available in the environment (Docker container needs it)
         const cmd = `pg_dump "${process.env.DATABASE_URL}" > "${filepath}"`;
 
         return new Promise((resolve, reject) => {
