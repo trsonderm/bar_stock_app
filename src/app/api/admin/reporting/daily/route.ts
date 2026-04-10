@@ -93,7 +93,7 @@ export async function GET(req: NextRequest) {
         let itemCosts: Record<number, number> = {};
 
         if (itemIds.length > 0) {
-            const items = await db.query(`SELECT id, unit_cost FROM items WHERE id = ANY($1)`, [itemIds]);
+            const items = await db.query(`SELECT id, unit_cost FROM items WHERE id = ANY($1) AND organization_id = $2`, [itemIds, organizationId]);
             items.forEach((i: any) => itemCosts[i.id] = Number(i.unit_cost || 0));
         }
 

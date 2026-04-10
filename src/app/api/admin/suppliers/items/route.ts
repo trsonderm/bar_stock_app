@@ -68,15 +68,11 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
         }
 
-        // Check item ownership
-        const item = await db.one('SELECT id FROM items WHERE id = $1 AND (organization_id = $2 OR organization_id IS NULL)', [item_id, session.organizationId]);
+        // Check item belongs to this organization
+        const item = await db.one('SELECT id FROM items WHERE id = $1 AND organization_id = $2', [item_id, session.organizationId]);
         if (!item) return NextResponse.json({ error: 'Item not found' }, { status: 404 });
 
         await db.execute('BEGIN');
-
-        // If preferred, unset others for this item (logic: only one preferred?)
-        // Let's assume we can have multiple but usually one is primary. 
-        // For simplicity, if this is set to preferred, we could uncheck others, but let's leave flexible for now.
 
         await db.execute(`
             INSERT INTO item_suppliers (item_id, supplier_id, cost_per_unit, supplier_sku, is_preferred)
@@ -106,8 +102,8 @@ export async function DELETE(req: NextRequest) {
     try {
         const { item_id, supplier_id } = await req.json();
 
-        // Check item ownership
-        const item = await db.one('SELECT id FROM items WHERE id = $1 AND (organization_id = $2 OR organization_id IS NULL)', [item_id, session.organizationId]);
+        // Check item belongs to this organization
+        const item = await db.one('SELECT id FROM items WHERE id = $1 AND organization_id = $2', [item_id, session.organizationId]);
         if (!item) return NextResponse.json({ error: 'Item not found' }, { status: 404 });
 
         await db.execute('DELETE FROM item_suppliers WHERE item_id = $1 AND supplier_id = $2', [item_id, supplier_id]);

@@ -64,12 +64,7 @@ export async function GET(req: NextRequest) {
         WHERE action = 'SUBTRACT_STOCK' AND organization_id = $1
         GROUP BY (details->>'itemId')::int
       ) usage_stats ON i.id = usage_stats.item_id
-      WHERE (
-        i.organization_id = $1
-        OR (i.organization_id IS NULL AND NOT EXISTS (
-            SELECT 1 FROM items i2 WHERE i2.name = i.name AND i2.organization_id = $1
-        ))
-      )
+      WHERE i.organization_id = $1
       GROUP BY i.id, usage_stats.usage_count
     `;
 
@@ -111,12 +106,7 @@ export async function GET(req: NextRequest) {
                 FROM activity_logs WHERE action = 'SUBTRACT_STOCK' AND organization_id = $1
                 GROUP BY (details->>'itemId')::int
               ) usage_stats ON i.id = usage_stats.item_id
-              WHERE (
-                i.organization_id = $1
-                OR (i.organization_id IS NULL AND NOT EXISTS (
-                  SELECT 1 FROM items i2 WHERE i2.name = i.name AND i2.organization_id = $1
-                ))
-              )
+              WHERE i.organization_id = $1
               GROUP BY i.id, usage_stats.usage_count
               ${sort === 'usage' ? 'ORDER BY usage_count DESC, i.name ASC' : 'ORDER BY i.name ASC'}
             `;
@@ -328,7 +318,7 @@ export async function PUT(req: NextRequest) {
                     await db.execute(
                         `UPDATE items SET ${updates.join(', ')}
                          WHERE id = $${pIdx}
-                           AND (organization_id = $${pIdx + 1} OR organization_id IS NULL)`,
+                           AND organization_id = $${pIdx + 1}`,
                         params
                     );
                 } catch (fullUpdateErr: any) {
@@ -353,7 +343,7 @@ export async function PUT(req: NextRequest) {
                         await db.execute(
                             `UPDATE items SET ${safeUpdates.join(', ')}
                              WHERE id = $${sIdx}
-                               AND (organization_id = $${sIdx + 1} OR organization_id IS NULL)`,
+                               AND organization_id = $${sIdx + 1}`,
                             safeParams
                         );
                     }
@@ -365,7 +355,7 @@ export async function PUT(req: NextRequest) {
                 try {
                     await db.execute(
                         `UPDATE items SET include_in_low_stock_alerts = $1
-                         WHERE id = $2 AND (organization_id = $3 OR organization_id IS NULL)`,
+                         WHERE id = $2 AND organization_id = $3`,
                         [include_in_low_stock_alerts, id, organizationId]
                     );
                 } catch (e) {
@@ -484,7 +474,7 @@ export async function PUT(req: NextRequest) {
             // Get current quantity and threshold (allow global items with org_id IS NULL)
             const itemOwner = await db.one(`
                 SELECT id, name, low_stock_threshold FROM items
-                WHERE id = $1 AND (organization_id = $2 OR organization_id IS NULL)
+                WHERE id = $1 AND organization_id = $2
             `, [id, organizationId]);
             if (!itemOwner) {
                 console.error('[PUT Inventory] Item not found for org', id, organizationId);

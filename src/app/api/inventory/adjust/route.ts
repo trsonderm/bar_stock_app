@@ -25,9 +25,9 @@ export async function POST(req: NextRequest) {
         try {
             await client.query('BEGIN');
 
-            // Verify item exists (allow global items with org_id IS NULL)
+            // Verify item belongs to this organization
             const itemRes = await client.query(
-                `SELECT name FROM items WHERE id = $1 AND (organization_id = $2 OR organization_id IS NULL)`,
+                `SELECT name FROM items WHERE id = $1 AND organization_id = $2`,
                 [itemId, organizationId]
             );
             const item = itemRes.rows[0];

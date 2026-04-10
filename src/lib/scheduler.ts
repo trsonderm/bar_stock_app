@@ -322,7 +322,7 @@ class Scheduler {
                     SELECT i.name, i.type, COALESCE(SUM(inv.quantity), 0) as quantity, i.low_stock_threshold
                     FROM items i
                     LEFT JOIN inventory inv ON i.id = inv.item_id
-                    WHERE (i.organization_id = $1 OR i.organization_id IS NULL)
+                    WHERE i.organization_id = $1
                     GROUP BY i.id, i.name, i.type, i.low_stock_threshold
                     HAVING COALESCE(SUM(inv.quantity), 0) <= COALESCE(i.low_stock_threshold, $2)
                     ORDER BY quantity ASC

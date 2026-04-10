@@ -34,7 +34,7 @@ export default async function SupplierDetailPage({ params }: { params: { id: str
 
     // Fetch all items for "Add Link" dropdown
     const allItems = await db.query(
-        'SELECT id, name FROM items WHERE organization_id = $1 OR organization_id IS NULL ORDER BY name ASC',
+        'SELECT id, name FROM items WHERE organization_id = $1 ORDER BY name ASC',
         [session.organizationId]
     );
 

@@ -22,7 +22,7 @@ export class OrgScope {
 
     // --- Items / Inventory ---
     async getItems(categoryId?: number) {
-        let sql = 'SELECT * FROM items WHERE (organization_id = $1 OR organization_id IS NULL)';
+        let sql = 'SELECT * FROM items WHERE organization_id = $1';
         const params: any[] = [this.orgId];
 
         if (categoryId) {

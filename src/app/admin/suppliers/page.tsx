@@ -17,7 +17,7 @@ export default async function SuppliersPage() {
 
     // Also fetch all items for the linking UI
     const items = await db.query(
-        'SELECT id, name FROM items WHERE organization_id = $1 OR organization_id IS NULL ORDER BY name ASC',
+        'SELECT id, name FROM items WHERE organization_id = $1 ORDER BY name ASC',
         [session.organizationId]
     );
 

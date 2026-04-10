@@ -90,7 +90,7 @@ export async function DELETE(req: NextRequest) {
         const cat = await db.one('SELECT name FROM categories WHERE id = $1 AND organization_id = $2', [id, session.organizationId]);
         if (!cat) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-        const used = await db.one('SELECT COUNT(*) as count FROM items WHERE type = $1', [cat.name]);
+        const used = await db.one('SELECT COUNT(*) as count FROM items WHERE type = $1 AND organization_id = $2', [cat.name, session.organizationId]);
         if (parseInt(used.count) > 0) {
             return NextResponse.json({ error: `Cannot delete: ${used.count} items are using this category.` }, { status: 400 });
         }

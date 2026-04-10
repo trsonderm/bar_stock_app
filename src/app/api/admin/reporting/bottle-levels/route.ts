@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
         // Category filtering requires a small subquery or assumption that category isn't in details
         // To keep it simple, if categoryId is provided, we filter items
         if (categoryId) {
-            query += ` AND (al.details->>'itemId')::int IN (SELECT id FROM items WHERE category_id = $${params.length + 1})`;
+            query += ` AND (al.details->>'itemId')::int IN (SELECT id FROM items WHERE category_id = $${params.length + 1} AND organization_id = $1)`;
             params.push(categoryId);
         }
 

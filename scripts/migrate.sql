@@ -269,3 +269,40 @@ EXCEPTION WHEN duplicate_column THEN NULL; END $$;
 DO $$ BEGIN
   ALTER TABLE organization_tokens ADD COLUMN revoked_by INTEGER;
 EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
+-- =========================================================
+-- 16. Organization isolation cleanup & enforcement
+-- =========================================================
+
+-- Reassign any NULL organization_id items to org 1 rather than deleting
+-- (they may have inventory records attached — reassign keeps data intact)
+UPDATE items SET organization_id = 1 WHERE organization_id IS NULL;
+UPDATE categories SET organization_id = 1 WHERE organization_id IS NULL;
+UPDATE locations SET organization_id = 1 WHERE organization_id IS NULL;
+UPDATE suppliers SET organization_id = 1 WHERE organization_id IS NULL;
+UPDATE inventory SET organization_id = 1 WHERE organization_id IS NULL;
+UPDATE activity_logs SET organization_id = 1 WHERE organization_id IS NULL;
+UPDATE settings SET organization_id = 1 WHERE organization_id IS NULL;
+UPDATE report_schedules SET organization_id = 1 WHERE organization_id IS NULL;
+UPDATE saved_reports SET organization_id = 1 WHERE organization_id IS NULL;
+
+-- Enforce NOT NULL going forward on the tables that must always be org-scoped
+DO $$ BEGIN
+  ALTER TABLE items ALTER COLUMN organization_id SET NOT NULL;
+EXCEPTION WHEN OTHERS THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE categories ALTER COLUMN organization_id SET NOT NULL;
+EXCEPTION WHEN OTHERS THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE locations ALTER COLUMN organization_id SET NOT NULL;
+EXCEPTION WHEN OTHERS THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE suppliers ALTER COLUMN organization_id SET NOT NULL;
+EXCEPTION WHEN OTHERS THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE inventory ALTER COLUMN organization_id SET NOT NULL;
+EXCEPTION WHEN OTHERS THEN NULL; END $$;
