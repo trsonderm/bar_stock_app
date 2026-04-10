@@ -1,50 +1,65 @@
 import { cookies } from 'next/headers';
-import { notFound } from 'next/navigation';
+import { redirect } from 'next/navigation';
 import { db } from '@/lib/db';
 import { validateStationToken } from '@/lib/dba';
 import StationPinPad from '@/components/StationPinPad';
 
-async function getOrganization(slug: string) {
-    return await db.one('SELECT id, name, subdomain FROM organizations WHERE subdomain = $1', [slug]);
-}
+export default async function PinPage({
+    searchParams,
+}: {
+    searchParams: { orgId?: string };
+}) {
+    const orgId = Number(searchParams.orgId);
 
-export default async function OrganizationPage({ params }: { params: { slug: string } }) {
-    const org = await getOrganization(params.slug);
-
-    if (!org) {
-        notFound();
-    }
-
-    // Check for a valid station token
     const cookieStore = await cookies();
     const stationTokenValue = cookieStore.get('station_token')?.value;
 
+    // Also check station_org_id cookie as a fallback for orgId
+    const cookieOrgId = cookieStore.get('station_org_id')?.value;
+    const resolvedOrgId = orgId || Number(cookieOrgId) || null;
+
     let validToken = false;
     let hasFingerprint = false;
+    let orgName: string | undefined;
 
     if (stationTokenValue) {
         try {
-            // Validate token — don't pass fingerprint here (that's the client's job)
             const row = await validateStationToken(stationTokenValue);
-            if (row && Number(row.org_id) === Number(org.id)) {
-                validToken = true;
-                hasFingerprint = !!row.fingerprint_hash;
+            if (row) {
+                // If orgId specified, ensure the token belongs to that org
+                if (!resolvedOrgId || Number(row.org_id) === resolvedOrgId) {
+                    validToken = true;
+                    hasFingerprint = !!row.fingerprint_hash;
+                    orgName = row.org_name;
+
+                    // If org has a subdomain, redirect to the canonical URL
+                    if (row.subdomain) {
+                        redirect(`/o/${row.subdomain}`);
+                    }
+                }
             }
         } catch {}
     }
 
+    // If orgId given but no token — try to get org name for display
+    if (!orgName && resolvedOrgId) {
+        try {
+            const org = await db.one('SELECT name FROM organizations WHERE id = $1', [resolvedOrgId]);
+            if (org) orgName = org.name;
+        } catch {}
+    }
+
     if (validToken) {
-        // Device is registered for this org — show PIN pad (client will re-verify fingerprint)
         return (
             <StationPinPad
-                orgName={org.name}
-                orgId={org.id}
+                orgName={orgName}
+                orgId={resolvedOrgId || undefined}
                 requireFingerprint={hasFingerprint}
             />
         );
     }
 
-    // No valid token — show device-not-registered screen
+    // No valid token
     return (
         <div style={{
             minHeight: '100vh', background: '#0f172a',
@@ -63,10 +78,10 @@ export default async function OrganizationPage({ params }: { params: { slug: str
                     fontSize: '1.5rem',
                 }}>📱</div>
                 <h1 style={{ color: 'white', margin: '0 0 0.25rem', fontSize: '1.2rem', fontWeight: 700 }}>
-                    {org.name}
+                    {orgName || 'Station Login'}
                 </h1>
                 <p style={{ color: '#94a3b8', fontSize: '0.85rem', margin: '0 0 1.5rem', lineHeight: 1.6 }}>
-                    This device is not registered as a station. An admin must log in and register this device to enable PIN-only access.
+                    This device is not registered. An admin must log in and register this device from the Settings page.
                 </p>
                 <a
                     href="/login"

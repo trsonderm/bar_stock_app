@@ -11,7 +11,8 @@ import {
     Database,
     Settings,
     FileBarChart,
-    LogOut
+    LogOut,
+    Smartphone,
 } from 'lucide-react';
 
 export default function SuperAdminNav() {
@@ -29,6 +30,7 @@ export default function SuperAdminNav() {
         { name: 'Site Settings', href: '/super-admin/settings', icon: Settings },
         { name: 'Mail Accounts', href: '/super-admin/mail-accounts', icon: Settings },
         { name: 'Report Builder', href: '/super-admin/reports/custom', icon: FileBarChart },
+        { name: 'Device Tokens', href: '/super-admin/devices', icon: Smartphone },
     ];
 
     return (

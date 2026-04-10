@@ -246,3 +246,26 @@ CREATE TABLE IF NOT EXISTS email_verification_tokens (
   used_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- =========================================================
+-- 15. Device / Station token security enhancements
+-- =========================================================
+DO $$ BEGIN
+  ALTER TABLE organization_tokens ADD COLUMN fingerprint_hash TEXT;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE organization_tokens ADD COLUMN registered_ip VARCHAR(45);
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE organization_tokens ADD COLUMN user_agent TEXT;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE organization_tokens ADD COLUMN revoked_at TIMESTAMPTZ;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE organization_tokens ADD COLUMN revoked_by INTEGER;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;

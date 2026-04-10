@@ -173,6 +173,45 @@ export default function SettingsClient() {
         setSettings(prev => ({ ...prev, [name]: value }));
     };
 
+    // Collect a hardware-bound fingerprint for device registration security
+    async function collectDeviceFingerprint(): Promise<string> {
+        const canvasHash = await (async () => {
+            try {
+                const canvas = document.createElement('canvas');
+                canvas.width = 200; canvas.height = 40;
+                const ctx = canvas.getContext('2d');
+                if (!ctx) return 'no-canvas';
+                ctx.textBaseline = 'top';
+                ctx.font = '14px Arial, sans-serif';
+                ctx.fillStyle = '#f60';
+                ctx.fillRect(125, 1, 62, 20);
+                ctx.fillStyle = '#069';
+                ctx.fillText('TopShelf\u{1F378}', 2, 15);
+                ctx.fillStyle = 'rgba(102,204,0,0.7)';
+                ctx.fillText('TopShelf\u{1F378}', 4, 17);
+                return canvas.toDataURL('image/png').slice(-80);
+            } catch { return 'canvas-error'; }
+        })();
+
+        const components = [
+            navigator.userAgent,
+            navigator.platform,
+            navigator.language,
+            String(screen.width),
+            String(screen.height),
+            String(screen.colorDepth),
+            String(navigator.hardwareConcurrency || '0'),
+            String((navigator as any).deviceMemory || '0'),
+            Intl.DateTimeFormat().resolvedOptions().timeZone,
+            canvasHash,
+        ].join('||');
+
+        const buffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(components));
+        return Array.from(new Uint8Array(buffer))
+            .map(b => b.toString(16).padStart(2, '0'))
+            .join('');
+    }
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setSaving(true);
@@ -190,17 +229,30 @@ export default function SettingsClient() {
     };
 
     const handleRegisterDevice = async () => {
-        if (!confirm('Register this device for 90 days of PIN-only access?')) return;
+        const deviceLabel = prompt('Enter a name for this device (e.g. "Bar iPad", "POS Station 1"):', 'Bar Station');
+        if (deviceLabel === null) return; // cancelled
         setRegisteringDevice(true);
         try {
-            // In a real app we'd get orgId from context. For now, we assume server handles it from session.
+            // Collect hardware fingerprint to bind the token to this specific device
+            const fingerprintHash = await collectDeviceFingerprint();
+
             const res = await fetch('/api/auth/station-token', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ deviceName: navigator.userAgent })
+                body: JSON.stringify({
+                    deviceName: deviceLabel || navigator.userAgent,
+                    fingerprintHash,
+                })
             });
             if (res.ok) {
-                alert('Device Registered Successfully for 90 Days.');
+                const data = await res.json();
+                // Redirect to PIN login — use /pin if no subdomain configured
+                const pinUrl = data.subdomain
+                    ? `/o/${data.subdomain}`
+                    : `/pin?orgId=${data.orgId}`;
+                if (confirm(`Device "${deviceLabel}" registered for 90 days.\n\nThis page will now switch to PIN-only login mode. Admins can still log in with email & password from the main login page.`)) {
+                    window.location.href = pinUrl;
+                }
             } else {
                 alert('Failed to register device.');
             }

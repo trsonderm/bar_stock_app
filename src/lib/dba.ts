@@ -126,36 +126,49 @@ export class OrgScope {
     }
 
     // --- Station Tokens ---
-    async createStationToken(deviceName: string, days: number = 90) {
+    async createStationToken(
+        deviceName: string,
+        days: number = 90,
+        fingerprintHash?: string,
+        registeredIp?: string,
+        userAgent?: string
+    ) {
         const { v4: uuidv4 } = require('uuid');
         const token = uuidv4();
-        // Calculate expiry date
         const expiresAt = new Date();
         expiresAt.setDate(expiresAt.getDate() + days);
         const expiresAtIso = expiresAt.toISOString();
 
         await db.execute(`
-            INSERT INTO organization_tokens (organization_id, token, device_name, expires_at)
-            VALUES ($1, $2, $3, $4)
-        `, [this.orgId, token, deviceName, expiresAtIso]);
+            INSERT INTO organization_tokens
+                (organization_id, token, device_name, expires_at, fingerprint_hash, registered_ip, user_agent)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+        `, [this.orgId, token, deviceName, expiresAtIso,
+            fingerprintHash || null, registeredIp || null, userAgent || null]);
 
         return { token, expiresAt: expiresAtIso };
     }
 }
 
 // Global Token Validator
-export async function validateStationToken(token: string) {
+// fingerprintHash is optional — if the record has one stored, it must match
+export async function validateStationToken(token: string, fingerprintHash?: string) {
     const row = await db.one(`
-        SELECT t.*, o.subdomain 
+        SELECT t.*, o.subdomain, o.id as org_id, o.name as org_name
         FROM organization_tokens t
         JOIN organizations o ON t.organization_id = o.id
-        WHERE t.token = $1 AND t.expires_at > datetime('now')
+        WHERE t.token = $1
+          AND t.expires_at > NOW()
+          AND t.revoked_at IS NULL
     `, [token]);
 
-    if (row) {
-        // Update last used
-        await db.execute('UPDATE organization_tokens SET last_used_at = datetime(\'now\') WHERE id = $1', [row.id]);
-        return row;
+    if (!row) return null;
+
+    // If both a fingerprint was stored at registration AND one was provided now, they must match
+    if (fingerprintHash && row.fingerprint_hash && fingerprintHash !== row.fingerprint_hash) {
+        return null; // Fingerprint mismatch — reject
     }
-    return null;
+
+    await db.execute('UPDATE organization_tokens SET last_used_at = NOW() WHERE id = $1', [row.id]);
+    return row;
 }
