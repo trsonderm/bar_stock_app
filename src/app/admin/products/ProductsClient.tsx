@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import styles from '../admin.module.css';
 import CsvMappingModal from './CsvMappingModal';
 
@@ -39,6 +40,8 @@ interface Category {
 }
 
 export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: number }) {
+    const searchParams = useSearchParams();
+    const router = useRouter();
     const [items, setItems] = useState<Item[]>([]);
     const [categories, setCategories] = useState<Category[]>([]);
     const [suppliers, setSuppliers] = useState<{ id: number, name: string }[]>([]);
@@ -125,6 +128,18 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
     useEffect(() => {
         fetchData();
     }, [overrideOrgId, selectedLocationId]);
+
+    // Auto-open edit modal when ?editId=N is in the URL (e.g. linked from Prices page)
+    useEffect(() => {
+        const editId = searchParams.get('editId');
+        if (!editId || items.length === 0) return;
+        const item = items.find(i => i.id === parseInt(editId));
+        if (item) {
+            handleEditClick(item);
+            // Remove the param so refreshing doesn't re-open it
+            router.replace('/admin/products');
+        }
+    }, [searchParams, items]);
 
     const fetchData = async () => {
         setLoading(true);

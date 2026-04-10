@@ -28,6 +28,7 @@ export default function SupportPage() {
 
     const [showSettings, setShowSettings] = useState(false);
     const [showCreate, setShowCreate] = useState(false);
+    const [settingsSaving, setSettingsSaving] = useState(false);
     const [settings, setSettings] = useState({
         auto_reply: true,
         sla_hours: '24',
@@ -48,11 +49,25 @@ export default function SupportPage() {
         }
     };
 
-    useEffect(() => { fetchTickets(); }, []);
+    const fetchSettings = async () => {
+        try {
+            const res = await fetch('/api/super-admin/settings');
+            const data = await res.json();
+            if (data.config?.help_desk) {
+                try {
+                    const parsed = JSON.parse(data.config.help_desk);
+                    setSettings(prev => ({ ...prev, ...parsed }));
+                } catch { }
+            }
+        } catch { }
+    };
+
+    useEffect(() => { fetchTickets(); fetchSettings(); }, []);
 
     useEffect(() => {
         let list = [...tickets];
         if (statusFilter === 'open') list = list.filter(t => t.status === 'open' || t.status === 'in_progress');
+        if (statusFilter === 'my') list = list.filter(t => t.status !== 'closed');
         if (searchTerm) list = list.filter(t =>
             t.subject?.toLowerCase().includes(searchTerm.toLowerCase()) ||
             t.first_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -127,14 +142,17 @@ export default function SupportPage() {
     };
 
     const handleSaveSettings = async () => {
+        setSettingsSaving(true);
         try {
-            await fetch('/api/super-admin/settings', {
+            const res = await fetch('/api/super-admin/settings', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ help_desk: JSON.stringify(settings) })
             });
+            if (!res.ok) throw new Error('Failed');
             setShowSettings(false);
         } catch { alert('Failed to save settings'); }
+        finally { setSettingsSaving(false); }
     };
 
     const handleCreateTicket = async () => {
@@ -198,7 +216,7 @@ export default function SupportPage() {
                                     onClick={() => setStatusFilter(f)}
                                     className={`flex-1 py-1.5 px-3 rounded-md font-medium transition-colors ${statusFilter === f ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'}`}
                                 >
-                                    {f === 'all' ? 'All' : f === 'open' ? 'Open' : 'My Tickets'}
+                                    {f === 'all' ? 'All' : f === 'open' ? 'Open' : 'Unresolved'}
                                 </button>
                             ))}
                         </div>
@@ -395,7 +413,7 @@ export default function SupportPage() {
                                 <input type="text" value={settings.operating_hours} onChange={e => setSettings({ ...settings, operating_hours: e.target.value })} className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-white" placeholder="e.g. 9AM-5PM EST" />
                             </div>
                             <div className="flex gap-2 pt-4">
-                                <button onClick={handleSaveSettings} className="flex-1 bg-blue-600 hover:bg-blue-500 text-white rounded-lg py-2 font-medium">Save</button>
+                                <button onClick={handleSaveSettings} disabled={settingsSaving} className="flex-1 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg py-2 font-medium">{settingsSaving ? 'Saving...' : 'Save'}</button>
                                 <button onClick={() => setShowSettings(false)} className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg py-2 font-medium">Cancel</button>
                             </div>
                         </div>

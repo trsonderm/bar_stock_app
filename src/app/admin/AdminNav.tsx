@@ -190,21 +190,13 @@ export default function AdminNav({ user, children }: { user: NavUser, children: 
                         <ListItem disablePadding sx={{ display: 'block' }}>
                             <ListItemButton onClick={() => setReportingOpen(!reportingOpen)} sx={{ minHeight: 48, pl: 2 }}>
                                 <ListItemIcon sx={{ minWidth: 40 }}><AssessmentIcon /></ListItemIcon>
-                                <ListItemText
-                                    primary={
-                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                                            Reporting
-                                            <Chip label="PRO" size="small" sx={{ height: 18, fontSize: '0.65rem', bgcolor: 'rgba(168,85,247,0.2)', color: '#a855f7', fontWeight: 700, '& .MuiChip-label': { px: 0.75 } }} />
-                                        </Box>
-                                    }
-                                    primaryTypographyProps={{ fontSize: '0.9rem' }}
-                                />
+                                <ListItemText primary="Reporting" primaryTypographyProps={{ fontSize: '0.9rem' }} />
                                 {reportingOpen ? <ExpandLess /> : <ExpandMore />}
                             </ListItemButton>
                         </ListItem>
                         <Collapse in={reportingOpen} timeout="auto" unmountOnExit>
                             <List component="div" disablePadding>
-                                <DrawerItem text="Report Builder" icon={<BuildIcon fontSize="small" />} href="/admin/reports/builder" isSub badge="PRO" />
+                                <DrawerItem text="Report Builder" icon={<BuildIcon fontSize="small" />} href="/admin/reports/builder" isSub />
                                 <DrawerItem text="Saved Reports" icon={<AssessmentIcon fontSize="small" />} href="/admin/reports" isSub />
                                 <DrawerItem text="Standard Reports" icon={<AutoGraphIcon fontSize="small" />} href="/admin/reporting" isSub />
                             </List>
@@ -246,7 +238,7 @@ export default function AdminNav({ user, children }: { user: NavUser, children: 
                         <DrawerItem text="Manual Order" icon={<span />} href="/admin/orders/manual" isSub />
                         <DrawerItem text="Order Tracking" icon={<TrackChangesIcon fontSize="small" />} href="/admin/orders/tracking" isSub />
                         {isPro ? (
-                            <DrawerItem text="Smart Order" icon={<span />} href="/admin/reports/smart-order" isSub badge="PRO" />
+                            <DrawerItem text="Smart Order" icon={<span />} href="/admin/reports/smart-order" isSub />
                         ) : (
                             <ProLockedItem text="Smart Order" icon={<span />} isSub />
                         )}
@@ -256,7 +248,7 @@ export default function AdminNav({ user, children }: { user: NavUser, children: 
 
                 {/* SCHEDULER (Pro only) */}
                 {isPro ? (
-                    <DrawerItem text="Scheduler" icon={<EventIcon />} href="/admin/schedule" badge="PRO" />
+                    <DrawerItem text="Scheduler" icon={<EventIcon />} href="/admin/schedule" />
                 ) : (
                     <ProLockedItem text="Scheduler" icon={<ScheduleIcon />} />
                 )}
@@ -273,7 +265,6 @@ export default function AdminNav({ user, children }: { user: NavUser, children: 
                     <List component="div" disablePadding>
                         <DrawerItem text="General" icon={<SettingsIcon fontSize="small" />} href="/admin/settings" isSub />
                         <DrawerItem text="Categories" icon={<CategoryIcon fontSize="small" />} href="/admin/categories" isSub />
-                        <DrawerItem text="Reporting Config" icon={<AssessmentIcon fontSize="small" />} href="/admin/settings/reporting" isSub />
                         <DrawerItem text="Ordering" icon={<LocalShippingIcon fontSize="small" />} href="/admin/settings/ordering" isSub />
                         <DrawerItem text="Users" icon={<GroupIcon fontSize="small" />} href="/admin/users" isSub />
                         <DrawerItem text="Billing" icon={<PaymentIcon fontSize="small" />} href="/admin/billing" isSub />

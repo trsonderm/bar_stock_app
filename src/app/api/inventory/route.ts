@@ -376,16 +376,19 @@ export async function PUT(req: NextRequest) {
             // Auto-link logic for Updates — clear old preferred first, then set new one
             const validSupplierId = supplier_id && !isNaN(Number(supplier_id)) ? Number(supplier_id) : null;
             if (validSupplierId) {
-                // Clear any existing preferred supplier for this item
-                await db.execute(
-                    `UPDATE item_suppliers SET is_preferred = false WHERE item_id = $1`,
-                    [id]
-                );
-                await db.execute(`
-                    INSERT INTO item_suppliers(item_id, supplier_id, is_preferred)
-                    VALUES($1, $2, true)
-                    ON CONFLICT(item_id, supplier_id) DO UPDATE SET is_preferred = true
-                `, [id, validSupplierId]);
+                try {
+                    await db.execute(
+                        `UPDATE item_suppliers SET is_preferred = false WHERE item_id = $1`,
+                        [id]
+                    );
+                    await db.execute(`
+                        INSERT INTO item_suppliers(item_id, supplier_id, is_preferred)
+                        VALUES($1, $2, true)
+                        ON CONFLICT(item_id, supplier_id) DO UPDATE SET is_preferred = true
+                    `, [id, validSupplierId]);
+                } catch (e) {
+                    console.warn('[PUT] item_suppliers update failed (table may not exist yet):', (e as any).message);
+                }
             }
 
             // Per-location supplier (non-fatal — table may not exist until migration runs)
@@ -432,25 +435,29 @@ export async function PUT(req: NextRequest) {
             }
 
             // Location Sync logic
-            if (assignedLocations !== undefined && Array.isArray(assignedLocations)) {
-                // Fetch current locations
-                const currentLocs = await db.query('SELECT location_id FROM inventory WHERE item_id = $1 AND organization_id = $2', [id, organizationId]);
-                const currentLocIds = currentLocs.map((l: any) => l.location_id);
+            if (assignedLocations !== undefined && Array.isArray(assignedLocations) && assignedLocations.length > 0) {
+                try {
+                    const currentLocs = await db.query('SELECT location_id FROM inventory WHERE item_id = $1 AND organization_id = $2', [id, organizationId]);
+                    const currentLocIds = currentLocs.map((l: any) => Number(l.location_id));
+                    const assignedIds = assignedLocations.map(Number);
 
-                // Add missing
-                for (const locId of assignedLocations) {
-                    if (!currentLocIds.includes(locId)) {
-                        await db.execute(
-                            'INSERT INTO inventory (item_id, location_id, quantity, organization_id) VALUES ($1, $2, 0, $3)',
-                            [id, locId, organizationId]
-                        );
+                    // Add missing
+                    for (const locId of assignedIds) {
+                        if (!currentLocIds.includes(locId)) {
+                            await db.execute(
+                                'INSERT INTO inventory (item_id, location_id, quantity, organization_id) VALUES ($1, $2, 0, $3)',
+                                [id, locId, organizationId]
+                            );
+                        }
                     }
-                }
 
-                // Remove extra
-                const locsToRemove = currentLocIds.filter((lid: number) => !assignedLocations.includes(lid));
-                if (locsToRemove.length > 0) {
-                    await db.execute('DELETE FROM inventory WHERE item_id = $1 AND organization_id = $2 AND location_id = ANY($3::int[])', [id, organizationId, locsToRemove]);
+                    // Remove extra (only locations belonging to this org)
+                    const locsToRemove = currentLocIds.filter((lid: number) => !assignedIds.includes(lid));
+                    if (locsToRemove.length > 0) {
+                        await db.execute('DELETE FROM inventory WHERE item_id = $1 AND organization_id = $2 AND location_id = ANY($3::int[])', [id, organizationId, locsToRemove]);
+                    }
+                } catch (e) {
+                    console.warn('[PUT] Location sync failed:', (e as any).message);
                 }
             }
         }
@@ -529,9 +536,9 @@ export async function PUT(req: NextRequest) {
         }
 
         return NextResponse.json({ success: true });
-    } catch (e) {
-        console.error(e);
-        return NextResponse.json({ error: 'Internal Error' }, { status: 500 });
+    } catch (e: any) {
+        console.error('[PUT Inventory]', e);
+        return NextResponse.json({ error: e?.message || 'Internal Error' }, { status: 500 });
     }
 }
 

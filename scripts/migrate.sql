@@ -157,6 +157,19 @@ DO $$ BEGIN
 END $$;
 
 -- =========================================================
+-- 7b. Item-supplier preferred mapping (global, not per-location)
+-- =========================================================
+CREATE TABLE IF NOT EXISTS item_suppliers (
+  id SERIAL PRIMARY KEY,
+  item_id INTEGER REFERENCES items(id) ON DELETE CASCADE,
+  supplier_id INTEGER REFERENCES suppliers(id) ON DELETE CASCADE,
+  supplier_sku TEXT,
+  cost_per_unit NUMERIC(10,2),
+  is_preferred BOOLEAN DEFAULT FALSE,
+  UNIQUE(item_id, supplier_id)
+);
+
+-- =========================================================
 -- 8. Per-location supplier assignments
 -- =========================================================
 CREATE TABLE IF NOT EXISTS item_location_suppliers (

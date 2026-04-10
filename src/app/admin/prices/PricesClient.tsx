@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import styles from '../admin.module.css';
 
 interface Item {
@@ -19,6 +20,7 @@ interface Location {
 }
 
 export default function PricesClient() {
+    const router = useRouter();
     const [items, setItems] = useState<Item[]>([]);
     const [categories, setCategories] = useState<string[]>([]);
     const [locations, setLocations] = useState<Location[]>([]);
@@ -279,9 +281,12 @@ export default function PricesClient() {
                                                         <span style={{ color: '#e5e7eb', fontWeight: 600 }}>
                                                             ${Number(item.unit_cost || 0).toFixed(2)}
                                                         </span>
-                                                        <Link href="/admin/products" style={{ fontSize: '0.75rem', color: '#3b82f6', whiteSpace: 'nowrap' }}>
+                                                        <button
+                                                            onClick={() => router.push(`/admin/products?editId=${item.id}`)}
+                                                            style={{ fontSize: '0.75rem', color: '#3b82f6', background: 'none', border: 'none', cursor: 'pointer', padding: 0, whiteSpace: 'nowrap' }}
+                                                        >
                                                             Edit →
-                                                        </Link>
+                                                        </button>
                                                     </div>
                                                 </td>
                                                 <td>
@@ -325,12 +330,12 @@ export default function PricesClient() {
                                                     )}
                                                 </td>
                                                 <td>
-                                                    <Link
-                                                        href="/admin/products"
-                                                        style={{ background: '#374151', color: '#d1d5db', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem', textDecoration: 'none', display: 'inline-block' }}
+                                                    <button
+                                                        onClick={() => router.push(`/admin/products?editId=${item.id}`)}
+                                                        style={{ background: '#374151', color: '#d1d5db', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem' }}
                                                     >
                                                         Edit Product
-                                                    </Link>
+                                                    </button>
                                                 </td>
                                             </tr>
                                         );
