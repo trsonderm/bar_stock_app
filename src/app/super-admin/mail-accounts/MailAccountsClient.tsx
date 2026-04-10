@@ -144,15 +144,23 @@ export default function MailAccountsClient({ initialSettings }: { initialSetting
                         value={settings[`${prefix}Port` as keyof MailAccountsState] as string}
                         onChange={e => setSettings({ ...settings, [`${prefix}Port`]: e.target.value })}
                     />
-                    <div className="mt-6 flex items-center">
-                        <input
-                            type="checkbox"
-                            id={`${prefix}Secure`}
-                            className="mr-2 w-4 h-4 rounded bg-gray-800 border-gray-700 text-blue-600 focus:ring-blue-500"
-                            checked={settings[`${prefix}Secure` as keyof MailAccountsState] as boolean}
-                            onChange={e => setSettings({ ...settings, [`${prefix}Secure`]: e.target.checked })}
-                        />
-                        <label htmlFor={`${prefix}Secure`} className="text-sm text-gray-400">Secure (SSL/TLS)</label>
+                    <div className="mt-6 flex flex-col gap-1">
+                        <div className="flex items-center">
+                            <input
+                                type="checkbox"
+                                id={`${prefix}Secure`}
+                                className="mr-2 w-4 h-4 rounded bg-gray-800 border-gray-700 text-blue-600 focus:ring-blue-500"
+                                checked={settings[`${prefix}Secure` as keyof MailAccountsState] as boolean}
+                                onChange={e => setSettings({ ...settings, [`${prefix}Secure`]: e.target.checked })}
+                            />
+                            <label htmlFor={`${prefix}Secure`} className="text-sm text-gray-400">
+                                SSL/TLS <span className="text-gray-600">(port 465 only)</span>
+                            </label>
+                        </div>
+                        <p className="text-xs text-gray-600 pl-6">
+                            Port 587 → STARTTLS, leave unchecked.<br />
+                            Port 465 → implicit SSL, check this box.
+                        </p>
                     </div>
                 </div>
                 <Input

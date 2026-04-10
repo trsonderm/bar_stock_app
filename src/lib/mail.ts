@@ -9,10 +9,20 @@ export async function getSmtpConfig(tier: MailTier) {
     const config: Record<string, string> = {};
     settings.forEach((r: any) => config[r.key] = r.value);
 
+    const port = parseInt(config[`${tier}_smtp_port`] || '587');
+
+    // Port 465 = implicit SSL (secure: true).
+    // Port 587 / 25 / anything else = STARTTLS (secure: false, nodemailer upgrades automatically).
+    // Ignore the stored checkbox when the port makes the answer unambiguous — a common
+    // misconfiguration is checking "SSL/TLS" while leaving port 587, which causes the
+    // "wrong version number" OpenSSL error.
+    const secureStored = config[`${tier}_smtp_secure`] === 'true';
+    const secure = port === 465 ? true : port === 587 || port === 25 ? false : secureStored;
+
     return {
-        host:   config[`${tier}_smtp_host`]   || '',
-        port:   parseInt(config[`${tier}_smtp_port`] || '587'),
-        secure: config[`${tier}_smtp_secure`] === 'true',
+        host: config[`${tier}_smtp_host`] || '',
+        port,
+        secure,
         auth: {
             user: config[`${tier}_smtp_user`] || '',
             pass: config[`${tier}_smtp_pass`] || '',
