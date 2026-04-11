@@ -370,26 +370,9 @@ export default function ReportingSettingsClient() {
                         })}
                     </div>
 
-                    <div className={styles.cardTitle} style={{ marginTop: '2rem' }}>Email Server (SMTP)</div>
-
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                        <div style={{ marginBottom: '1rem' }}>
-                            <label className={styles.statLabel}>Host</label>
-                            <input name="smtp_host" value={settings.smtp_host} onChange={handleChange} className={styles.table} style={{ background: '#1f2937', color: 'white', padding: '0.5rem', border: '1px solid #374151', borderRadius: '0.25rem', width: '100%' }} />
-                        </div>
-                        <div style={{ marginBottom: '1rem' }}>
-                            <label className={styles.statLabel}>Port</label>
-                            <input name="smtp_port" value={settings.smtp_port} onChange={handleChange} className={styles.table} style={{ background: '#1f2937', color: 'white', padding: '0.5rem', border: '1px solid #374151', borderRadius: '0.25rem', width: '100%' }} />
-                        </div>
-                        <div style={{ marginBottom: '1rem' }}>
-                            <label className={styles.statLabel}>User</label>
-                            <input name="smtp_user" value={settings.smtp_user} onChange={handleChange} className={styles.table} style={{ background: '#1f2937', color: 'white', padding: '0.5rem', border: '1px solid #374151', borderRadius: '0.25rem', width: '100%' }} />
-                        </div>
-                        <div style={{ marginBottom: '1rem' }}>
-                            <label className={styles.statLabel}>Password</label>
-                            <input name="smtp_pass" type="password" value={settings.smtp_pass} onChange={handleChange} className={styles.table} style={{ background: '#1f2937', color: 'white', padding: '0.5rem', border: '1px solid #374151', borderRadius: '0.25rem', width: '100%' }} />
-                        </div>
-                    </div>
+                    <p style={{ color: '#6b7280', fontSize: '0.85rem', margin: '0.5rem 0 1.5rem' }}>
+                        Email delivery is handled by the <strong style={{ color: '#9ca3af' }}>Reporting</strong> mail account configured in Super Admin → Mail Accounts.
+                    </p>
 
                     <div style={{ marginTop: '1rem', display: 'flex', gap: '1rem' }}>
                         <button
