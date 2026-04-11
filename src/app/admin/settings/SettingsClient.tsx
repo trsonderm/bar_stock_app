@@ -11,10 +11,6 @@ export default function SettingsClient() {
     const router = useRouter();
     const [settings, setSettings] = useState({
         report_emails: '',
-        smtp_host: '',
-        smtp_port: '587',
-        smtp_user: '',
-        smtp_pass: '',
         report_time: '08:00',
         low_stock_threshold: '5',
         report_title: 'Daily Stock Report',
@@ -265,23 +261,23 @@ export default function SettingsClient() {
     };
 
     const handleTestEmail = async () => {
-        if (!settings.report_emails || !settings.smtp_host) {
-            alert('Please configure SMTP settings and Report Emails first.');
+        if (!settings.report_emails) {
+            alert('Please configure Report Emails first.');
             return;
         }
-        if (!confirm(`Send test emails to ${settings.report_emails}?`)) return;
+        if (!confirm(`Send a test email to ${settings.report_emails}?`)) return;
 
         try {
             const res = await fetch('/api/admin/settings/test-email', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(settings)
+                body: JSON.stringify({ report_emails: settings.report_emails })
             });
             const data = await res.json();
-            if (res.ok) alert(data.message || 'Emails Sent!');
-            else alert(data.error || 'Failed to send emails');
+            if (res.ok) alert(data.message || 'Email sent!');
+            else alert(data.error || 'Failed to send email');
         } catch (e) {
-            alert('Error sending emails');
+            alert('Error sending email');
         }
     };
 
@@ -734,7 +730,7 @@ export default function SettingsClient() {
                     <div style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid #374151' }}>
                         <div className={styles.cardTitle} style={{ fontSize: '1rem' }}>Email System Test</div>
                         <p style={{ fontSize: '0.9rem', color: '#9ca3af', marginBottom: '1rem' }}>
-                            Send a test email to <strong>{settings.report_emails || '(No Email Configured)'}</strong> to verify SMTP settings.
+                            Send a test email to <strong>{settings.report_emails || '(No Email Configured)'}</strong> using the Reporting mail account configured in Super Admin.
                         </p>
                         <button
                             type="button"

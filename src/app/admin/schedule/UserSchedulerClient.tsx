@@ -86,16 +86,41 @@ export default function UserSchedulerClient() {
     // Delete confirmation modal
     const [deleteConfirm, setDeleteConfirm] = useState<{ id: number; schedule: Schedule } | null>(null);
 
+    // Location state
+    const [myLocations, setMyLocations] = useState<{ id: number, name: string }[]>([]);
+    const [selectedLocationId, setSelectedLocationId] = useState<number | null>(null);
+
+    useEffect(() => {
+        fetch('/api/user/locations').then(r => r.json()).then(d => {
+            const locs: { id: number; name: string }[] = d.locations || [];
+            setMyLocations(locs);
+            if (locs.length > 0) {
+                const match = typeof document !== 'undefined'
+                    ? document.cookie.match(/(^| )current_location_id=([^;]+)/)
+                    : null;
+                const cookieLocId = match ? parseInt(match[2]) : null;
+                const found = cookieLocId ? locs.find(l => l.id === cookieLocId) : null;
+                setSelectedLocationId(found ? found.id : locs[0].id);
+            }
+        });
+    }, []);
+
     useEffect(() => {
         fetch('/api/admin/users').then(r => r.json()).then(d => setUsers(d.users || []));
         fetch('/api/admin/schedule/shifts').then(r => r.json()).then(d => setShifts(d.shifts || []));
     }, [activeTab]);
 
     useEffect(() => {
-        if (activeTab === 'weekly') fetchSchedules(weekStart, 8); // Fetch 8 days to catch spillover from prev day? Or prev day spillover needs start-1...
+        if (activeTab === 'weekly') fetchSchedules(weekStart, 8);
         if (activeTab === 'daily') fetchSchedules(currentDate, 1);
         if (activeTab === 'monthly') fetchSchedules(currentDate, 35);
-    }, [weekStart, currentDate, activeTab]);
+    }, [weekStart, currentDate, activeTab, selectedLocationId]);
+
+    // Derived: selected location name and users filtered to that location
+    const selectedLocationName = myLocations.find(l => l.id === selectedLocationId)?.name || '';
+    const locationUsers = selectedLocationId
+        ? users.filter(u => !('assigned_locations' in u) || !(u as any).assigned_locations?.length || (u as any).assigned_locations.includes(selectedLocationId))
+        : users;
 
     // --- Stable User Colors ---
     const getUserColor = (userId: number, name: string) => {
@@ -307,7 +332,8 @@ export default function UserSchedulerClient() {
             end = formatLocalDate(new Date(startDate.getTime() + (days - 1) * 24 * 60 * 60 * 1000));
         }
 
-        const res = await fetch(`/api/admin/schedule?start=${start}&end=${end}`);
+        const locParam = selectedLocationId ? `&locationId=${selectedLocationId}` : '';
+        const res = await fetch(`/api/admin/schedule?start=${start}&end=${end}${locParam}`);
         const data = await res.json();
         if (data.schedules) setSchedules(data.schedules);
     };
@@ -509,10 +535,13 @@ export default function UserSchedulerClient() {
             .scheduler-container, .scheduler-container * { visibility: visible; }
             .scheduler-container { position: absolute; left: 0; top: 0; width: 100%; color: black !important; }
             .no-print { display: none !important; }
+            .print-only { display: block !important; }
             table { border-collapse: collapse !important; width: 100%; }
             th, td { border: 1px solid #000 !important; color: black !important; }
             .shift-badge { border: 1px solid #000 !important; color: black !important; background: transparent !important; }
+            .print-location-header { display: block !important; font-size: 18px; font-weight: bold; margin-bottom: 8px; }
         }
+        .print-only { display: none; }
     `;
 
     return (
@@ -521,7 +550,20 @@ export default function UserSchedulerClient() {
 
             <div className="flex justify-between items-center mb-6 no-print">
                 <div>
-                    <h1 className="text-2xl font-bold text-white mb-2">Staff Scheduler</h1>
+                    <div className="flex items-center gap-3 mb-2">
+                        <h1 className="text-2xl font-bold text-white">Staff Scheduler</h1>
+                        {myLocations.length > 1 && (
+                            <select
+                                value={selectedLocationId ?? ''}
+                                onChange={e => setSelectedLocationId(parseInt(e.target.value))}
+                                className="bg-gray-800 border border-gray-600 text-white text-sm rounded px-3 py-1.5 focus:outline-none focus:border-blue-500"
+                            >
+                                {myLocations.map(l => (
+                                    <option key={l.id} value={l.id}>{l.name}</option>
+                                ))}
+                            </select>
+                        )}
+                    </div>
                     <div className="flex gap-4 text-sm">
                         <button
                             onClick={() => setActiveTab('weekly')}
@@ -594,11 +636,16 @@ export default function UserSchedulerClient() {
             {/* TAB: WEEKLY */}
             {activeTab === 'weekly' && (
                 <>
+                    {/* Print-only location + week header */}
+                    <div className="print-only" style={{ marginBottom: '12px' }}>
+                        {selectedLocationName && <div className="print-location-header">{selectedLocationName} — Staff Schedule</div>}
+                        <div style={{ fontSize: '14px', color: '#555' }}>Week of {weekStart.toLocaleDateString()}</div>
+                    </div>
                     <div className="flex justify-between items-center bg-gray-800 p-4 rounded-t-lg border border-gray-700 no-print">
                         <div className="flex items-center gap-4">
                             <button onClick={() => changeWeek(-1)} className="text-white hover:bg-gray-700 p-1 rounded"><ChevronLeft /></button>
                             <h2 className="text-xl font-bold text-white">
-                                Week of {weekStart.toLocaleDateString()}
+                                {selectedLocationName && <span className="text-blue-400 mr-2">{selectedLocationName} —</span>}Week of {weekStart.toLocaleDateString()}
                             </h2>
                             <button onClick={() => changeWeek(1)} className="text-white hover:bg-gray-700 p-1 rounded"><ChevronRight /></button>
 
@@ -886,7 +933,7 @@ export default function UserSchedulerClient() {
                         <div className="flex items-center gap-4">
                             <button onClick={() => changeDay(-1)} className="text-white hover:bg-gray-700 p-1 rounded"><ChevronLeft /></button>
                             <h2 className="text-xl font-bold text-white">
-                                {currentDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+                                {selectedLocationName && <span className="text-blue-400 mr-2">{selectedLocationName} —</span>}{currentDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
                             </h2>
                             <button onClick={() => changeDay(1)} className="text-white hover:bg-gray-700 p-1 rounded"><ChevronRight /></button>
                         </div>
@@ -974,7 +1021,10 @@ export default function UserSchedulerClient() {
                             <div>
                                 <label className="block text-gray-400 text-sm mb-2">Select Employees</label>
                                 <div className="max-h-40 overflow-y-auto bg-gray-900 p-2 rounded border border-gray-700">
-                                    {users.map(u => (
+                                    {locationUsers.length === 0 && (
+                                        <p className="text-gray-500 text-sm p-2">No employees assigned to this location.</p>
+                                    )}
+                                    {locationUsers.map(u => (
                                         <label key={u.id} className="flex items-center gap-2 p-2 hover:bg-gray-800 rounded cursor-pointer">
                                             <input
                                                 type="checkbox"

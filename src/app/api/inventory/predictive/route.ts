@@ -14,9 +14,25 @@ export async function GET(req: NextRequest) {
         const ANALYSIS_DAYS = parseInt(req.nextUrl.searchParams.get('days') || '30'); // 30, 60, 90
         const modelType = req.nextUrl.searchParams.get('model') || 'SMA';
 
+        // Resolve location: param wins, then cookie
+        const locParam = req.nextUrl.searchParams.get('locationId');
+        const cookieLoc = req.cookies.get('current_location_id')?.value;
+        let locationId: number | null = locParam ? parseInt(locParam) : (cookieLoc ? parseInt(cookieLoc) : null);
+
+        // Validate location belongs to org
+        if (locationId) {
+            const validLoc = await db.one('SELECT id FROM locations WHERE id = $1 AND organization_id = $2', [locationId, orgId]);
+            if (!validLoc) locationId = null;
+        }
+        if (!locationId) {
+            const defaultLoc = await db.one('SELECT id FROM locations WHERE organization_id = $1 ORDER BY id ASC LIMIT 1', [orgId]);
+            locationId = defaultLoc ? defaultLoc.id : null;
+        }
+
         // We need DAILY data for advanced models (WMA, Linear)
+        // Scope usage to items assigned to this location so predictions are location-specific
         const usageData = await db.query(`
-            SELECT 
+            SELECT
                 (details->>'itemId')::int as item_id,
                 DATE(timestamp) as usage_date,
                 SUM((details->>'quantity')::int) as daily_used
@@ -24,9 +40,10 @@ export async function GET(req: NextRequest) {
             WHERE organization_id = $1
               AND action = 'SUBTRACT_STOCK'
               AND timestamp >= NOW() - ($2 || ' days')::INTERVAL
+              AND (details->>'locationId')::int = $3
             GROUP BY 1, 2
             ORDER BY 2 ASC
-        `, [orgId, ANALYSIS_DAYS]);
+        `, [orgId, ANALYSIS_DAYS, locationId]);
 
         // Group by Item
         const itemUsageMap: Record<number, { date: string, quantity: number }[]> = {};
@@ -157,40 +174,21 @@ export async function GET(req: NextRequest) {
 
         const burnRates: Record<number, number> = {};
 
-        // 2. Fetch Current Inventory & Item Details
+        // 2. Fetch Current Inventory & Item Details — scoped to the selected location
         const rawInventory = await db.query(`
-            SELECT 
+            SELECT
                 i.id as item_id,
                 i.organization_id,
                 i.name as item_name,
-                COALESCE(SUM(inv.quantity), 0) as current_stock,
+                COALESCE(inv.quantity, 0) as current_stock,
                 i.low_stock_threshold,
                 i.order_size
             FROM items i
-            LEFT JOIN inventory inv ON i.id = inv.item_id
+            JOIN inventory inv ON i.id = inv.item_id AND inv.location_id = $2
             WHERE i.organization_id = $1
-            GROUP BY i.id
-        `, [orgId]);
+        `, [orgId, locationId]);
 
-        // Deduplicate: If same name exists, prefer the one with NOT NULL organization_id (Local)
-        const inventoryMap: Record<string, any> = {};
-        rawInventory.forEach((item: any) => {
-            const existing = inventoryMap[item.item_name];
-            // If no existing, or current is Local and existing is Global (null org_id), overwrite.
-            // (Assuming orgId matches current user's org if not null, per WHERE clause)
-            if (!existing) {
-                inventoryMap[item.item_name] = item;
-            } else {
-                // If we have an existing Global item, and this one is Local, take this one.
-                if (!existing.organization_id && item.organization_id) {
-                    inventoryMap[item.item_name] = item;
-                }
-                // If existing is Local, keep it.
-                // If both are Global (shouldn't happen due to unique constraint usually) or both Local (diff IDs?), keep first or overwrite?
-                // Let's assume Name uniqueness is desired.
-            }
-        });
-        const inventory = Object.values(inventoryMap);
+        const inventory = rawInventory;
 
         // Calculate Burn Rates for all items found (or with history)
         // Note: inventory list might miss items that have history but 0 stock? 
@@ -230,8 +228,9 @@ export async function GET(req: NextRequest) {
             FROM purchase_orders po
             JOIN purchase_order_items poi ON po.id = poi.purchase_order_id
             WHERE po.organization_id = $1 AND po.status = 'PENDING'
+              AND (po.location_id = $2 OR po.location_id IS NULL)
             GROUP BY poi.item_id
-        `, [orgId]);
+        `, [orgId, locationId]);
 
         const pendingMap: Record<number, number> = {};
         pendingOrders.forEach((r: any) => pendingMap[r.item_id] = parseInt(r.pending_qty));
@@ -413,7 +412,7 @@ export async function GET(req: NextRequest) {
             console.warn('Failed to fetch org name', err);
         }
 
-        return NextResponse.json({ suggestions, notifications, supplierCount, suppliers: allSuppliers, orgName });
+        return NextResponse.json({ suggestions, notifications, supplierCount, suppliers: allSuppliers, orgName, locationId });
 
 
     } catch (e) {

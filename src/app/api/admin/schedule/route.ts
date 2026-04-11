@@ -11,21 +11,28 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const start = searchParams.get('start');
     const end = searchParams.get('end');
+    const locationId = searchParams.get('locationId');
 
     if (!start || !end) {
         return NextResponse.json({ error: 'Start and End dates required' }, { status: 400 });
     }
 
     try {
+        const params: any[] = [session.organizationId, start, end];
+        const locationFilter = locationId
+            ? `AND us.user_id IN (SELECT user_id FROM user_locations WHERE location_id = $${params.push(parseInt(locationId))})`
+            : '';
+
         const schedules = await db.query(`
-            SELECT us.*, u.first_name, u.last_name, s.label as shift_name, s.start_time, s.end_time
+            SELECT us.*, u.first_name, u.last_name, s.label as shift_name, s.start_time, s.end_time, s.color
             FROM user_schedules us
             JOIN users u ON us.user_id = u.id
             JOIN shifts s ON us.shift_id = s.id
             WHERE us.organization_id = $1
             AND us.date >= $2 AND us.date <= $3
+            ${locationFilter}
             ORDER BY us.date ASC
-        `, [session.organizationId, start, end]);
+        `, params);
 
         return NextResponse.json({ schedules });
     } catch (error) {

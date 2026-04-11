@@ -49,10 +49,10 @@ export async function POST(req: NextRequest) {
     const organizationId = session.organizationId;
     const body = await req.json();
     const keys = [
-        'report_emails', 'smtp_host', 'smtp_port', 'smtp_user', 'smtp_pass', 'report_time', 'low_stock_threshold',
+        'report_emails', 'report_time', 'low_stock_threshold',
         'backup_time', 'low_stock_alert_enabled', 'low_stock_alert_emails', 'low_stock_alert_time', 'report_title',
         'low_stock_alert_title',
-        'company_name', 'billing_email', 'track_bottle_levels'
+        'company_name', 'billing_email', 'track_bottle_levels', 'report_per_location'
     ];
 
     try {

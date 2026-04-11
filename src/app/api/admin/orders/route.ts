@@ -11,16 +11,16 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // Read location from cookie header
+    // Location comes from query param first (explicit), then cookie fallback
+    const { searchParams } = new URL(req.url);
+    const locParam = searchParams.get('locationId');
     const cookieHeader = req.headers.get('cookie') || '';
     const locMatch = cookieHeader.match(/current_location_id=(\d+)/);
-    const locationId = locMatch ? parseInt(locMatch[1]) : null;
+    const locationId = locParam ? parseInt(locParam) : (locMatch ? parseInt(locMatch[1]) : null);
 
     try {
-        // Build location filter: show orders for this location OR orders with no location set
-        const locFilter = locationId
-            ? `AND (po.location_id = ${locationId} OR po.location_id IS NULL)`
-            : '';
+        // Strict location filter — orders belong to exactly the selected location
+        const locFilter = locationId ? `AND po.location_id = ${locationId}` : '';
 
         const orders = await db.query(`
             SELECT

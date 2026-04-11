@@ -8,16 +8,14 @@ import FrequencyPicker from '@/components/FrequencyPicker';
 export default function ReportingSettingsClient() {
     const [settings, setSettings] = useState({
         report_emails: { to: [], cc: [], bcc: [] } as any,
-        smtp_host: '',
-        smtp_port: '587',
-        smtp_user: '',
-        smtp_pass: '',
         report_schedule: { frequency: 'daily', time: '08:00' } as any, // Replaces simple report_time
         low_stock_threshold: '5',
         use_global_low_stock: 'false', // New Toggle
 
         report_title: 'Daily Stock Report',
         backup_time: '06:00',
+
+        report_per_location: 'false', // Send one report per location vs combined summary
 
         low_stock_alert_enabled: 'false',
         low_stock_alert_emails: { to: [], cc: [], bcc: [] } as any,
@@ -60,9 +58,10 @@ export default function ReportingSettingsClient() {
                     ...prev,
                     ...s,
                     report_emails: parseEmails(s.report_emails),
-                    report_schedule: parseSchedule(s.report_time || s.report_schedule, '08:00'), // Handle backward combat
+                    report_schedule: parseSchedule(s.report_time || s.report_schedule, '08:00'), // Handle backward compat
                     low_stock_alert_emails: parseEmails(s.low_stock_alert_emails),
                     low_stock_alert_schedule: parseSchedule(s.low_stock_alert_time || s.low_stock_alert_schedule, '14:00'),
+                    report_per_location: s.report_per_location || 'false',
                 }));
             }
             if (subData) {
@@ -143,23 +142,17 @@ export default function ReportingSettingsClient() {
     };
 
     const handleTestEmail = async () => {
-        if (!settings.report_emails || !settings.smtp_host) {
-            alert('Please configure SMTP settings and Report Emails first.');
-            return;
-        }
-        if (!confirm(`Send test emails to ${settings.report_emails}?`)) return;
-
         try {
             const res = await fetch('/api/admin/settings/test-email', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(settings)
+                body: JSON.stringify({ report_emails: settings.report_emails })
             });
             const data = await res.json();
-            if (res.ok) alert(data.message || 'Emails Sent!');
-            else alert(data.error || 'Failed to send emails');
+            if (res.ok) alert(data.message || 'Email sent!');
+            else alert(data.error || 'Failed to send email');
         } catch (e) {
-            alert('Error sending emails');
+            alert('Error sending email');
         }
     };
 
@@ -212,6 +205,43 @@ export default function ReportingSettingsClient() {
                         </div>
                     </div>
 
+
+                    {/* Per-location report mode — only shown when org has more than one location */}
+                    {locations.length > 1 && (
+                        <div style={{ marginBottom: '1.5rem', padding: '1rem', background: '#1f2937', borderRadius: '0.5rem', border: '1px solid #374151' }}>
+                            <div className={styles.cardTitle} style={{ marginTop: 0, marginBottom: '0.75rem' }}>Report Scope</div>
+                            <p style={{ color: '#9ca3af', fontSize: '0.875rem', marginBottom: '1rem' }}>
+                                Choose whether to send one combined report covering all locations or a separate report for each location.
+                            </p>
+                            <div style={{ display: 'flex', gap: '1rem' }}>
+                                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', color: settings.report_per_location !== 'true' ? 'white' : '#9ca3af' }}>
+                                    <input
+                                        type="radio"
+                                        name="report_per_location"
+                                        checked={settings.report_per_location !== 'true'}
+                                        onChange={() => setSettings(prev => ({ ...prev, report_per_location: 'false' }))}
+                                        style={{ accentColor: '#3b82f6' }}
+                                    />
+                                    Combined — one report for all locations
+                                </label>
+                                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', color: settings.report_per_location === 'true' ? 'white' : '#9ca3af' }}>
+                                    <input
+                                        type="radio"
+                                        name="report_per_location"
+                                        checked={settings.report_per_location === 'true'}
+                                        onChange={() => setSettings(prev => ({ ...prev, report_per_location: 'true' }))}
+                                        style={{ accentColor: '#3b82f6' }}
+                                    />
+                                    Per-location — separate report per location
+                                </label>
+                            </div>
+                            {settings.report_per_location === 'true' && (
+                                <p style={{ color: '#6b7280', fontSize: '0.8rem', marginTop: '0.5rem' }}>
+                                    Each location's subscribers (configured below) will receive a report containing only their location's inventory data.
+                                </p>
+                            )}
+                        </div>
+                    )}
 
                     <div className={styles.cardTitle} style={{ marginTop: '2rem' }}>Low Stock Configuration</div>
 

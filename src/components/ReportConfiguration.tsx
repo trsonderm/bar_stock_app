@@ -5,10 +5,6 @@ import styles from '../app/admin/admin.module.css';
 export default function ReportConfiguration() {
     const [settings, setSettings] = useState({
         report_emails: '',
-        smtp_host: '',
-        smtp_port: '587',
-        smtp_user: '',
-        smtp_pass: '',
         report_time: '08:00',
         report_title: 'Daily Stock Report',
         low_stock_threshold: '5',
@@ -51,23 +47,17 @@ export default function ReportConfiguration() {
     };
 
     const handleTestEmail = async () => {
-        if (!settings.report_emails || !settings.smtp_host) {
-            alert('Please configure SMTP settings and Report Emails first.');
-            return;
-        }
-        if (!confirm(`Send test emails to ${settings.report_emails}?`)) return;
-
         try {
             const res = await fetch('/api/admin/settings/test-email', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(settings)
+                body: JSON.stringify({ report_emails: settings.report_emails })
             });
             const data = await res.json();
-            if (res.ok) alert(data.message || 'Emails Sent!');
-            else alert(data.error || 'Failed to send emails');
+            if (res.ok) alert(data.message || 'Email sent!');
+            else alert(data.error || 'Failed to send email');
         } catch (e) {
-            alert('Error sending emails');
+            alert('Error sending email');
         }
     };
 
@@ -75,38 +65,6 @@ export default function ReportConfiguration() {
 
     return (
         <form onSubmit={handleSubmit} className="space-y-8">
-            {/* SMTP Configuration */}
-            <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
-                <h3 className="text-xl font-bold text-white mb-4">SMTP Server Configuration</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                        <label className={styles.statLabel}>SMTP Host</label>
-                        <input className={styles.input} style={{ width: '100%' }} name="smtp_host" value={settings.smtp_host} onChange={handleChange} placeholder="smtp.gmail.com" />
-                    </div>
-                    <div>
-                        <label className={styles.statLabel}>Port</label>
-                        <input className={styles.input} style={{ width: '100%' }} name="smtp_port" value={settings.smtp_port} onChange={handleChange} placeholder="587" />
-                    </div>
-                    <div>
-                        <label className={styles.statLabel}>Username</label>
-                        <input className={styles.input} style={{ width: '100%' }} name="smtp_user" value={settings.smtp_user} onChange={handleChange} placeholder="you@gmail.com" />
-                    </div>
-                    <div>
-                        <label className={styles.statLabel}>Password (App Password)</label>
-                        <input type="password" className={styles.input} style={{ width: '100%' }} name="smtp_pass" value={settings.smtp_pass} onChange={handleChange} placeholder="****" />
-                    </div>
-                </div>
-                <div className="mt-4">
-                    <button
-                        type="button"
-                        onClick={handleTestEmail}
-                        className="bg-gray-600 hover:bg-gray-500 text-white px-4 py-2 rounded text-sm font-bold"
-                    >
-                        Send Test Email
-                    </button>
-                </div>
-            </div>
-
             {/* Standard Report Schedule */}
             <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
                 <h3 className="text-xl font-bold text-white mb-4">Daily Stock Report</h3>
@@ -125,6 +83,16 @@ export default function ReportConfiguration() {
                             <input className={styles.input} style={{ width: '100%' }} name="report_title" value={settings.report_title} onChange={handleChange} />
                         </div>
                     </div>
+                </div>
+                <div className="mt-4 flex items-center gap-4">
+                    <button
+                        type="button"
+                        onClick={handleTestEmail}
+                        className="bg-gray-600 hover:bg-gray-500 text-white px-4 py-2 rounded text-sm font-bold"
+                    >
+                        Send Test Email
+                    </button>
+                    <span className="text-gray-500 text-xs">Emails are delivered via the Reporting mail account configured in Super Admin → Mail Accounts.</span>
                 </div>
             </div>
 

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
-import nodemailer from 'nodemailer';
+import { sendEmail } from '@/lib/mail';
 import { sendSMS } from '@/lib/twilio';
 
 export async function POST(req: NextRequest) {
@@ -51,21 +51,11 @@ export async function POST(req: NextRequest) {
                 }
 
                 if (send_email && supplier.contact_email) {
-                    try {
-                        let transporter = nodemailer.createTransport({
-                            host: process.env.SMTP_HOST || 'smtp.sendgrid.net',
-                            port: parseInt(process.env.SMTP_PORT || '587'),
-                            auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
-                        });
-                        await transporter.sendMail({
-                            from: '"TopShelf" <orders@topshelfinventory.com>',
-                            to: supplier.contact_email,
-                            subject: `New Purchase Order #${orderId}`,
-                            text: messageBody
-                        });
-                    } catch (mailErr) {
-                        console.error('Email Dispatch Error:', mailErr);
-                    }
+                    await sendEmail('admin', {
+                        to: supplier.contact_email,
+                        subject: `New Purchase Order #${orderId}`,
+                        text: messageBody,
+                    });
                 }
             }
         }

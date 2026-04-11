@@ -92,6 +92,7 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
     const [addToAllLocations, setAddToAllLocations] = useState(false);
     const [selectedLocationId, setSelectedLocationId] = useState<number | null>(null);
 
+
     useEffect(() => {
         // fetchData() is triggered separately via the selectedLocationId effect
         fetch('/api/admin/settings').then(r => r.json()).then(d => {
@@ -271,6 +272,8 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                 } : {}),
                 unit_cost: formData.unit_cost ? parseFloat(formData.unit_cost) : 0,
                 quantity: formData.quantity ? parseFloat(formData.quantity) : 0,
+                // Always scope the quantity update to the currently selected location
+                ...(selectedLocationId ? { locationId: selectedLocationId } : {}),
                 order_size: formData.order_size.length > 0 ? formData.order_size : [{ label: 'Unit', amount: 1 }],
                 low_stock_threshold: formData.low_stock_threshold === null ? null : parseInt(formData.low_stock_threshold || '5'),
                 track_quantity: formData.track_quantity ? 1 : 0,
@@ -735,7 +738,14 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                                     </div>
                                 </div>
                                 <div>
-                                    <label className={styles.statLabel}>Inventory Qty</label>
+                                    <label className={styles.statLabel}>
+                                        Inventory Qty
+                                        {myLocations.length > 1 && selectedLocationId && (
+                                            <span style={{ color: '#60a5fa', fontWeight: 400, marginLeft: '0.4rem' }}>
+                                                — {myLocations.find(l => l.id === selectedLocationId)?.name}
+                                            </span>
+                                        )}
+                                    </label>
                                     <input
                                         style={{ width: '100%' }}
                                         className={styles.input}
