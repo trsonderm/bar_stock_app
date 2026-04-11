@@ -18,9 +18,16 @@ export async function GET(req: NextRequest) {
         // Check if user_locations table exists to prevent 500s if schema is wrong
         // actually just wrapping in try/catch is enough to return json error
 
+        const filterLocationId = searchParams.get('locationId') ? parseInt(searchParams.get('locationId') as string) : null;
+
+        // When locationId is provided, restrict to users assigned to that location
+        const locationJoin = filterLocationId
+            ? `JOIN user_locations ul2 ON u.id = ul2.user_id AND ul2.location_id = ${filterLocationId}`
+            : '';
+
         const users = await db.query(`
             SELECT u.id, u.first_name, u.last_name, u.email, u.role, u.permissions, u.pin_hash, u.created_at, u.phone, u.bio, u.notes,
-            json_agg(ul.location_id) as assigned_locations,
+            json_agg(DISTINCT ul.location_id) as assigned_locations,
             (
                 SELECT json_agg(s.id)
                 FROM shifts s
@@ -29,7 +36,8 @@ export async function GET(req: NextRequest) {
             ) as assigned_shifts
             FROM users u
             LEFT JOIN user_locations ul ON u.id = ul.user_id
-            WHERE u.organization_id = $1 
+            ${locationJoin}
+            WHERE u.organization_id = $1
             GROUP BY u.id
             ORDER BY u.first_name ASC
         `, [organizationId]);

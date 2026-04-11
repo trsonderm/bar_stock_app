@@ -106,9 +106,14 @@ export default function UserSchedulerClient() {
     }, []);
 
     useEffect(() => {
-        fetch('/api/admin/users').then(r => r.json()).then(d => setUsers(d.users || []));
         fetch('/api/admin/schedule/shifts').then(r => r.json()).then(d => setShifts(d.shifts || []));
     }, [activeTab]);
+
+    // Re-fetch users scoped to the selected location whenever it changes
+    useEffect(() => {
+        const locParam = selectedLocationId ? `?locationId=${selectedLocationId}` : '';
+        fetch(`/api/admin/users${locParam}`).then(r => r.json()).then(d => setUsers(d.users || []));
+    }, [selectedLocationId]);
 
     useEffect(() => {
         if (activeTab === 'weekly') fetchSchedules(weekStart, 8);
@@ -116,11 +121,8 @@ export default function UserSchedulerClient() {
         if (activeTab === 'monthly') fetchSchedules(currentDate, 35);
     }, [weekStart, currentDate, activeTab, selectedLocationId]);
 
-    // Derived: selected location name and users filtered to that location
+    // Derived: selected location name — users are already fetched scoped to this location
     const selectedLocationName = myLocations.find(l => l.id === selectedLocationId)?.name || '';
-    const locationUsers = selectedLocationId
-        ? users.filter(u => !('assigned_locations' in u) || !(u as any).assigned_locations?.length || (u as any).assigned_locations.includes(selectedLocationId))
-        : users;
 
     // --- Stable User Colors ---
     const getUserColor = (userId: number, name: string) => {
@@ -1021,10 +1023,10 @@ export default function UserSchedulerClient() {
                             <div>
                                 <label className="block text-gray-400 text-sm mb-2">Select Employees</label>
                                 <div className="max-h-40 overflow-y-auto bg-gray-900 p-2 rounded border border-gray-700">
-                                    {locationUsers.length === 0 && (
+                                    {users.length === 0 && (
                                         <p className="text-gray-500 text-sm p-2">No employees assigned to this location.</p>
                                     )}
-                                    {locationUsers.map(u => (
+                                    {users.map(u => (
                                         <label key={u.id} className="flex items-center gap-2 p-2 hover:bg-gray-800 rounded cursor-pointer">
                                             <input
                                                 type="checkbox"
