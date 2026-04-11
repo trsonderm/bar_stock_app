@@ -36,6 +36,7 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
     const [canViewReports, setCanViewReports] = useState(false);
     const [canManageProducts, setCanManageProducts] = useState(false);
     const [isAdmin, setIsAdmin] = useState(false);
+    const [hideFromScheduler, setHideFromScheduler] = useState(false);
     const [submitting, setSubmitting] = useState(false);
 
     // Locations & Shifts
@@ -134,7 +135,8 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
                 notes,
                 organizationId: overrideOrgId, // Pass explicit org if override
                 assignedLocations,
-                assignedShifts
+                assignedShifts,
+                hideFromScheduler,
             };
 
             const res = await fetch(url, {
@@ -174,6 +176,7 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
         setCanViewReports(false);
         setCanManageProducts(false);
         setIsAdmin(false);
+        setHideFromScheduler(false);
         setEditingId(null);
         setAssignedLocations([]);
         setAssignedShifts([]);
@@ -245,6 +248,7 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
         setCanViewReports(perms.includes('view_reports') || perms.includes('all'));
         setCanManageProducts(perms.includes('manage_products') || perms.includes('all'));
         setIsAdmin(u.role === 'admin');
+        setHideFromScheduler(u.hide_from_scheduler || false);
         setAssignedLocations(u.assigned_locations || []);
 
         // The API now returns assigned_shifts
@@ -340,6 +344,23 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
                                 </div>
                             </div>
                         )}
+
+                        <div style={{ marginBottom: '1rem', padding: '0.75rem', background: '#1f2937', borderRadius: '0.5rem', border: '1px solid #374151' }}>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: 'pointer' }}>
+                                <input
+                                    type="checkbox"
+                                    checked={hideFromScheduler}
+                                    onChange={e => setHideFromScheduler(e.target.checked)}
+                                    style={{ width: '18px', height: '18px', accentColor: '#f59e0b' }}
+                                />
+                                <div>
+                                    <div style={{ color: 'white', fontWeight: 600 }}>Hide from Scheduler</div>
+                                    <div style={{ fontSize: '0.78rem', color: '#9ca3af', marginTop: '2px' }}>
+                                        This user will not appear in the Staff Scheduler or shift assignment lists.
+                                    </div>
+                                </div>
+                            </label>
+                        </div>
 
                         <div style={{ marginBottom: '1rem' }}>
                             <div className={styles.statLabel} style={{ marginBottom: '0.5rem' }}>Permissions & Access</div>

@@ -322,3 +322,11 @@ CREATE TABLE IF NOT EXISTS system_logs (
 CREATE INDEX IF NOT EXISTS idx_system_logs_created_at ON system_logs (created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_system_logs_level      ON system_logs (level);
 CREATE INDEX IF NOT EXISTS idx_system_logs_category   ON system_logs (category);
+
+-- =========================================================
+-- 18. Users: hide_from_scheduler flag
+-- =========================================================
+
+DO $$ BEGIN
+  ALTER TABLE users ADD COLUMN hide_from_scheduler BOOLEAN NOT NULL DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
