@@ -49,6 +49,28 @@ export default function SettingsClient({ initialSettings }: { initialSettings: a
     });
 
     const [loading, setLoading] = useState(false);
+    const [testVerifyLoading, setTestVerifyLoading] = useState(false);
+
+    const handleTestVerificationEmail = async () => {
+        const email = window.prompt('Enter email address to send test verification email to:');
+        if (!email) return;
+        if (!email.includes('@')) { alert('Please enter a valid email address.'); return; }
+        setTestVerifyLoading(true);
+        try {
+            const res = await fetch('/api/super-admin/test-verification-email', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email })
+            });
+            const data = await res.json();
+            if (res.ok) alert(data.message || 'Verification email sent!');
+            else alert(data.error || 'Failed to send verification email');
+        } catch {
+            alert('Error sending verification email');
+        } finally {
+            setTestVerifyLoading(false);
+        }
+    };
 
     const handleSave = async () => {
         setLoading(true);
@@ -127,19 +149,32 @@ export default function SettingsClient({ initialSettings }: { initialSettings: a
                                 </div>
                             </div>
 
-                            <div className="flex items-center justify-between p-3 bg-gray-900/50 rounded-lg border border-gray-800">
-                                <div>
-                                    <h4 className="font-bold text-white text-sm">Require Email Verification</h4>
-                                    <p className="text-xs text-gray-400">Users must verify email before login.</p>
+                            <div className="p-3 bg-gray-900/50 rounded-lg border border-gray-800">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <h4 className="font-bold text-white text-sm">Require Email Verification</h4>
+                                        <p className="text-xs text-gray-400">Users must verify email before login.</p>
+                                    </div>
+                                    <div className="relative inline-block w-12 mr-2 align-middle select-none transition duration-200 ease-in">
+                                        <input
+                                            type="checkbox"
+                                            checked={settings.requireEmailVerification}
+                                            onChange={e => setSettings({ ...settings, requireEmailVerification: e.target.checked })}
+                                            className="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer translate-x-0 checked:translate-x-6 checked:bg-blue-500 transition-transform"
+                                        />
+                                        <label className="toggle-label block overflow-hidden h-6 rounded-full bg-gray-700 cursor-pointer"></label>
+                                    </div>
                                 </div>
-                                <div className="relative inline-block w-12 mr-2 align-middle select-none transition duration-200 ease-in">
-                                    <input
-                                        type="checkbox"
-                                        checked={settings.requireEmailVerification}
-                                        onChange={e => setSettings({ ...settings, requireEmailVerification: e.target.checked })}
-                                        className="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer translate-x-0 checked:translate-x-6 checked:bg-blue-500 transition-transform"
-                                    />
-                                    <label className="toggle-label block overflow-hidden h-6 rounded-full bg-gray-700 cursor-pointer"></label>
+                                <div className="mt-3 pt-3 border-t border-gray-800">
+                                    <button
+                                        type="button"
+                                        onClick={handleTestVerificationEmail}
+                                        disabled={testVerifyLoading}
+                                        className="w-full bg-indigo-700 hover:bg-indigo-600 text-white text-xs font-bold py-2 px-3 rounded transition-colors disabled:opacity-50"
+                                    >
+                                        {testVerifyLoading ? 'Sending...' : '✉ Send Test Verification Email'}
+                                    </button>
+                                    <p className="text-xs text-gray-500 mt-1">Sends a real verification email with a working confirm link.</p>
                                 </div>
                             </div>
                         </div>

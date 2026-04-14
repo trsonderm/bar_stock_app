@@ -49,6 +49,9 @@ export default function ManualOrderClient({ user }: { user: any }) {
     const [showPreview, setShowPreview] = useState(false);
     const [loading, setLoading] = useState(true);
 
+    const [myLocations, setMyLocations] = useState<{ id: number, name: string }[]>([]);
+    const [selectedLocationId, setSelectedLocationId] = useState<number | null>(null);
+
     const [signatures, setSignatures] = useState<Signature[]>([]);
     const [selectedSigId, setSelectedSigId] = useState<number | null>(null);
     const [branding, setBranding] = useState<Branding>({ logo_url: null, brand_color: '#f59e0b', brand_name: '', logo_position: 'left' });
@@ -73,6 +76,17 @@ export default function ManualOrderClient({ user }: { user: any }) {
         });
         fetch('/api/admin/branding').then(r => r.json()).then(d => {
             if (d) setBranding(d);
+        });
+        fetch('/api/user/locations').then(r => r.json()).then(d => {
+            const locs = d.locations || [];
+            setMyLocations(locs);
+            const cookieMatch = document.cookie.match(/current_location_id=(\d+)/);
+            const cookieLocId = cookieMatch ? parseInt(cookieMatch[1]) : null;
+            if (cookieLocId && locs.find((l: any) => l.id === cookieLocId)) {
+                setSelectedLocationId(cookieLocId);
+            } else if (locs.length > 0) {
+                setSelectedLocationId(locs[0].id);
+            }
         });
     }, []);
 
@@ -220,8 +234,7 @@ export default function ManualOrderClient({ user }: { user: any }) {
         setSubmitting(true);
         try {
             const dbItems = orderItems.map(c => ({ item_id: c.itemId, quantity: c.orderQty * c.packAmount }));
-            const locMatch = document.cookie.match(/current_location_id=(\d+)/);
-            const locationId = locMatch ? parseInt(locMatch[1]) : null;
+            const locationId = selectedLocationId;
 
             const res = await fetch('/api/orders', {
                 method: 'POST',
@@ -270,6 +283,20 @@ export default function ManualOrderClient({ user }: { user: any }) {
                         Preview Order ({Object.keys(cart).length} items)
                     </button>
                 </div>
+
+                {myLocations.length > 1 && (
+                    <div style={{ marginBottom: '1.5rem' }}>
+                        <label className={styles.statLabel} style={{ display: 'block', marginBottom: '0.5rem' }}>Location</label>
+                        <select
+                            className={styles.input}
+                            value={selectedLocationId ?? ''}
+                            onChange={e => setSelectedLocationId(parseInt(e.target.value))}
+                            style={{ maxWidth: '300px' }}
+                        >
+                            {myLocations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                        </select>
+                    </div>
+                )}
 
                 <div style={{ marginBottom: '2rem' }}>
                     <label className={styles.statLabel} style={{ display: 'block', marginBottom: '0.5rem' }}>Select Supplier</label>

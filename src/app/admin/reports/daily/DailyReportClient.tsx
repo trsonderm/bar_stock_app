@@ -35,6 +35,7 @@ export default function DailyReportClient() {
     const [data, setData] = useState<ReportData | null>(null);
     const [loading, setLoading] = useState(true);
     const [showPicker, setShowPicker] = useState(false);
+    const [emailing, setEmailing] = useState(false);
 
     const pickerRef = useRef<HTMLDivElement>(null);
     useEffect(() => {
@@ -65,6 +66,24 @@ export default function DailyReportClient() {
     };
 
     useEffect(() => { fetchData(); }, [date]);
+
+    const handleEmailNow = async () => {
+        setEmailing(true);
+        try {
+            const res = await fetch('/api/admin/reporting/email-now', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ reportType: 'daily', date })
+            });
+            const json = await res.json();
+            if (res.ok) alert(json.message || 'Report emailed successfully!');
+            else alert(json.error || 'Failed to send email');
+        } catch {
+            alert('Error sending email');
+        } finally {
+            setEmailing(false);
+        }
+    };
 
     if (loading) return <div className="text-white text-center p-12">Loading Daily Report...</div>;
     if (!data) return <div className="text-white text-center p-12">Failed to load data.</div>;
@@ -108,6 +127,13 @@ export default function DailyReportClient() {
                         Refresh
                     </button>
                 </div>
+                <button
+                    onClick={handleEmailNow}
+                    disabled={emailing}
+                    className="bg-green-700 hover:bg-green-600 text-white px-4 py-2 rounded-lg font-bold text-sm"
+                >
+                    {emailing ? 'Sending...' : '✉ Email Now'}
+                </button>
             </div>
 
             {/* Summary Cards */}

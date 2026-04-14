@@ -39,6 +39,7 @@ export default function SmartOrderClient() {
     const [showPrintView, setShowPrintView] = useState(false);
     const [availableSignatures, setAvailableSignatures] = useState<any[]>([]);
     const [showSignatureModal, setShowSignatureModal] = useState(false);
+    const [emailing, setEmailing] = useState(false);
 
     useEffect(() => {
         if (showPrintView && availableSignatures.length === 0) {
@@ -378,6 +379,26 @@ export default function SmartOrderClient() {
                         <option value={60}>Last 60 Days</option>
                         <option value={90}>Last 90 Days</option>
                     </select>
+                    <button
+                        onClick={async () => {
+                            setEmailing(true);
+                            try {
+                                const res = await fetch('/api/admin/reporting/email-now', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ reportType: 'smart-order' })
+                                });
+                                const json = await res.json();
+                                if (res.ok) alert(json.message || 'Smart order report emailed!');
+                                else alert(json.error || 'Failed to send email');
+                            } catch { alert('Error sending email'); }
+                            finally { setEmailing(false); }
+                        }}
+                        disabled={emailing}
+                        className="bg-green-700 hover:bg-green-600 text-white px-4 py-2.5 rounded-lg text-sm font-bold print:hidden flex items-center gap-2"
+                    >
+                        {emailing ? 'Sending...' : '✉ Email Now'}
+                    </button>
                     <button
                         onClick={() => setShowPrintView(true)}
                         className="bg-blue-600 hover:bg-blue-500 text-white px-5 py-2.5 rounded-lg text-sm font-bold print:hidden flex items-center gap-2 shadow-lg transition-transform hover:scale-105 active:scale-95"

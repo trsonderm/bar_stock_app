@@ -13,6 +13,25 @@ export default function BottleLevelReport() {
     const [columns, setColumns] = useState<string[]>([]);
     const [loading, setLoading] = useState(true);
     const [showPreview, setShowPreview] = useState(false);
+    const [emailing, setEmailing] = useState(false);
+
+    const handleEmailNow = async () => {
+        setEmailing(true);
+        try {
+            const res = await fetch('/api/admin/reporting/email-now', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ reportType: 'bottle-levels' })
+            });
+            const json = await res.json();
+            if (res.ok) alert(json.message || 'Report emailed successfully!');
+            else alert(json.error || 'Failed to send email');
+        } catch {
+            alert('Error sending email');
+        } finally {
+            setEmailing(false);
+        }
+    };
 
     useEffect(() => {
         const timestamp = new Date().getTime();
@@ -66,6 +85,13 @@ export default function BottleLevelReport() {
                         />
                         <span style={{ fontSize: '0.875rem', color: '#e5e7eb' }}>Show Preview</span>
                     </label>
+                    <button
+                        onClick={handleEmailNow}
+                        disabled={emailing}
+                        style={{ background: '#15803d', color: 'white', padding: '0.25rem 0.75rem', borderRadius: '0.5rem', border: 'none', cursor: emailing ? 'not-allowed' : 'pointer', fontSize: '0.875rem', fontWeight: 600, opacity: emailing ? 0.7 : 1 }}
+                    >
+                        {emailing ? 'Sending...' : '✉ Email Now'}
+                    </button>
                     <a href="/admin/dashboard" className={styles.navItem}>Back to Dashboard</a>
                 </div>
             </div>
