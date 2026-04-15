@@ -4,9 +4,10 @@ import { getSession } from '@/lib/auth';
 
 export async function GET(req: NextRequest) {
     const session = await getSession();
-    if (!session || session.role !== 'admin') {
+    if (!session) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    // Staff with subtract_stock can access payout types for close-shift form
     const { organizationId } = session;
 
     let rows = await db.query(

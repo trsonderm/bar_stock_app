@@ -90,6 +90,15 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
     const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
     const [scannedBarcode, setScannedBarcode] = useState('');
 
+    // Bulk select state
+    const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+    const [bulkCategory, setBulkCategory] = useState('');
+    const [bulkSubCategory, setBulkSubCategory] = useState('');
+    const [bulkSupplierId, setBulkSupplierId] = useState<string>('');
+    const [bulkGlobalSupplier, setBulkGlobalSupplier] = useState('');
+    const [bulkLocations, setBulkLocations] = useState<number[]>([]);
+    const [bulkApplying, setBulkApplying] = useState(false);
+
     const [stockMode, setStockMode] = useState<string>('CATEGORY');
 
     // Multi-location Logic
@@ -208,6 +217,49 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
         setTempOrderLabel('Pack');
         setTempOrderAmount('');
         setAddToAllLocations(false);
+    };
+
+    const handleBulkApply = async () => {
+        if (selectedIds.size === 0) return;
+        setBulkApplying(true);
+        const updates: Record<string, any> = {};
+        if (bulkCategory) updates.type = bulkCategory;
+        if (bulkSubCategory !== '') updates.secondary_type = bulkSubCategory;
+        if (bulkSupplierId !== '') updates.supplier_id = bulkSupplierId === 'none' ? null : parseInt(bulkSupplierId);
+        if (bulkGlobalSupplier !== '') updates.global_supplier = bulkGlobalSupplier === 'none' ? null : bulkGlobalSupplier;
+        if (bulkLocations.length > 0) updates.assigned_locations = bulkLocations;
+
+        try {
+            const res = await fetch('/api/admin/products/bulk', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ item_ids: Array.from(selectedIds), updates }),
+            });
+            const data = await res.json();
+            if (res.ok) {
+                setSelectedIds(new Set());
+                setBulkCategory('');
+                setBulkSubCategory('');
+                setBulkSupplierId('');
+                setBulkGlobalSupplier('');
+                setBulkLocations([]);
+                fetchData();
+            } else {
+                alert(data.error || 'Bulk update failed');
+            }
+        } catch {
+            alert('Network error during bulk update');
+        } finally {
+            setBulkApplying(false);
+        }
+    };
+
+    const toggleSelect = (id: number) => {
+        setSelectedIds(prev => {
+            const next = new Set(prev);
+            next.has(id) ? next.delete(id) : next.add(id);
+            return next;
+        });
     };
 
     const handleBarcodeScanForProduct = async (barcode: string) => {
@@ -480,10 +532,86 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                     )}
                 </div>
 
+                {/* Bulk Action Toolbar */}
+                {selectedIds.size > 0 && (
+                    <div style={{ background: '#1e3a5f', border: '1px solid #1d4ed8', borderRadius: '8px', padding: '0.75rem 1rem', marginBottom: '1rem', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.75rem' }}>
+                        <span style={{ color: '#93c5fd', fontWeight: 600, fontSize: '0.9rem', marginRight: '0.25rem' }}>
+                            {selectedIds.size} selected
+                        </span>
+
+                        {/* Category */}
+                        <select value={bulkCategory} onChange={e => { setBulkCategory(e.target.value); setBulkSubCategory(''); }}
+                            className={styles.input} style={{ width: 'auto', fontSize: '0.85rem', padding: '4px 8px' }}>
+                            <option value="">— Category —</option>
+                            {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                        </select>
+
+                        {/* Sub-category (shown when category selected) */}
+                        {bulkCategory && (() => {
+                            const cat = categories.find(c => c.name === bulkCategory);
+                            if (!cat?.sub_categories?.length) return null;
+                            return (
+                                <select value={bulkSubCategory} onChange={e => setBulkSubCategory(e.target.value)}
+                                    className={styles.input} style={{ width: 'auto', fontSize: '0.85rem', padding: '4px 8px' }}>
+                                    <option value="">— Sub-Category —</option>
+                                    <option value="none">(Clear)</option>
+                                    {cat.sub_categories.map((s: string) => <option key={s} value={s}>{s}</option>)}
+                                </select>
+                            );
+                        })()}
+
+                        {/* Supplier (by org supplier list) */}
+                        <select value={bulkSupplierId} onChange={e => setBulkSupplierId(e.target.value)}
+                            className={styles.input} style={{ width: 'auto', fontSize: '0.85rem', padding: '4px 8px' }}>
+                            <option value="">— Supplier —</option>
+                            <option value="none">(Clear)</option>
+                            {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                        </select>
+
+                        {/* Global supplier (text) */}
+                        <input type="text" value={bulkGlobalSupplier} onChange={e => setBulkGlobalSupplier(e.target.value)}
+                            placeholder="Global supplier name..."
+                            className={styles.input} style={{ width: '160px', fontSize: '0.85rem', padding: '4px 8px' }} />
+
+                        {/* Assigned Locations */}
+                        {myLocations.length > 1 && (
+                            <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                                <span style={{ color: '#9ca3af', fontSize: '0.8rem' }}>Locations:</span>
+                                {myLocations.map(loc => (
+                                    <label key={loc.id} style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', color: '#d1d5db', fontSize: '0.8rem' }}>
+                                        <input type="checkbox" checked={bulkLocations.includes(loc.id)}
+                                            onChange={e => setBulkLocations(prev => e.target.checked ? [...prev, loc.id] : prev.filter(id => id !== loc.id))} />
+                                        {loc.name}
+                                    </label>
+                                ))}
+                            </div>
+                        )}
+
+                        <button onClick={handleBulkApply} disabled={bulkApplying}
+                            style={{ background: bulkApplying ? '#374151' : '#2563eb', color: 'white', border: 'none', borderRadius: '6px', padding: '5px 14px', cursor: 'pointer', fontWeight: 600, fontSize: '0.85rem' }}>
+                            {bulkApplying ? 'Applying...' : 'Apply to Selected'}
+                        </button>
+                        <button onClick={() => setSelectedIds(new Set())}
+                            style={{ background: 'none', border: '1px solid #374151', color: '#9ca3af', borderRadius: '6px', padding: '5px 10px', cursor: 'pointer', fontSize: '0.8rem' }}>
+                            Clear
+                        </button>
+                    </div>
+                )}
+
                 <div className={styles.tableContainer}>
                     <table className={styles.table}>
                         <thead>
                             <tr>
+                                <th style={{ width: '36px' }}>
+                                    <input type="checkbox"
+                                        checked={filtered.length > 0 && filtered.every(i => selectedIds.has(i.id))}
+                                        onChange={e => {
+                                            if (e.target.checked) setSelectedIds(new Set(filtered.map(i => i.id)));
+                                            else setSelectedIds(new Set());
+                                        }}
+                                        style={{ cursor: 'pointer' }}
+                                    />
+                                </th>
                                 <th>Name</th>
                                 <th>Type</th>
                                 <th>Sub-Category</th>
@@ -498,7 +626,12 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                         </thead>
                         <tbody>
                             {filtered.map(item => (
-                                <tr key={item.id}>
+                                <tr key={item.id} style={{ background: selectedIds.has(item.id) ? 'rgba(37,99,235,0.1)' : undefined }}>
+                                    <td>
+                                        <input type="checkbox" checked={selectedIds.has(item.id)}
+                                            onChange={() => toggleSelect(item.id)}
+                                            style={{ cursor: 'pointer' }} />
+                                    </td>
                                     <td>{item.name}</td>
                                     <td>{item.type}</td>
                                     <td>{item.secondary_type || '-'}</td>

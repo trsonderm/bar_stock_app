@@ -49,8 +49,13 @@ export default function HelpPage() {
     };
 
     return (
-        <div style={{ padding: '2rem', maxWidth: '800px' }}>
-            <h1 style={{ fontSize: '2rem', marginBottom: '2rem' }}>Help & Support</h1>
+        <div style={{ padding: '2rem', maxWidth: '900px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+                <h1 style={{ fontSize: '2rem', margin: 0 }}>Help & Support</h1>
+                <a href="/help" style={{ background: '#2563eb', color: 'white', padding: '0.6rem 1.25rem', borderRadius: '0.5rem', textDecoration: 'none', fontWeight: 600, fontSize: '0.875rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    📖 Knowledge Base
+                </a>
+            </div>
 
             {chatAvailable && (
                 <div style={{ background: 'linear-gradient(90deg, #8b5cf6 0%, #d946ef 100%)', padding: '1.5rem', borderRadius: '0.75rem', marginBottom: '2rem', color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

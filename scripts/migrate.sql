@@ -393,3 +393,18 @@ BEGIN
 END $$;
 
 -- system_settings key for bottle_lookup_config is inserted at runtime (ON CONFLICT DO UPDATE)
+
+-- =========================================================
+-- 22. Help articles (knowledge base / FAQ / how-to)
+-- =========================================================
+CREATE TABLE IF NOT EXISTS help_articles (
+  id          SERIAL PRIMARY KEY,
+  category    TEXT NOT NULL DEFAULT 'faq',
+  title       TEXT NOT NULL,
+  slug        TEXT NOT NULL UNIQUE,
+  blocks      JSONB DEFAULT '[]',
+  sort_order  INT DEFAULT 0,
+  published   BOOLEAN DEFAULT TRUE,
+  created_at  TIMESTAMPTZ DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ DEFAULT NOW()
+);

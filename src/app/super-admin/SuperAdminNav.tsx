@@ -16,6 +16,7 @@ import {
     Activity,
     Cpu,
     ScanLine,
+    HelpCircle,
 } from 'lucide-react';
 
 export default function SuperAdminNav() {
@@ -33,6 +34,7 @@ export default function SuperAdminNav() {
         { name: 'Site Settings', href: '/super-admin/settings', icon: Settings },
         { name: 'ML Models', href: '/super-admin/ml-models', icon: Cpu },
         { name: 'Bottle Lookup', href: '/super-admin/bottle-lookup', icon: ScanLine },
+        { name: 'Help Editor', href: '/super-admin/help-editor', icon: HelpCircle },
         { name: 'Mail Accounts', href: '/super-admin/mail-accounts', icon: Settings },
         { name: 'Report Builder', href: '/super-admin/reports/custom', icon: FileBarChart },
         { name: 'System Logs', href: '/super-admin/system-logs', icon: Activity },
