@@ -2,6 +2,241 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
 
+// ── Shared types ──────────────────────────────────────────────────────────────
+interface UsageRow { date: string; quantity: number; }
+interface InventoryRow {
+    item_id: number;
+    item_name: string;
+    current_stock: number;
+    low_stock_threshold: number;
+    order_size: any;
+}
+interface SupplierRow {
+    item_id: number;
+    cost_per_unit: string;
+    supplier_name: string;
+    lead_time_days: number;
+    delivery_days_json: any;
+}
+interface Suggestion {
+    item_id: number;
+    item_name: string;
+    current_stock: number;
+    pending_order: number;
+    burn_rate: string;
+    days_until_empty: number;
+    supplier: string;
+    suggested_order: number;
+    estimated_cost: string;
+    reason: string;
+    priority: 'CRITICAL' | 'HIGH' | 'HEALTHY';
+    model: string;
+}
+
+// ── Burn-rate calculation (all models) ───────────────────────────────────────
+function calcBurnRate(
+    itemId: number,
+    itemUsageMap: Record<number, UsageRow[]>,
+    analysisDays: number,
+    modelType: string
+): number {
+    const history = itemUsageMap[itemId] || [];
+    if (history.length === 0) return 0;
+
+    // Build a dense day-by-day array (oldest → newest)
+    const today = new Date();
+    const denseHistory: number[] = [];
+    for (let i = analysisDays - 1; i >= 0; i--) {
+        const d = new Date(today);
+        d.setDate(d.getDate() - i);
+        const match = history.find(h => new Date(h.date).toDateString() === d.toDateString());
+        denseHistory.push(match ? match.quantity : 0);
+    }
+
+    switch (modelType) {
+        case 'EMA': {
+            const alpha = 2 / (analysisDays + 1);
+            let ema = denseHistory[0];
+            for (let i = 1; i < denseHistory.length; i++) {
+                ema = alpha * denseHistory[i] + (1 - alpha) * ema;
+            }
+            return Math.max(0, ema);
+        }
+        case 'WMA': {
+            let totalWeight = 0, weightedSum = 0;
+            denseHistory.forEach((qty, idx) => {
+                const w = idx + 1;
+                weightedSum += qty * w;
+                totalWeight += w;
+            });
+            return totalWeight > 0 ? weightedSum / totalWeight : 0;
+        }
+        case 'LINEAR':
+        case 'LINEAR_REGRESSION': {
+            const n = denseHistory.length;
+            let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
+            denseHistory.forEach((y, x) => { sumX += x; sumY += y; sumXY += x * y; sumXX += x * x; });
+            const denom = n * sumXX - sumX * sumX;
+            if (denom === 0) return sumY / n;
+            const slope = (n * sumXY - sumX * sumY) / denom;
+            const intercept = (sumY - slope * sumX) / n;
+            return Math.max(0, slope * analysisDays + intercept);
+        }
+        case 'HOLT': {
+            const alpha = 0.5, beta = 0.3;
+            let level = denseHistory[0];
+            let trend = denseHistory.length > 1 ? denseHistory[1] - denseHistory[0] : 0;
+            for (let i = 1; i < denseHistory.length; i++) {
+                const lastLevel = level;
+                level = alpha * denseHistory[i] + (1 - alpha) * (lastLevel + trend);
+                trend = beta * (level - lastLevel) + (1 - beta) * trend;
+            }
+            return Math.max(0, level + trend);
+        }
+        case 'NEURAL': {
+            const lr = 0.0001, epochs = 500, win = 5;
+            const training = [];
+            for (let i = win; i < denseHistory.length; i++) {
+                training.push({ inputs: denseHistory.slice(i - win, i), target: denseHistory[i] });
+            }
+            if (training.length < 5) return denseHistory.reduce((a, b) => a + b, 0) / denseHistory.length;
+            let weights = Array.from({ length: win }, () => Math.random() * 0.1);
+            let bias = 0;
+            for (let e = 0; e < epochs; e++) {
+                training.forEach(({ inputs, target }) => {
+                    const out = inputs.reduce((s, v, i) => s + v * weights[i], bias);
+                    const err = target - out;
+                    weights = weights.map((w, i) => w + lr * err * inputs[i]);
+                    bias += lr * err;
+                });
+            }
+            const inputs = denseHistory.slice(-win);
+            return Math.max(0, inputs.reduce((s, v, i) => s + v * weights[i], bias));
+        }
+        default: // SMA
+            return denseHistory.reduce((a, b) => a + b, 0) / analysisDays;
+    }
+}
+
+// ── Generate suggestions for one location ───────────────────────────────────
+function buildSuggestions(
+    inventory: InventoryRow[],
+    itemUsageMap: Record<number, UsageRow[]>,
+    supplierMap: Record<number, SupplierRow>,
+    pendingMap: Record<number, number>,
+    analysisDays: number,
+    modelType: string,
+    safetyBufferDays: number
+): Suggestion[] {
+    const suggestions: Suggestion[] = [];
+
+    for (const item of inventory) {
+        const burnRate = calcBurnRate(item.item_id, itemUsageMap, analysisDays, modelType);
+        const stock = parseFloat(String(item.current_stock));
+
+        let orderSize = 1;
+        if (Array.isArray(item.order_size) && item.order_size.length > 0) orderSize = Number(item.order_size[0]);
+        else if (typeof item.order_size === 'number') orderSize = item.order_size;
+        if (orderSize <= 0) orderSize = 1;
+
+        const pendingQty = pendingMap[item.item_id] || 0;
+
+        // No usage history and stock is above threshold — skip
+        if (burnRate === 0 && stock > (item.low_stock_threshold || 0)) continue;
+
+        // No usage history but below threshold
+        if (burnRate === 0) {
+            suggestions.push({
+                item_id: item.item_id, item_name: item.item_name,
+                current_stock: Math.floor(stock), pending_order: pendingQty,
+                burn_rate: '0.00', days_until_empty: 0,
+                supplier: supplierMap[item.item_id]?.supplier_name || 'Unassigned',
+                suggested_order: orderSize, estimated_cost: '0.00',
+                reason: 'Below manual threshold — no usage history',
+                priority: 'HIGH', model: modelType,
+            });
+            continue;
+        }
+
+        const supplier = supplierMap[item.item_id];
+        let leadTime = supplier?.lead_time_days || 1;
+        let daysToNextRestock = 7;
+
+        if (supplier) {
+            let deliveryDays: number[] = [];
+            try {
+                const j = supplier.delivery_days_json;
+                if (j) deliveryDays = typeof j === 'string' ? JSON.parse(j) : j;
+            } catch { }
+            if (deliveryDays.length > 0) {
+                const today = new Date().getDay();
+                deliveryDays.sort((a, b) => a - b);
+                const next = deliveryDays.find(d => d > today);
+                daysToNextRestock = next !== undefined ? next - today : (7 - today) + deliveryDays[0];
+            }
+        }
+
+        const physicalDaysLeft = stock / burnRate;
+        const daysUntilArrival = daysToNextRestock + leadTime;
+        const targetDays = daysUntilArrival + safetyBufferDays;
+        const neededStock = burnRate * targetDays;
+        const netStock = stock + pendingQty;
+        const deficit = neededStock - netStock;
+
+        if (physicalDaysLeft <= daysUntilArrival + safetyBufferDays) {
+            if (deficit > 0) {
+                const unitsToOrder = Math.ceil(deficit / orderSize) * orderSize;
+                suggestions.push({
+                    item_id: item.item_id, item_name: item.item_name,
+                    current_stock: Math.floor(stock), pending_order: pendingQty,
+                    burn_rate: burnRate.toFixed(2),
+                    days_until_empty: Math.floor(physicalDaysLeft),
+                    supplier: supplier?.supplier_name || 'Unassigned',
+                    suggested_order: unitsToOrder,
+                    estimated_cost: supplier
+                        ? (unitsToOrder * parseFloat(supplier.cost_per_unit || '0')).toFixed(2)
+                        : '0.00',
+                    reason: `Run out in ${Math.floor(physicalDaysLeft)}d. Needs ${unitsToOrder} more.`,
+                    priority: physicalDaysLeft < leadTime ? 'CRITICAL' : 'HIGH',
+                    model: modelType,
+                });
+            } else if (pendingQty > 0) {
+                suggestions.push({
+                    item_id: item.item_id, item_name: item.item_name,
+                    current_stock: Math.floor(stock), pending_order: pendingQty,
+                    burn_rate: burnRate.toFixed(2),
+                    days_until_empty: Math.floor(physicalDaysLeft),
+                    supplier: supplier?.supplier_name || 'Unassigned',
+                    suggested_order: 0, estimated_cost: '0.00',
+                    reason: `Pending order covers need`,
+                    priority: 'HEALTHY', model: modelType,
+                });
+            }
+        } else {
+            suggestions.push({
+                item_id: item.item_id, item_name: item.item_name,
+                current_stock: Math.floor(stock), pending_order: pendingQty,
+                burn_rate: burnRate.toFixed(2),
+                days_until_empty: Math.floor(physicalDaysLeft),
+                supplier: supplier?.supplier_name || 'Unassigned',
+                suggested_order: 0, estimated_cost: '0.00',
+                reason: `Sufficient stock (> ${Math.floor(daysUntilArrival + safetyBufferDays)}d)`,
+                priority: 'HEALTHY', model: modelType,
+            });
+        }
+    }
+
+    suggestions.sort((a, b) => {
+        const p = { CRITICAL: 0, HIGH: 1, HEALTHY: 2 };
+        const pd = p[a.priority] - p[b.priority];
+        if (pd !== 0) return pd;
+        return a.days_until_empty - b.days_until_empty;
+    });
+
+    return suggestions;
+}
+
+// ── Route Handler ─────────────────────────────────────────────────────────────
 export async function GET(req: NextRequest) {
     const session = await getSession();
     if (!session || session.role !== 'admin') {
@@ -10,196 +245,29 @@ export async function GET(req: NextRequest) {
 
     try {
         const orgId = session.organizationId;
-        const SAFETY_BUFFER_DAYS = 2; // Extra days of stock to keep as buffer
-        const ANALYSIS_DAYS = parseInt(req.nextUrl.searchParams.get('days') || '30'); // 30, 60, 90
+        const SAFETY_BUFFER_DAYS = 2;
+        const ANALYSIS_DAYS = parseInt(req.nextUrl.searchParams.get('days') || '30');
         const modelType = req.nextUrl.searchParams.get('model') || 'SMA';
+        const singleLocParam = req.nextUrl.searchParams.get('locationId');
 
-        // Resolve location: param wins, then cookie
-        const locParam = req.nextUrl.searchParams.get('locationId');
-        const cookieLoc = req.cookies.get('current_location_id')?.value;
-        let locationId: number | null = locParam ? parseInt(locParam) : (cookieLoc ? parseInt(cookieLoc) : null);
+        // ── Fetch all locations for this org ──────────────────────────────────
+        const allLocations: { id: number; name: string }[] = await db.query(
+            'SELECT id, name FROM locations WHERE organization_id = $1 ORDER BY id ASC',
+            [orgId]
+        );
 
-        // Validate location belongs to org
-        if (locationId) {
-            const validLoc = await db.one('SELECT id FROM locations WHERE id = $1 AND organization_id = $2', [locationId, orgId]);
-            if (!validLoc) locationId = null;
-        }
-        if (!locationId) {
-            const defaultLoc = await db.one('SELECT id FROM locations WHERE organization_id = $1 ORDER BY id ASC LIMIT 1', [orgId]);
-            locationId = defaultLoc ? defaultLoc.id : null;
+        if (allLocations.length === 0) {
+            return NextResponse.json({ byLocation: [], suggestions: [], suppliers: [], orgName: 'My Bar', supplierCount: 0, notifications: [] });
         }
 
-        // We need DAILY data for advanced models (WMA, Linear)
-        // Scope usage to items assigned to this location so predictions are location-specific
-        const usageData = await db.query(`
+        // If a specific location was requested, restrict to just that one
+        const locationsToProcess = singleLocParam
+            ? allLocations.filter(l => l.id === parseInt(singleLocParam))
+            : allLocations;
+
+        // ── Shared: supplier info (org-wide) ─────────────────────────────────
+        const supplierInfo: SupplierRow[] = await db.query(`
             SELECT
-                (details->>'itemId')::int as item_id,
-                DATE(timestamp) as usage_date,
-                SUM((details->>'quantity')::int) as daily_used
-            FROM activity_logs
-            WHERE organization_id = $1
-              AND action = 'SUBTRACT_STOCK'
-              AND timestamp >= NOW() - ($2 * INTERVAL '1 day')
-              AND ($3::int IS NULL OR (details->>'locationId')::int = $3::int)
-            GROUP BY 1, 2
-            ORDER BY 2 ASC
-        `, [orgId, ANALYSIS_DAYS, locationId]);
-
-        // Group by Item
-        const itemUsageMap: Record<number, { date: string, quantity: number }[]> = {};
-        usageData.forEach((row: any) => {
-            if (!itemUsageMap[row.item_id]) itemUsageMap[row.item_id] = [];
-            itemUsageMap[row.item_id].push({ date: row.usage_date, quantity: Number(row.daily_used) });
-        });
-
-        // Helper: Calculate Burn Rate
-        const calculateBurnRate = (itemId: number): number => {
-            const history = itemUsageMap[itemId] || [];
-            if (history.length === 0) return 0;
-
-            // Fill empty days with 0 for accurate modeling
-            // (Simpler approach: Just assume denominator is 30 days for SMA, but for regression we need points)
-            // Let's build a dense array of last N days
-            const denseHistory: number[] = [];
-            const today = new Date();
-            for (let i = ANALYSIS_DAYS - 1; i >= 0; i--) {
-                const d = new Date(today);
-                d.setDate(d.getDate() - i);
-                const dateStr = d.toISOString().split('T')[0]; // YYYY-MM-DD (approx)
-                // Match roughly (Timezone issues might occur but okay for demo)
-                // Actually the DB returns local or UTC date string.
-                // Let's just match using data we have or 0.
-                // For robustness, let's just use the known data points mapped to relative index?
-                // Better: Just use the data we have for WMA/Linear if it's sparse? 
-                // No, "0 usage" is significant.
-
-                // Optimized: Linear scan since usageData is sorted by date? 
-                // Let's just use a Map for lookups.
-                const match = history.find(h => new Date(h.date).getDate() === d.getDate());
-                denseHistory.push(match ? match.quantity : 0);
-            }
-
-            if (modelType === 'WMA') {
-                // Weighted Moving Average: Recent days matter more
-                // Linear Weight: Day 1 (Oldest) = 1, Day 30 (Newest) = 30
-                let totalWeight = 0;
-                let weightedSum = 0;
-                denseHistory.forEach((qty, idx) => {
-                    const weight = idx + 1;
-                    weightedSum += qty * weight;
-                    totalWeight += weight;
-                });
-                return weightedSum / totalWeight; // Weighted Daily Avg
-            } else if (modelType === 'LINEAR' || modelType === 'LINEAR_REGRESSION') {
-                // Linear Regression: y = mx + b
-                const n = denseHistory.length;
-                let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
-                denseHistory.forEach((y, x) => {
-                    sumX += x;
-                    sumY += y;
-                    sumXY += x * y;
-                    sumXX += x * x;
-                });
-                const slope = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
-                const intercept = (sumY - slope * sumX) / n;
-                const prediction = slope * ANALYSIS_DAYS + intercept;
-                return Math.max(0, prediction);
-
-            } else if (modelType === 'HOLT') {
-                // Holt's Linear Trend (Double Exponential Smoothing)
-                // Good for data with trend but no seasonality.
-                const alpha = 0.5; // Level smoothing
-                const beta = 0.3;  // Trend smoothing
-
-                let level = denseHistory[0];
-                let trend = denseHistory[1] - denseHistory[0];
-
-                for (let i = 1; i < denseHistory.length; i++) {
-                    const x = denseHistory[i];
-                    const lastLevel = level;
-                    level = alpha * x + (1 - alpha) * (lastLevel + trend);
-                    trend = beta * (level - lastLevel) + (1 - beta) * trend;
-                }
-                // Forecast next period (m=1)
-                return Math.max(0, level + trend);
-
-            } else if (modelType === 'NEURAL') {
-                // Simple Adaline (Adaptive Linear Neuron) Implementation
-                // A single-layer neural network trained via Gradient Descent
-                const learningRate = 0.0001; // Low LR for stability
-                const epochs = 500;
-                const inputWindow = 5; // Look at last 5 days to predict next
-
-                // Training Data Preparation: Sliding Window
-                // X = [d-5, d-4, d-3, d-2, d-1], Y = [d]
-                const trainingSet = [];
-                for (let i = inputWindow; i < denseHistory.length; i++) {
-                    const inputs = denseHistory.slice(i - inputWindow, i);
-                    const target = denseHistory[i];
-                    trainingSet.push({ inputs, target });
-                }
-
-                // If not enough data, fallback to SMA
-                if (trainingSet.length < 5) return denseHistory.reduce((a, b) => a + b, 0) / denseHistory.length;
-
-                // Initialize Weights
-                let weights = new Array(inputWindow).fill(0).map(() => Math.random() * 0.1);
-                let bias = 0;
-
-                // Training Loop
-                for (let e = 0; e < epochs; e++) {
-                    trainingSet.forEach(({ inputs, target }) => {
-                        const output = inputs.reduce((sum, val, idx) => sum + val * weights[idx], bias);
-                        const error = target - output;
-                        // Update
-                        for (let w = 0; w < weights.length; w++) {
-                            weights[w] += learningRate * error * inputs[w];
-                        }
-                        bias += learningRate * error;
-                    });
-                }
-
-                // Predict Next Day
-                // Inputs are the LAST 5 days of history
-                const inputs = denseHistory.slice(denseHistory.length - inputWindow);
-                const prediction = inputs.reduce((sum, val, idx) => sum + val * weights[idx], bias);
-                return Math.max(0, prediction);
-
-            } else {
-                // SMA (Default): Total / 30
-                const sum = denseHistory.reduce((a, b) => a + b, 0);
-                return sum / ANALYSIS_DAYS;
-            }
-        };
-
-        const burnRates: Record<number, number> = {};
-
-        // 2. Fetch Current Inventory & Item Details — scoped to the selected location
-        const rawInventory = await db.query(`
-            SELECT
-                i.id as item_id,
-                i.organization_id,
-                i.name as item_name,
-                COALESCE(inv.quantity, 0) as current_stock,
-                i.low_stock_threshold,
-                i.order_size
-            FROM items i
-            JOIN inventory inv ON i.id = inv.item_id AND inv.location_id = $2
-            WHERE i.organization_id = $1
-        `, [orgId, locationId]);
-
-        const inventory = rawInventory;
-
-        // Calculate Burn Rates for all items found (or with history)
-        // Note: inventory list might miss items that have history but 0 stock? 
-        // We usually iterate inventory.
-        inventory.forEach((item: any) => {
-            burnRates[item.item_id] = calculateBurnRate(item.item_id);
-        });
-
-        // 3. Fetch Supplier Info (Preferred Supplier per item)
-        const supplierInfo = await db.query(`
-            SELECT 
                 is_sup.item_id,
                 is_sup.cost_per_unit,
                 s.name as supplier_name,
@@ -207,216 +275,130 @@ export async function GET(req: NextRequest) {
                 s.delivery_days_json
             FROM item_suppliers is_sup
             JOIN suppliers s ON is_sup.supplier_id = s.id
-            WHERE s.organization_id = $1
-              AND is_sup.is_preferred = TRUE
+            WHERE s.organization_id = $1 AND is_sup.is_preferred = TRUE
         `, [orgId]);
 
-        const supplierMap: Record<number, any> = {};
-        supplierInfo.forEach((row: any) => {
-            supplierMap[row.item_id] = row;
-        });
+        const supplierMap: Record<number, SupplierRow> = {};
+        supplierInfo.forEach(r => { supplierMap[r.item_id] = r; });
 
-        // 4. Check for Pending Orders (Wait until stock updated)
-        // If an item has a PENDING order that has passed its expected delivery, user needs alert.
-        // If it looks like it's coming, we might reduce suggestion?
-        // User request: "Estimate... AND THEN WAIT till stock updated". 
-        // This implies if there is a pending order, maybe we show it instead of a new suggestion?
-        // Or we deduct the pending amount from the needed amount?
-        // Let's Fetch pending orders.
-        const pendingOrders = await db.query(`
-            SELECT poi.item_id, SUM(poi.quantity) as pending_qty
-            FROM purchase_orders po
-            JOIN purchase_order_items poi ON po.id = poi.purchase_order_id
-            WHERE po.organization_id = $1 AND po.status = 'PENDING'
-              AND (po.location_id = $2 OR po.location_id IS NULL)
-            GROUP BY poi.item_id
-        `, [orgId, locationId]);
-
-        const pendingMap: Record<number, number> = {};
-        pendingOrders.forEach((r: any) => pendingMap[r.item_id] = parseInt(r.pending_qty));
-
-        // 5. Generate Suggestions
-        const suggestions = [];
-
-        for (const item of inventory) {
-            const burnRate = burnRates[item.item_id] || 0;
-            const stock = parseFloat(item.current_stock);
-            let orderSize = 1;
-            if (Array.isArray(item.order_size) && item.order_size.length > 0) {
-                orderSize = item.order_size[0];
-            } else if (typeof item.order_size === 'number') {
-                orderSize = item.order_size;
-            }
-            const pendingQty = pendingMap[item.item_id] || 0;
-
-            // If we have a pending order that covers our needs, do we suppress?
-            // "Update each day until the order is placed and then wait till the stock is updated"
-            // This suggests: If Pending Order Exists, logic changes.
-            // If Pending Order Exists, we generally DON'T suggest ordering MORE unless that order is late/insufficient.
-            // Let's deduct pendingQty from Needed.
-
-            if (burnRate === 0 && stock > item.low_stock_threshold) continue;
-
-            // ... (Low stock / No history logic omitted for brevity, keeping same if burnRate=0) ...
-            if (burnRate === 0) {
-                if (stock <= item.low_stock_threshold) {
-                    suggestions.push({
-                        item_id: item.item_id,
-                        item_name: item.item_name,
-                        reason: 'Below manual threshold',
-                        priority: 'HIGH',
-                        current_stock: stock,
-                        burn_rate: 0,
-                        days_until_empty: '0.0',
-                        suggested_order: orderSize,
-                        estimated_cost: 0,
-                        model: modelType
-                    });
-                }
-                continue;
-            }
-
-            const daysUntilEmpty = stock / burnRate;
-            const supplier = supplierMap[item.item_id];
-
-            // Determine Days Until Next Restock (Same Logic)
-            let daysToNextRestock = 7;
-            let leadTime = 1;
-            if (supplier) {
-                leadTime = supplier.lead_time_days || 1;
-                let deliveryDays = [];
-                try {
-                    const json = supplier.delivery_days_json;
-                    if (json) deliveryDays = typeof json === 'string' ? JSON.parse(json) : json;
-                } catch (e) { }
-                if (deliveryDays.length > 0) {
-                    const today = new Date().getDay();
-                    deliveryDays.sort((a: number, b: number) => a - b);
-                    const nextDay = deliveryDays.find((d: number) => d > today);
-                    daysToNextRestock = nextDay !== undefined ? nextDay - today : (7 - today) + deliveryDays[0];
-                }
-            }
-
-            const targetDays = daysToNextRestock + leadTime + SAFETY_BUFFER_DAYS;
-            const neededStock = burnRate * targetDays;
-
-            // "Net Stock" = Current Stock + Pending Orders
-            const netStock = stock + pendingQty;
-
-            const deficit = neededStock - netStock;
-
-            // Trigger based on DaysUntilEmpty (using physical stock)
-            // But if we have pending order coming, we might be safe.
-            const daysUntilArrival = daysToNextRestock + leadTime;
-            const physicalDaysLeft = stock / burnRate;
-
-            // If we are physically low...
-            if (physicalDaysLeft <= daysUntilArrival + SAFETY_BUFFER_DAYS) {
-                // If Deficit > 0 (meaning Pending Order wasn't enough), suggest more.
-                // If Pending Order IS enough, we 'Wait'.
-
-                if (deficit > 0) {
-                    const unitsToOrder = Math.ceil(deficit / orderSize) * orderSize;
-                    suggestions.push({
-                        item_id: item.item_id,
-                        item_name: item.item_name,
-                        current_stock: Math.floor(stock),
-                        pending_order: pendingQty,
-                        burn_rate: burnRate.toFixed(2),
-                        days_until_empty: Math.floor(physicalDaysLeft), // Integer
-                        supplier: supplier ? supplier.supplier_name : 'Unknown',
-                        suggested_order: unitsToOrder,
-                        estimated_cost: supplier ? (unitsToOrder * parseFloat(supplier.cost_per_unit || '0')).toFixed(2) : '0.00',
-                        reason: `Run out in ${Math.floor(physicalDaysLeft)}d. Needs ${unitsToOrder} more.`,
-                        priority: physicalDaysLeft < leadTime ? 'CRITICAL' : 'HIGH',
-                        model: modelType
-                    });
-                } else if (pendingQty > 0) {
-                    // Pending covers it
-                    suggestions.push({
-                        item_id: item.item_id,
-                        item_name: item.item_name,
-                        current_stock: Math.floor(stock),
-                        pending_order: pendingQty,
-                        burn_rate: burnRate.toFixed(2),
-                        days_until_empty: Math.floor(physicalDaysLeft),
-                        supplier: supplier ? supplier.supplier_name : 'Unknown',
-                        suggested_order: 0,
-                        estimated_cost: '0.00',
-                        reason: `Pending Order #${0} Coming`, // pendingMap doesn't have ID, simplifies
-                        priority: 'HEALTHY',
-                        model: modelType
-                    });
-                }
-            } else {
-                // Healthy (Stock Sufficient)
-                suggestions.push({
-                    item_id: item.item_id,
-                    item_name: item.item_name,
-                    current_stock: Math.floor(stock),
-                    pending_order: pendingQty,
-                    burn_rate: burnRate.toFixed(2),
-                    days_until_empty: Math.floor(physicalDaysLeft),
-                    supplier: supplier ? supplier.supplier_name : 'Unknown',
-                    suggested_order: 0,
-                    estimated_cost: '0.00',
-                    reason: `Sufficient Stock (> ${Math.floor(daysUntilArrival + SAFETY_BUFFER_DAYS)}d)`,
-                    priority: 'HEALTHY',
-                    model: modelType
-                });
-            }
-        }
-
-        //Sort by priority (Critical first) then days until empty
-        suggestions.sort((a, b) => Number(a.days_until_empty) - Number(b.days_until_empty));
-
-        // 5. Generate Notifications (Missed Deliveries)
+        // ── Shared: late orders (org-wide) ───────────────────────────────────
         const lateOrders = await db.query(`
-            SELECT 
-                po.id, 
-                s.name as supplier_name, 
-                po.expected_delivery_date,
-                count(poi.id) as item_count
+            SELECT po.id, po.location_id, s.name as supplier_name, po.expected_delivery_date,
+                   COUNT(poi.id) as item_count
             FROM purchase_orders po
             LEFT JOIN suppliers s ON po.supplier_id = s.id
             JOIN purchase_order_items poi ON po.id = poi.purchase_order_id
-            WHERE po.organization_id = $1 
+            WHERE po.organization_id = $1
               AND po.status = 'PENDING'
               AND po.expected_delivery_date < NOW()::date
-            GROUP BY po.id, s.name, po.expected_delivery_date
+            GROUP BY po.id, s.name, po.expected_delivery_date, po.location_id
         `, [orgId]);
 
-        const notifications = lateOrders.map((o: any) => ({
-            type: 'MISSED_DELIVERY',
-            title: `Missed Delivery from ${o.supplier_name || 'Unknown'}`,
-            message: `Order #${o.id} (${o.item_count} items) was expected on ${new Date(o.expected_delivery_date).toLocaleDateString()}. Not updated?`,
-            orderId: o.id
-        }));
-
-        // 6. Generate Suggestions
-        // ... (existing loop) ...
-
-        // ... (inside loop) ...
-        // ...
-
-
-        // 7. Get All Suppliers & Org Details
-        const allSuppliers = await db.query('SELECT id, name FROM suppliers WHERE organization_id = $1 ORDER BY name ASC', [orgId]);
-        const supplierCount = allSuppliers.length;
-
+        // ── Org/supplier meta ─────────────────────────────────────────────────
+        const allSuppliers = await db.query(
+            'SELECT id, name FROM suppliers WHERE organization_id = $1 ORDER BY name ASC',
+            [orgId]
+        );
         let orgName = 'My Bar';
         try {
             const orgRes = await db.one('SELECT name FROM organizations WHERE id = $1', [orgId]);
-            if (orgRes && orgRes.name) orgName = orgRes.name;
-        } catch (err) {
-            console.warn('Failed to fetch org name', err);
+            if (orgRes?.name) orgName = orgRes.name;
+        } catch { }
+
+        // ── Per-location predictions ──────────────────────────────────────────
+        const byLocation: {
+            locationId: number;
+            locationName: string;
+            suggestions: Suggestion[];
+            notifications: any[];
+        }[] = [];
+
+        for (const loc of locationsToProcess) {
+            const locId = loc.id;
+
+            // Usage data scoped to this location
+            const usageData = await db.query(`
+                SELECT
+                    (details->>'itemId')::int as item_id,
+                    DATE(timestamp) as usage_date,
+                    SUM((details->>'quantity')::numeric) as daily_used
+                FROM activity_logs
+                WHERE organization_id = $1
+                  AND action = 'SUBTRACT_STOCK'
+                  AND timestamp >= NOW() - ($2 * INTERVAL '1 day')
+                  AND (details->>'locationId')::int = $3
+                GROUP BY 1, 2
+                ORDER BY 2 ASC
+            `, [orgId, ANALYSIS_DAYS, locId]);
+
+            const itemUsageMap: Record<number, UsageRow[]> = {};
+            usageData.forEach((row: any) => {
+                if (!itemUsageMap[row.item_id]) itemUsageMap[row.item_id] = [];
+                itemUsageMap[row.item_id].push({ date: row.usage_date, quantity: Number(row.daily_used) });
+            });
+
+            // Inventory for this location
+            const inventory: InventoryRow[] = await db.query(`
+                SELECT
+                    i.id as item_id,
+                    i.name as item_name,
+                    COALESCE(inv.quantity, 0) as current_stock,
+                    COALESCE(i.low_stock_threshold, 5) as low_stock_threshold,
+                    i.order_size
+                FROM items i
+                JOIN inventory inv ON i.id = inv.item_id AND inv.location_id = $2
+                WHERE i.organization_id = $1
+            `, [orgId, locId]);
+
+            // Pending orders for this location
+            const pendingOrders = await db.query(`
+                SELECT poi.item_id, SUM(poi.quantity) as pending_qty
+                FROM purchase_orders po
+                JOIN purchase_order_items poi ON po.id = poi.purchase_order_id
+                WHERE po.organization_id = $1
+                  AND po.status = 'PENDING'
+                  AND (po.location_id = $2 OR po.location_id IS NULL)
+                GROUP BY poi.item_id
+            `, [orgId, locId]);
+
+            const pendingMap: Record<number, number> = {};
+            pendingOrders.forEach((r: any) => { pendingMap[r.item_id] = parseInt(r.pending_qty); });
+
+            const suggestions = buildSuggestions(
+                inventory, itemUsageMap, supplierMap, pendingMap,
+                ANALYSIS_DAYS, modelType, SAFETY_BUFFER_DAYS
+            );
+
+            // Notifications for this location
+            const notifications = lateOrders
+                .filter((o: any) => o.location_id === locId || o.location_id === null)
+                .map((o: any) => ({
+                    type: 'MISSED_DELIVERY',
+                    title: `Missed Delivery from ${o.supplier_name || 'Unknown'}`,
+                    message: `Order #${o.id} (${o.item_count} items) was expected on ${new Date(o.expected_delivery_date).toLocaleDateString()}.`,
+                    orderId: o.id,
+                    locationId: locId,
+                }));
+
+            byLocation.push({ locationId: locId, locationName: loc.name, suggestions, notifications });
         }
 
-        return NextResponse.json({ suggestions, notifications, supplierCount, suppliers: allSuppliers, orgName, locationId });
+        // For backward-compat: flat suggestions = first location (or selected)
+        const primarySuggestions = byLocation[0]?.suggestions ?? [];
+        const primaryNotifications = byLocation[0]?.notifications ?? [];
 
+        return NextResponse.json({
+            byLocation,                                // per-location breakdown
+            suggestions: primarySuggestions,           // backward compat
+            notifications: primaryNotifications,
+            supplierCount: allSuppliers.length,
+            suppliers: allSuppliers,
+            orgName,
+            locationId: locationsToProcess[0]?.id ?? null,
+        });
 
-    } catch (e) {
-        console.error('Predictive Stock Error', e);
-        return NextResponse.json({ error: 'Internal Error' }, { status: 500 });
+    } catch (e: any) {
+        console.error('[Predictive Stock Error]', e);
+        return NextResponse.json({ error: e.message || 'Internal Error' }, { status: 500 });
     }
 }
