@@ -21,8 +21,10 @@ const safeNum = (v: any): number => {
 };
 
 export default function SmartOrderCharts({ suggestions, history, selectedItemName }: ChartProps) {
+    // Explicitly pick only primitive fields — prevents {label,amount} objects from
+    // leaking into recharts data via accidental spread of API response objects
     const historyChart = (history || []).map(d => ({
-        ...d,
+        label: typeof d.label === 'string' ? d.label : String(d.date ?? ''),
         stock: safeNum(d.stock),
         usage: safeNum(d.usage),
         restock: safeNum(d.restock),

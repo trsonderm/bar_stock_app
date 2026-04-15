@@ -105,7 +105,10 @@ export default function SmartOrderClient() {
             if (predData.suppliers) setAvailableSuppliers(predData.suppliers);
             if (predData.supplierCount === 0) setSupplierWarning(true);
             if (predData.orgName) setOrgName(predData.orgName);
-            if (itemsData.items) setAllItems(itemsData.items);
+            // Strip to primitives only — order_size JSONB objects must not flow into recharts
+            if (itemsData.items) setAllItems(
+                itemsData.items.map((i: any) => ({ id: i.id, name: String(i.name), supplier: i.supplier || '' }))
+            );
         } catch (e) {
             console.error(e);
         } finally {
@@ -445,7 +448,20 @@ export default function SmartOrderClient() {
                         </div>
                     </div>
                     <SmartOrderCharts
-                        suggestions={filtered}
+                        suggestions={filtered.map(s => ({
+                            item_id: s.item_id,
+                            item_name: String(s.item_name),
+                            current_stock: Number(s.current_stock) || 0,
+                            pending_order: Number(s.pending_order) || 0,
+                            burn_rate: String(s.burn_rate),
+                            days_until_empty: Number(s.days_until_empty) || 0,
+                            supplier: String(s.supplier || 'Unassigned'),
+                            suggested_order: Number(s.suggested_order) || 0,
+                            estimated_cost: String(s.estimated_cost),
+                            reason: String(s.reason),
+                            priority: s.priority,
+                            model: String(s.model),
+                        }))}
                         history={itemHistory}
                         selectedItemName={allItems.find(i => i.id === selectedItemId)?.name || 'Selected Item'}
                     />
