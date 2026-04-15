@@ -368,3 +368,28 @@ CREATE TABLE IF NOT EXISTS shift_closes (
 
 -- General settings key for receipt mode
 -- No schema change needed — uses existing settings table
+
+-- =========================================================
+-- 21. Barcode column on items + enable_low_stock_reporting on categories
+-- =========================================================
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name='items' AND column_name='barcode'
+  ) THEN
+    ALTER TABLE items ADD COLUMN barcode TEXT;
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name='categories' AND column_name='enable_low_stock_reporting'
+  ) THEN
+    ALTER TABLE categories ADD COLUMN enable_low_stock_reporting BOOLEAN DEFAULT TRUE;
+  END IF;
+END $$;
+
+-- system_settings key for bottle_lookup_config is inserted at runtime (ON CONFLICT DO UPDATE)

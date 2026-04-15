@@ -33,15 +33,16 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
         }
 
-        const { name, stock_options, sub_categories } = await req.json();
+        const { name, stock_options, sub_categories, enable_low_stock_reporting } = await req.json();
         if (!name) return NextResponse.json({ error: 'Missing name' }, { status: 400 });
 
         const options = stock_options ? JSON.stringify(stock_options) : JSON.stringify([1]);
         const subCats = sub_categories ? JSON.stringify(sub_categories) : JSON.stringify([]);
+        const enableReporting = enable_low_stock_reporting !== false;
 
         const res = await db.one(
-            'INSERT INTO categories (name, stock_options, sub_categories, organization_id) VALUES ($1, $2, $3, $4) RETURNING id',
-            [name, options, subCats, session.organizationId]
+            'INSERT INTO categories (name, stock_options, sub_categories, enable_low_stock_reporting, organization_id) VALUES ($1, $2, $3, $4, $5) RETURNING id',
+            [name, options, subCats, enableReporting, session.organizationId]
         );
         return NextResponse.json({ success: true, id: res.id });
     } catch (e: any) {
@@ -57,15 +58,16 @@ export async function PUT(req: NextRequest) {
         const session = await getSession();
         if (!session || session.role !== 'admin') return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
 
-        const { id, name, stock_options, sub_categories } = await req.json();
+        const { id, name, stock_options, sub_categories, enable_low_stock_reporting } = await req.json();
         if (!id || !name) return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
 
         const options = stock_options ? JSON.stringify(stock_options) : JSON.stringify([1]);
         const subCats = sub_categories ? JSON.stringify(sub_categories) : JSON.stringify([]);
+        const enableReporting = enable_low_stock_reporting !== false;
 
         await db.execute(
-            'UPDATE categories SET name = $1, stock_options = $2, sub_categories = $3 WHERE id = $4 AND organization_id = $5',
-            [name, options, subCats, id, session.organizationId]
+            'UPDATE categories SET name = $1, stock_options = $2, sub_categories = $3, enable_low_stock_reporting = $4 WHERE id = $5 AND organization_id = $6',
+            [name, options, subCats, enableReporting, id, session.organizationId]
         );
 
         return NextResponse.json({ success: true });

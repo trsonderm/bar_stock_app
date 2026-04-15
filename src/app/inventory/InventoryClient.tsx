@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import NotificationBell from '@/components/NotificationBell';
 import StockControls from './StockControls';
+import BarcodeScanner from '@/components/BarcodeScanner';
 
 // MUI Imports
 import Container from '@mui/material/Container';
@@ -127,6 +128,12 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
     const canAddStock = user.role === 'admin' || user.permissions.includes('add_stock') || user.permissions.includes('all');
     const canSubtractStock = user.role === 'admin' || user.permissions.includes('subtract_stock') || user.permissions.includes('all');
     const canAddItem = user.role === 'admin' || user.permissions.includes('add_item_name') || user.permissions.includes('all');
+
+    // Barcode scan state
+    const [scanMode, setScanMode] = useState<'add' | 'subtract' | null>(null);
+    const [scanResult, setScanResult] = useState<{ barcode: string; item_id?: number; name?: string } | null>(null);
+    const [scanError, setScanError] = useState('');
+    const [scanAmount, setScanAmount] = useState(1);
 
     const fetchItems = async () => {
         try {
@@ -426,6 +433,41 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
         setSecondaryFilter('');
     };
 
+    const handleBarcodeDetected = async (barcode: string) => {
+        setScanResult(null);
+        setScanError('');
+        setScanAmount(1);
+        // Look up barcode
+        try {
+            const res = await fetch(`/api/barcode-lookup?barcode=${encodeURIComponent(barcode)}`);
+            const data = await res.json();
+            if (data.found && data.item_id) {
+                setScanResult({ barcode, item_id: data.item_id, name: data.name });
+            } else {
+                // Try matching by name in current items list
+                const found = items.find(i => i.name.toLowerCase() === (data.name || '').toLowerCase());
+                if (found) {
+                    setScanResult({ barcode, item_id: found.id, name: found.name });
+                } else {
+                    setScanResult({ barcode });
+                    setScanError(data.name ? `"${data.name}" not found in your inventory.` : `Barcode ${barcode} not found in inventory.`);
+                }
+            }
+        } catch {
+            setScanResult({ barcode });
+            setScanError('Lookup failed. Check network.');
+        }
+    };
+
+    const applyScanAdjust = () => {
+        if (!scanResult?.item_id || !scanMode) return;
+        const change = scanMode === 'add' ? scanAmount : -scanAmount;
+        handleAdjust(scanResult.item_id, change);
+        setScanMode(null);
+        setScanResult(null);
+        setScanError('');
+    };
+
     // Filter Logic
     const filteredItems = items.filter(item => {
         const matchesType = filterType === 'All' || item.type === filterType;
@@ -462,6 +504,26 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
                             size="small"
                         >
                             Check In Order
+                        </Button>
+                    )}
+                    {canAddStock && (
+                        <Button
+                            variant="contained"
+                            size="small"
+                            sx={{ background: '#0891b2', '&:hover': { background: '#0e7490' } }}
+                            onClick={() => { setScanMode('add'); setScanResult(null); setScanError(''); }}
+                        >
+                            Scan to Add
+                        </Button>
+                    )}
+                    {canSubtractStock && (
+                        <Button
+                            variant="contained"
+                            size="small"
+                            sx={{ background: '#7c3aed', '&:hover': { background: '#6d28d9' } }}
+                            onClick={() => { setScanMode('subtract'); setScanResult(null); setScanError(''); }}
+                        >
+                            Scan to Subtract
                         </Button>
                     )}
                     {canSubtractStock && (
@@ -1071,6 +1133,76 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
                 </DialogContent>
                 <DialogActions>
                     <Button onClick={() => setShowIncomingDetail(false)}>Close</Button>
+                </DialogActions>
+            </Dialog>
+
+            {/* Barcode Scanner — Scan to Add */}
+            <BarcodeScanner
+                open={scanMode === 'add'}
+                title="Scan to Add Stock"
+                onClose={() => { setScanMode(null); setScanResult(null); setScanError(''); }}
+                onDetected={handleBarcodeDetected}
+            />
+
+            {/* Barcode Scanner — Scan to Subtract */}
+            <BarcodeScanner
+                open={scanMode === 'subtract'}
+                title="Scan to Subtract Stock"
+                onClose={() => { setScanMode(null); setScanResult(null); setScanError(''); }}
+                onDetected={handleBarcodeDetected}
+            />
+
+            {/* Scan Result / Confirm Dialog */}
+            <Dialog
+                open={!!scanResult}
+                onClose={() => { setScanResult(null); setScanError(''); setScanMode(null); }}
+                maxWidth="xs"
+                fullWidth
+                PaperProps={{ style: { background: '#111827', color: 'white' } }}
+            >
+                <DialogTitle style={{ borderBottom: '1px solid #374151' }}>
+                    {scanMode === 'add' ? 'Add Stock' : 'Subtract Stock'}
+                </DialogTitle>
+                <DialogContent style={{ padding: '1.25rem' }}>
+                    {scanError ? (
+                        <Box sx={{ textAlign: 'center', color: '#ef4444', py: 1 }}>
+                            <Typography variant="body2">{scanError}</Typography>
+                            <Typography variant="caption" sx={{ color: '#6b7280', display: 'block', mt: 0.5 }}>
+                                Barcode: {scanResult?.barcode}
+                            </Typography>
+                        </Box>
+                    ) : scanResult?.item_id ? (
+                        <Box>
+                            <Typography sx={{ color: '#d1d5db', mb: 0.5, fontSize: '0.85rem' }}>Item found:</Typography>
+                            <Typography sx={{ color: 'white', fontWeight: 700, fontSize: '1.1rem', mb: 1.5 }}>{scanResult.name}</Typography>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                <Button size="small" variant="outlined" sx={{ minWidth: 32, p: '2px 8px' }}
+                                    onClick={() => setScanAmount(a => Math.max(1, a - 1))}>−</Button>
+                                <Typography sx={{ mx: 1, fontSize: '1.25rem', fontWeight: 700, minWidth: '2rem', textAlign: 'center' }}>{scanAmount}</Typography>
+                                <Button size="small" variant="outlined" sx={{ minWidth: 32, p: '2px 8px' }}
+                                    onClick={() => setScanAmount(a => a + 1)}>+</Button>
+                                <Typography sx={{ color: '#9ca3af', ml: 1, fontSize: '0.85rem' }}>
+                                    {scanMode === 'add' ? 'to add' : 'to subtract'}
+                                </Typography>
+                            </Box>
+                        </Box>
+                    ) : null}
+                </DialogContent>
+                <DialogActions style={{ borderTop: '1px solid #374151', padding: '0.75rem 1rem' }}>
+                    <Button onClick={() => { setScanResult(null); setScanError(''); setScanMode(null); }}
+                        style={{ color: '#9ca3af' }}>Cancel</Button>
+                    {!scanError && scanResult?.item_id && (
+                        <Button variant="contained" onClick={applyScanAdjust}
+                            style={{ background: scanMode === 'add' ? '#0891b2' : '#7c3aed' }}>
+                            Confirm {scanMode === 'add' ? 'Add' : 'Subtract'}
+                        </Button>
+                    )}
+                    {(scanError || !scanResult?.item_id) && (
+                        <Button variant="outlined" onClick={() => { setScanResult(null); setScanError(''); }}
+                            style={{ borderColor: '#4b5563', color: '#d1d5db' }}>
+                            Scan Again
+                        </Button>
+                    )}
                 </DialogActions>
             </Dialog>
 

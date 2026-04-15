@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import styles from '../admin.module.css';
 import CsvMappingModal from './CsvMappingModal';
+import BarcodeScanner from '@/components/BarcodeScanner';
 
 interface OrderSizeOption {
     label: string;
@@ -84,6 +85,10 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
     // Temp input for order sizes
     const [tempOrderLabel, setTempOrderLabel] = useState('Pack');
     const [tempOrderAmount, setTempOrderAmount] = useState('');
+
+    // Barcode scan state
+    const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
+    const [scannedBarcode, setScannedBarcode] = useState('');
 
     const [stockMode, setStockMode] = useState<string>('CATEGORY');
 
@@ -205,8 +210,26 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
         setAddToAllLocations(false);
     };
 
+    const handleBarcodeScanForProduct = async (barcode: string) => {
+        setShowBarcodeScanner(false);
+        setScannedBarcode(barcode);
+        try {
+            const res = await fetch(`/api/barcode-lookup?barcode=${encodeURIComponent(barcode)}`);
+            const data = await res.json();
+            if (data.found) {
+                setFormData(prev => ({
+                    ...prev,
+                    name: data.name || prev.name,
+                    type: data.type || prev.type,
+                    secondary_type: data.secondary_type || prev.secondary_type,
+                }));
+            }
+        } catch { }
+    };
+
     const handleCreateClick = () => {
         resetForm();
+        setScannedBarcode('');
         setShowModal(true);
     };
 
@@ -552,7 +575,22 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
             {showModal && (
                 <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 100 }}>
                     <div style={{ background: '#111827', padding: '2rem', borderRadius: '1rem', width: '90%', maxWidth: '500px', border: '1px solid #374151', maxHeight: '90vh', overflowY: 'auto' }}>
-                        <h2 style={{ marginTop: 0, color: 'white' }}>{editingId ? 'Edit Product' : 'Add New Product'}</h2>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+                            <h2 style={{ margin: 0, color: 'white' }}>{editingId ? 'Edit Product' : 'Add New Product'}</h2>
+                            <button
+                                type="button"
+                                onClick={() => setShowBarcodeScanner(true)}
+                                style={{ background: '#0891b2', color: 'white', border: 'none', borderRadius: '6px', padding: '6px 14px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}
+                            >
+                                <span style={{ fontSize: '1rem' }}>📷</span> Scan Barcode
+                            </button>
+                        </div>
+                        {scannedBarcode && (
+                            <div style={{ background: '#1e3a5f', border: '1px solid #1d4ed8', borderRadius: '6px', padding: '0.5rem 0.75rem', marginBottom: '1rem', fontSize: '0.8rem', color: '#93c5fd', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span>Scanned: <strong>{scannedBarcode}</strong></span>
+                                <button type="button" onClick={() => setScannedBarcode('')} style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', fontSize: '1rem', lineHeight: 1 }}>×</button>
+                            </div>
+                        )}
                         <form onSubmit={handleSave}>
                             <div style={{ marginBottom: '1rem' }}>
                                 <label className={styles.statLabel}>Name</label>
@@ -1022,6 +1060,13 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                     onImport={handleConfirmImport}
                 />
             )}
+
+            <BarcodeScanner
+                open={showBarcodeScanner}
+                title="Scan Product Barcode"
+                onClose={() => setShowBarcodeScanner(false)}
+                onDetected={handleBarcodeScanForProduct}
+            />
         </>
     );
 
