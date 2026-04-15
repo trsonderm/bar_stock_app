@@ -33,6 +33,7 @@ export default function SmartOrderClient() {
     const [availableSuppliers, setAvailableSuppliers] = useState<{ id: number, name: string }[]>([]);
     const [activeSignature, setActiveSignature] = useState<string | null>(null);
     const [modelType, setModelType] = useState<string>('SMA');
+    const [enabledModels, setEnabledModels] = useState<string[]>(['SMA', 'EMA', 'WMA', 'LINEAR_REGRESSION']);
     const [forecastDays, setForecastDays] = useState<number>(30);
     const [notifications, setNotifications] = useState<any[]>([]);
     const [orgName, setOrgName] = useState('My Bar');
@@ -40,6 +41,15 @@ export default function SmartOrderClient() {
     const [availableSignatures, setAvailableSignatures] = useState<any[]>([]);
     const [showSignatureModal, setShowSignatureModal] = useState(false);
     const [emailing, setEmailing] = useState(false);
+
+    useEffect(() => {
+        fetch('/api/super-admin/ml-models').then(r => r.json()).then(d => {
+            if (d.config) {
+                setEnabledModels(d.config.enabled_models || ['SMA']);
+                setModelType(d.config.smart_order_model || 'SMA');
+            }
+        }).catch(() => {}); // graceful fail
+    }, []);
 
     useEffect(() => {
         if (showPrintView && availableSignatures.length === 0) {
@@ -196,6 +206,16 @@ export default function SmartOrderClient() {
     if (sortMode === 'PRIORITY') {
         sortedItems.sort((a, b) => getBurnRate(b.id) - getBurnRate(a.id));
     }
+
+    const modelLabel = (m: string): string => {
+        switch (m) {
+            case 'SMA': return 'Simple Moving Avg';
+            case 'EMA': return 'Exp. Moving Avg';
+            case 'WMA': return 'Weighted Moving Avg';
+            case 'LINEAR_REGRESSION': return 'Linear Regression';
+            default: return m;
+        }
+    };
 
     if (loading) return <div className="p-8 text-white">Calculating forecast...</div>;
 
@@ -461,17 +481,21 @@ export default function SmartOrderClient() {
 
                     <div className="flex items-center gap-2">
                         <span className="text-gray-400 text-sm">Prediction Model:</span>
-                        <select
-                            className="bg-blue-900/30 text-blue-100 border border-blue-500/50 rounded px-3 py-2 text-sm font-medium"
-                            value={modelType}
-                            onChange={(e) => setModelType(e.target.value)}
-                        >
-                            <option value="SMA">Avg 30-Day (Standard)</option>
-                            <option value="WMA">Weighted (Recent Focus)</option>
-                            <option value="LINEAR">Linear Trend (Growth)</option>
-                            <option value="HOLT">Holt-Winters (Trend + Smooth)</option>
-                            <option value="NEURAL">Neural Network (Adaptive)</option>
-                        </select>
+                        {enabledModels.length > 1 ? (
+                            <select
+                                className="bg-gray-800 text-white border border-gray-700 rounded px-3 py-2 text-sm"
+                                value={modelType}
+                                onChange={(e) => setModelType(e.target.value)}
+                            >
+                                {enabledModels.map(m => (
+                                    <option key={m} value={m}>{modelLabel(m)}</option>
+                                ))}
+                            </select>
+                        ) : (
+                            <span className="text-gray-400 text-sm bg-gray-800 px-3 py-2 rounded border border-gray-700">
+                                Model: {modelLabel(enabledModels[0] || 'SMA')}
+                            </span>
+                        )}
                     </div>
 
                     <div className="flex gap-4 text-sm hidden md:flex">

@@ -14,6 +14,7 @@ import {
     LogOut,
     Smartphone,
     Activity,
+    Cpu,
 } from 'lucide-react';
 
 export default function SuperAdminNav() {
@@ -29,6 +30,7 @@ export default function SuperAdminNav() {
         { name: 'DB Maintenance Tools', href: '/super-admin/maintenance', icon: Database },
         { name: 'Database Backups', href: '/super-admin/backups', icon: Database },
         { name: 'Site Settings', href: '/super-admin/settings', icon: Settings },
+        { name: 'ML Models', href: '/super-admin/ml-models', icon: Cpu },
         { name: 'Mail Accounts', href: '/super-admin/mail-accounts', icon: Settings },
         { name: 'Report Builder', href: '/super-admin/reports/custom', icon: FileBarChart },
         { name: 'System Logs', href: '/super-admin/system-logs', icon: Activity },

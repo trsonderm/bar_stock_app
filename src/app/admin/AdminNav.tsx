@@ -253,6 +253,13 @@ export default function AdminNav({ user, children }: { user: NavUser, children: 
                     <ProLockedItem text="Scheduler" icon={<ScheduleIcon />} />
                 )}
 
+                {/* INSIGHTS (Pro only) */}
+                {isPro ? (
+                  <DrawerItem text="Insights" icon={<AutoGraphIcon />} href="/admin/insights" badge="AI" />
+                ) : (
+                  <ProLockedItem text="Insights" icon={<AutoGraphIcon />} />
+                )}
+
                 {/* SETTINGS FOLDER */}
                 <ListItem disablePadding sx={{ display: 'block' }}>
                     <ListItemButton onClick={() => setSettingsOpen(!settingsOpen)} sx={{ minHeight: 48, pl: 2 }}>
