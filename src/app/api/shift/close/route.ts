@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
 
     const totalPayouts = payouts.reduce((sum: number, p: any) => sum + n(p.amount), 0);
     const ccTipsCashAmount = ccTipsCashPayout ? n(ccTips) : 0;
-    const bagAmount = n(bankEnd) - n(bankStart) - totalPayouts - ccTipsCashAmount;
+    const bagAmount = n(bankEnd) - totalPayouts - ccTipsCashAmount;
     const overShort =
         n(bankEnd) - (n(bankStart) + n(cashSales) + n(cashTips) - totalPayouts - ccTipsCashAmount);
 

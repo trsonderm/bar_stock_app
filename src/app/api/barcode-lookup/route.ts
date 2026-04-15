@@ -14,6 +14,8 @@ interface LookupResult {
     item_id?: number; // if found in local inventory
     raw?: any;
     external_available?: boolean;
+    checked_local?: boolean;
+    checked_external?: boolean;
 }
 
 async function fetchExternalLookup(barcode: string, config: BottleLookupConfig): Promise<LookupResult | null> {
@@ -123,12 +125,22 @@ export async function GET(req: NextRequest) {
         if (row) config = { ...config, ...JSON.parse(row.value) };
     } catch { }
 
-    // 1. Local lookup — search items by barcode column, then by name
+    let checkedLocal = false;
+    let checkedExternal = false;
+
+    // 1. Local lookup — check JSONB barcodes array AND legacy barcode TEXT column
     if (config.local_lookup_enabled) {
+        checkedLocal = true;
         try {
-            // Try exact barcode match first
             const byBarcode = await db.one(
-                `SELECT id, name, type, secondary_type, unit_cost FROM items WHERE organization_id = $1 AND barcodes ? $2 LIMIT 1`,
+                `SELECT id, name, type, secondary_type, unit_cost
+                 FROM items
+                 WHERE organization_id = $1
+                   AND (
+                     (barcodes IS NOT NULL AND jsonb_typeof(barcodes) = 'array' AND barcodes @> to_jsonb($2::text))
+                     OR barcode = $2
+                   )
+                 LIMIT 1`,
                 [session.organizationId, barcode]
             );
             if (byBarcode) {
@@ -143,23 +155,29 @@ export async function GET(req: NextRequest) {
                     item_id: byBarcode.id,
                 } as LookupResult);
             }
-        } catch { }
+        } catch (e) {
+            console.error('[barcode-lookup local]', e);
+        }
     }
 
     // 2. External lookup
-    if (!localOnly && config.external_lookup_enabled && config.external_lookup_provider !== 'none') {
+    const externalEnabled = !localOnly && config.external_lookup_enabled && config.external_lookup_provider !== 'none';
+    if (externalEnabled) {
+        checkedExternal = true;
         try {
             const result = await fetchExternalLookup(barcode, config);
-            if (result) return NextResponse.json(result);
+            if (result) return NextResponse.json({ ...result, checked_local: checkedLocal, checked_external: true });
         } catch (e) {
             console.error('[barcode-lookup external]', e);
         }
     }
 
-    return NextResponse.json({ 
-        found: false, 
-        source: null, 
+    return NextResponse.json({
+        found: false,
+        source: null,
         barcode,
-        external_available: config.external_lookup_enabled && config.external_lookup_provider !== 'none' 
+        checked_local: checkedLocal,
+        checked_external: checkedExternal,
+        external_available: config.external_lookup_enabled && config.external_lookup_provider !== 'none',
     } as LookupResult);
 }

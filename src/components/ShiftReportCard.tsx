@@ -182,9 +182,14 @@ export default function ShiftReportCard({ shift, orgName = 'TopShelf', isPrint =
                         <div style={{ borderTop: '2px solid #d1d5db', margin: '0.75rem 0' }} />
 
                         <div style={{ ...row, fontWeight: 700, fontSize: '1rem' }}>
-                            <span>BAG AMOUNT</span>
+                            <span>{bagAmount < 0 ? 'NEGATIVE DEPOSIT' : 'BAG AMOUNT'}</span>
                             <span style={{ color: bagColor, fontWeight: 800 }}>{fmt(bagAmount)}</span>
                         </div>
+                        {bagAmount < 0 && (
+                            <div style={{ fontSize: '0.75rem', color: '#ef4444', marginTop: '0.15rem', paddingLeft: '0.1rem' }}>
+                                {fmt(Math.abs(bagAmount))} owed — CC tips payout exceeded cash in drawer
+                            </div>
+                        )}
                         <div style={{ ...row, fontWeight: 700, fontSize: '1rem', marginTop: '0.5rem' }}>
                             <span>OVER/SHORT</span>
                             <span style={{ color: overShortColor, fontWeight: 800 }}>{fmt(overShort)}</span>

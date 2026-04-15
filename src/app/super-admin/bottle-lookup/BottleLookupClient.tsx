@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 interface Config {
     local_lookup_enabled: boolean;
@@ -12,6 +12,10 @@ interface Config {
     save_scanned_barcodes: boolean;
     fallback_to_manual: boolean;
 }
+
+type StepStatus = 'checking' | 'hit' | 'miss' | 'error' | 'skipped';
+interface Step { step: string; status: StepStatus; message: string; durationMs?: number; result?: Record<string, unknown> }
+interface TestState { running: boolean; steps: Step[]; done: boolean; success: boolean; result: Record<string, unknown> | null; error?: string }
 
 const DEFAULT: Config = {
     local_lookup_enabled: true,
@@ -53,6 +57,40 @@ export default function BottleLookupClient() {
     };
 
     const set = (key: keyof Config, value: any) => setConfig(prev => ({ ...prev, [key]: value }));
+
+    // ── Live lookup tester ──────────────────────────────────────────────────
+    const [testBarcode, setTestBarcode] = useState('');
+    const [test, setTest] = useState<TestState>({ running: false, steps: [], done: false, success: false, result: null });
+    const esRef = useRef<EventSource | null>(null);
+
+    const runTest = () => {
+        if (!testBarcode.trim() || test.running) return;
+        esRef.current?.close();
+        setTest({ running: true, steps: [], done: false, success: false, result: null });
+
+        const es = new EventSource(`/api/super-admin/bottle-lookup/test?barcode=${encodeURIComponent(testBarcode.trim())}`);
+        esRef.current = es;
+
+        es.addEventListener('step', (e) => {
+            const step: Step = JSON.parse(e.data);
+            setTest(prev => ({ ...prev, steps: [...prev.steps, step] }));
+        });
+        es.addEventListener('done', (e) => {
+            const d = JSON.parse(e.data);
+            setTest(prev => ({ ...prev, running: false, done: true, success: d.success, result: d.result ?? null, error: d.error }));
+            es.close();
+        });
+        es.addEventListener('error', (e) => {
+            const msg = (e as MessageEvent).data ? JSON.parse((e as MessageEvent).data).message : 'Connection error';
+            setTest(prev => ({ ...prev, running: false, done: true, success: false, error: msg }));
+            es.close();
+        });
+        es.onerror = () => {
+            setTest(prev => ({ ...prev, running: false, done: true, success: false, error: prev.error ?? 'Stream interrupted' }));
+            es.close();
+        };
+    };
+    // ───────────────────────────────────────────────────────────────────────
 
     if (loading) return <div style={{ color: '#9ca3af', padding: '2rem' }}>Loading...</div>;
 
@@ -147,6 +185,103 @@ export default function BottleLookupClient() {
                     <li>If <strong>auto-fill</strong> is enabled, product name and type fields are pre-populated.</li>
                     <li>If nothing is found, the barcode is shown and the user fills details manually.</li>
                 </ol>
+            </div>
+
+            {/* Live Lookup Tester */}
+            <div style={{ background: '#1f2937', border: '1px solid #374151', borderRadius: '8px', marginBottom: '1.5rem', overflow: 'hidden' }}>
+                <div style={{ background: '#111827', padding: '0.6rem 1rem', borderBottom: '1px solid #374151', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span style={{ color: '#d1d5db', fontWeight: 600, fontSize: '0.9rem' }}>Live Lookup Test</span>
+                    <span style={{ color: '#6b7280', fontSize: '0.8rem' }}>— enter a barcode to test against saved settings</span>
+                </div>
+                <div style={{ padding: '1rem' }}>
+                    <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem' }}>
+                        <input
+                            type="text"
+                            value={testBarcode}
+                            onChange={e => setTestBarcode(e.target.value)}
+                            onKeyDown={e => e.key === 'Enter' && runTest()}
+                            placeholder="e.g. 082184090466"
+                            style={{ ...inputStyle, flex: 1 }}
+                        />
+                        <button
+                            onClick={runTest}
+                            disabled={test.running || !testBarcode.trim()}
+                            style={{
+                                background: test.running ? '#374151' : '#7c3aed',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '6px',
+                                padding: '0.4rem 1.25rem',
+                                cursor: test.running || !testBarcode.trim() ? 'not-allowed' : 'pointer',
+                                fontWeight: 600,
+                                fontSize: '0.875rem',
+                                whiteSpace: 'nowrap',
+                                opacity: !testBarcode.trim() ? 0.5 : 1,
+                            }}
+                        >
+                            {test.running ? 'Testing…' : '▶ Run Test'}
+                        </button>
+                    </div>
+
+                    {/* Steps */}
+                    {(test.steps.length > 0 || test.running) && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginBottom: '0.75rem' }}>
+                            {test.steps.map((s, i) => {
+                                const icon = s.status === 'checking' ? '⏳'
+                                    : s.status === 'hit' ? '✅'
+                                    : s.status === 'miss' ? '🔍'
+                                    : s.status === 'error' ? '❌'
+                                    : '⏭';
+                                const color = s.status === 'hit' ? '#4ade80'
+                                    : s.status === 'error' ? '#f87171'
+                                    : s.status === 'miss' ? '#facc15'
+                                    : s.status === 'skipped' ? '#6b7280'
+                                    : '#93c5fd';
+                                return (
+                                    <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', background: '#0f172a', borderRadius: '6px', padding: '0.5rem 0.75rem', border: `1px solid ${color}33` }}>
+                                        <span style={{ fontSize: '0.9rem', flexShrink: 0, marginTop: '0.05rem' }}>{icon}</span>
+                                        <div style={{ flex: 1 }}>
+                                            <div style={{ color, fontSize: '0.875rem', fontWeight: s.status === 'hit' ? 600 : 400 }}>{s.message}</div>
+                                            {s.durationMs !== undefined && (
+                                                <div style={{ color: '#4b5563', fontSize: '0.75rem', marginTop: '0.1rem' }}>{s.durationMs}ms</div>
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                            {test.running && (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0.75rem', color: '#6b7280', fontSize: '0.8rem' }}>
+                                    <span style={{ animation: 'spin 1s linear infinite', display: 'inline-block' }}>⟳</span> Waiting for response…
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Result card */}
+                    {test.done && test.result && (
+                        <div style={{ background: '#052e16', border: '1px solid #10b981', borderRadius: '6px', padding: '0.75rem 1rem' }}>
+                            <div style={{ color: '#4ade80', fontWeight: 700, fontSize: '0.875rem', marginBottom: '0.5rem' }}>Product Returned</div>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                                <tbody>
+                                    {Object.entries(test.result).filter(([, v]) => v !== undefined && v !== null && v !== '').map(([k, v]) => (
+                                        <tr key={k}>
+                                            <td style={{ color: '#6b7280', padding: '0.2rem 0.5rem 0.2rem 0', verticalAlign: 'top', width: '120px', textTransform: 'capitalize' }}>{k.replace(/_/g, ' ')}</td>
+                                            <td style={{ color: '#d1d5db', padding: '0.2rem 0', wordBreak: 'break-word' }}>
+                                                {Array.isArray(v) ? v.join(', ') : String(v)}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+
+                    {test.done && !test.success && (
+                        <div style={{ background: '#1c1917', border: '1px solid #78350f', borderRadius: '6px', padding: '0.6rem 0.75rem', color: '#fbbf24', fontSize: '0.85rem' }}>
+                            {test.error ?? 'Barcode not found in any enabled source.'}
+                        </div>
+                    )}
+                </div>
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>

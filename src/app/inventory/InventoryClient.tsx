@@ -442,15 +442,33 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
             const res = await fetch(`/api/barcode-lookup?barcode=${encodeURIComponent(barcode)}`);
             const data = await res.json();
             if (data.found && data.item_id) {
+                // Matched a local inventory item directly
                 setScanResult({ barcode, item_id: data.item_id, name: data.name });
-            } else {
-                // Try matching by name in current items list
-                const found = items.find(i => i.name.toLowerCase() === (data.name || '').toLowerCase());
-                if (found) {
-                    setScanResult({ barcode, item_id: found.id, name: found.name });
+            } else if (data.found && data.name) {
+                // External lookup found a product name — try fuzzy match against local inventory
+                const exact = items.find(i => i.name.toLowerCase() === data.name.toLowerCase());
+                const fuzzy = !exact && items.find(i =>
+                    i.name.toLowerCase().includes(data.name.toLowerCase().split(' ')[0]) ||
+                    data.name.toLowerCase().includes(i.name.toLowerCase().split(' ')[0])
+                );
+                const match = exact || fuzzy;
+                if (match) {
+                    setScanResult({ barcode, item_id: match.id, name: match.name });
                 } else {
                     setScanResult({ barcode });
-                    setScanError(data.name ? `"${data.name}" not found in your inventory.` : `Barcode ${barcode} not found in inventory.`);
+                    setScanError(`Found "${data.name}" via web lookup — not in your inventory. Search by name or add it first.`);
+                }
+            } else {
+                setScanResult({ barcode });
+                // Build a clear message about what was checked
+                const checked = [];
+                if (data.checked_local) checked.push('local inventory');
+                if (data.checked_external) checked.push('external database');
+                const checkedMsg = checked.length ? ` (checked: ${checked.join(' + ')})` : '';
+                if (!data.checked_external && data.external_available) {
+                    setScanError(`Barcode ${barcode} not found locally. External lookup is available — enable it in Super Admin → Bottle Lookup.`);
+                } else {
+                    setScanError(`Barcode ${barcode} not found${checkedMsg}.`);
                 }
             }
         } catch {

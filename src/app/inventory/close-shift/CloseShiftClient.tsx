@@ -535,7 +535,7 @@ export default function CloseShiftClient({ user }: CloseShiftClientProps) {
         const totalPayouts = payouts.reduce((sum, p) => sum + n(p.amount), 0);
         const ccTipsCashAmount = form.ccTipsCashPayout ? n(form.ccTips) : 0;
         const expectedCashInDrawer = n(form.bankStart) + n(form.cashSales) + n(form.cashTips) - totalPayouts - ccTipsCashAmount;
-        const bagAmount = n(form.bankEnd) - n(form.bankStart) - totalPayouts - ccTipsCashAmount;
+        const bagAmount = n(form.bankEnd) - totalPayouts - ccTipsCashAmount;
         const overShort = n(form.bankEnd) - expectedCashInDrawer;
         const totalCashIn = n(form.cashSales) + n(form.cashTips);
         const totalCCRevenue = n(form.ccSales) + n(form.ccTips);
@@ -733,28 +733,55 @@ export default function CloseShiftClient({ user }: CloseShiftClientProps) {
                     </div>
 
                     {form.bankEnd && (
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                            <div style={{
-                                background: '#0f172a',
-                                borderRadius: '0.5rem',
-                                padding: '0.75rem 1rem',
-                                border: `1px solid ${colorNum(computed.bagAmount)}44`,
-                            }}>
-                                <div style={{ color: '#9ca3af', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Bag Amount</div>
-                                <div style={{ color: colorNum(computed.bagAmount), fontSize: '1.5rem', fontWeight: 700 }}>{fmt(computed.bagAmount)}</div>
-                                <div style={{ color: '#6b7280', fontSize: '0.75rem' }}>Amount going to safe</div>
+                        <>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                                <div style={{
+                                    background: '#0f172a',
+                                    borderRadius: '0.5rem',
+                                    padding: '0.75rem 1rem',
+                                    border: `1px solid ${colorNum(computed.bagAmount)}44`,
+                                }}>
+                                    <div style={{ color: '#9ca3af', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Bag Amount</div>
+                                    <div style={{ color: colorNum(computed.bagAmount), fontSize: '1.5rem', fontWeight: 700 }}>{fmt(computed.bagAmount)}</div>
+                                    {computed.bagAmount < 0
+                                        ? <div style={{ color: '#ef4444', fontSize: '0.75rem', fontWeight: 600 }}>Negative Deposit — {fmt(Math.abs(computed.bagAmount))} owed in CC tips</div>
+                                        : <div style={{ color: '#6b7280', fontSize: '0.75rem' }}>Amount going to safe</div>
+                                    }
+                                </div>
+                                <div style={{
+                                    background: '#0f172a',
+                                    borderRadius: '0.5rem',
+                                    padding: '0.75rem 1rem',
+                                    border: `1px solid ${colorNum(computed.overShort)}44`,
+                                }}>
+                                    <div style={{ color: '#9ca3af', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Over / Short</div>
+                                    <div style={{ color: colorNum(computed.overShort), fontSize: '1.5rem', fontWeight: 700 }}>{fmt(computed.overShort)}</div>
+                                    <div style={{ color: '#6b7280', fontSize: '0.75rem' }}>{computed.overShort >= 0 ? 'You are over' : 'You are short'}</div>
+                                </div>
                             </div>
-                            <div style={{
-                                background: '#0f172a',
-                                borderRadius: '0.5rem',
-                                padding: '0.75rem 1rem',
-                                border: `1px solid ${colorNum(computed.overShort)}44`,
-                            }}>
-                                <div style={{ color: '#9ca3af', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Over / Short</div>
-                                <div style={{ color: colorNum(computed.overShort), fontSize: '1.5rem', fontWeight: 700 }}>{fmt(computed.overShort)}</div>
-                                <div style={{ color: '#6b7280', fontSize: '0.75rem' }}>{computed.overShort >= 0 ? 'You are over' : 'You are short'}</div>
-                            </div>
-                        </div>
+                            {Math.abs(computed.overShort) > 0.005 && (
+                                <div style={{
+                                    marginTop: '0.75rem',
+                                    background: '#3b1515',
+                                    border: '1px solid #ef4444',
+                                    borderRadius: '0.5rem',
+                                    padding: '0.75rem 1rem',
+                                    display: 'flex',
+                                    alignItems: 'flex-start',
+                                    gap: '0.5rem',
+                                }}>
+                                    <span style={{ fontSize: '1rem', flexShrink: 0 }}>⚠️</span>
+                                    <div>
+                                        <div style={{ color: '#fca5a5', fontWeight: 700, fontSize: '0.875rem' }}>
+                                            Numbers don&apos;t match — {computed.overShort > 0 ? 'Over' : 'Short'} by {fmt(Math.abs(computed.overShort))}
+                                        </div>
+                                        <div style={{ color: '#f87171', fontSize: '0.8rem', marginTop: '0.2rem' }}>
+                                            Check your cash sales, tips, and bank end count until Over/Short reaches $0.00.
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </>
                     )}
                 </div>
 
