@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
-import { DEFAULT_BOTTLE_LOOKUP_CONFIG, BottleLookupConfig } from '@/app/api/super-admin/bottle-lookup/route';
+import { DEFAULT_BOTTLE_LOOKUP_CONFIG, BottleLookupConfig } from '@/lib/bottle-lookup-config';
 
 interface LookupResult {
     found: boolean;
