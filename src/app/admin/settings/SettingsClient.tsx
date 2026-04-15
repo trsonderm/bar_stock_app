@@ -31,6 +31,7 @@ export default function SettingsClient() {
         workday_start: '06:00',
         profit_reporting_mode: 'off',           // 'off' | 'per_item' | 'total'
         order_confirmation_recipients: '[]',    // JSON array of user IDs
+        receipt_mode: 'combined',               // 'combined' | 'separate'
     });
 
     const [users, setUsers] = useState<any[]>([]);
@@ -79,6 +80,10 @@ export default function SettingsClient() {
     const [saving, setSaving] = useState(false);
     const [registeringDevice, setRegisteringDevice] = useState(false);
 
+    // Payout Types
+    const [payoutTypes, setPayoutTypes] = useState<{ id: number; name: string }[]>([]);
+    const [newPayoutName, setNewPayoutName] = useState('');
+
     // Branding
     const [branding, setBranding] = useState({
         logo_url: null as string | null,
@@ -110,6 +115,7 @@ export default function SettingsClient() {
             });
         fetchOptions();
         fetchUsers();
+        fetchPayoutTypes();
     }, []);
 
     const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
@@ -140,6 +146,40 @@ export default function SettingsClient() {
 
     const fetchUsers = () => {
         fetch('/api/admin/users').then(r => r.json()).then(d => setUsers(d.users || []));
+    };
+
+    const fetchPayoutTypes = () => {
+        fetch('/api/admin/payout-types')
+            .then(r => r.json())
+            .then(d => setPayoutTypes(d.payoutTypes || []));
+    };
+
+    const handleAddPayoutType = async (e: React.FormEvent) => {
+        e.preventDefault();
+        const name = newPayoutName.trim();
+        if (!name) return;
+        const res = await fetch('/api/admin/payout-types', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name }),
+        });
+        if (res.ok) {
+            setNewPayoutName('');
+            fetchPayoutTypes();
+        } else {
+            const d = await res.json();
+            alert(d.error || 'Failed to add payout type');
+        }
+    };
+
+    const handleDeletePayoutType = async (id: number) => {
+        if (!confirm('Delete this payout type?')) return;
+        await fetch('/api/admin/payout-types', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id }),
+        });
+        fetchPayoutTypes();
     };
 
     const handleAddOption = async (e: React.FormEvent) => {
@@ -855,6 +895,82 @@ export default function SettingsClient() {
                             onChange={e => setNewOption(e.target.value)}
                             placeholder="New Option (e.g. Less than 3 shots)"
                             className={styles.table}
+                            style={{ background: '#1f2937', color: 'white', padding: '0.5rem', border: '1px solid #374151', borderRadius: '0.25rem', flex: 1 }}
+                        />
+                        <button type="submit" style={{ padding: '0.5rem 1rem', background: '#10b981', color: 'white', border: 'none', borderRadius: '0.25rem', cursor: 'pointer' }}>Add</button>
+                    </form>
+                </div>
+
+                {/* Shift Close: Receipt Mode */}
+                <div className={styles.card} style={{ gridColumn: 'span 2' }}>
+                    <div className={styles.cardTitle}>Register Receipt Mode</div>
+                    <p style={{ color: '#9ca3af', fontSize: '0.9rem', marginBottom: '1rem' }}>
+                        Combined: register receipt has all totals. Separate: credit card machine has a separate batch report.
+                    </p>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1.25rem' }}>
+                        <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', cursor: 'pointer' }}>
+                            <input
+                                type="radio"
+                                name="receipt_mode"
+                                value="combined"
+                                checked={settings.receipt_mode === 'combined'}
+                                onChange={() => setSettings(prev => ({ ...prev, receipt_mode: 'combined' }))}
+                                style={{ marginTop: '3px' }}
+                            />
+                            <div>
+                                <span style={{ color: 'white', fontWeight: 500 }}>Combined</span>
+                                <div style={{ color: '#6b7280', fontSize: '0.8rem' }}>One register receipt contains cash and credit card totals</div>
+                            </div>
+                        </label>
+                        <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', cursor: 'pointer' }}>
+                            <input
+                                type="radio"
+                                name="receipt_mode"
+                                value="separate"
+                                checked={settings.receipt_mode === 'separate'}
+                                onChange={() => setSettings(prev => ({ ...prev, receipt_mode: 'separate' }))}
+                                style={{ marginTop: '3px' }}
+                            />
+                            <div>
+                                <span style={{ color: 'white', fontWeight: 500 }}>Separate</span>
+                                <div style={{ color: '#6b7280', fontSize: '0.8rem' }}>Register receipt for cash totals; separate CC batch report for card totals</div>
+                            </div>
+                        </label>
+                    </div>
+                    <button onClick={handleSubmit} disabled={saving} style={{ padding: '0.5rem 1rem', background: '#3b82f6', color: 'white', borderRadius: '0.25rem', border: 'none', cursor: 'pointer' }}>
+                        Save Setting
+                    </button>
+                </div>
+
+                {/* Shift Close Payout Types */}
+                <div className={styles.card} style={{ gridColumn: 'span 2' }}>
+                    <div className={styles.cardTitle}>Shift Close Payout Types</div>
+                    <p style={{ color: '#9ca3af', fontSize: '0.9rem', marginBottom: '1rem' }}>
+                        These appear as options when staff close their shifts.
+                    </p>
+                    <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 1rem 0' }}>
+                        {payoutTypes.map(pt => (
+                            <li key={pt.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 0.75rem', background: '#1f2937', marginBottom: '0.5rem', borderRadius: '0.375rem' }}>
+                                <span style={{ color: '#f9fafb' }}>{pt.name}</span>
+                                <button
+                                    onClick={() => handleDeletePayoutType(pt.id)}
+                                    style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', fontSize: '1rem' }}
+                                    title="Delete"
+                                >
+                                    🗑
+                                </button>
+                            </li>
+                        ))}
+                        {payoutTypes.length === 0 && (
+                            <li style={{ color: '#6b7280', fontSize: '0.9rem', padding: '0.5rem 0' }}>No payout types configured.</li>
+                        )}
+                    </ul>
+                    <form onSubmit={handleAddPayoutType} style={{ display: 'flex', gap: '0.5rem' }}>
+                        <input
+                            value={newPayoutName}
+                            onChange={e => setNewPayoutName(e.target.value)}
+                            placeholder="New payout type (e.g. DJ, Karaoke)"
+                            maxLength={100}
                             style={{ background: '#1f2937', color: 'white', padding: '0.5rem', border: '1px solid #374151', borderRadius: '0.25rem', flex: 1 }}
                         />
                         <button type="submit" style={{ padding: '0.5rem 1rem', background: '#10b981', color: 'white', border: 'none', borderRadius: '0.25rem', cursor: 'pointer' }}>Add</button>

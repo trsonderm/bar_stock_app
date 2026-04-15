@@ -330,3 +330,41 @@ CREATE INDEX IF NOT EXISTS idx_system_logs_category   ON system_logs (category);
 DO $$ BEGIN
   ALTER TABLE users ADD COLUMN hide_from_scheduler BOOLEAN NOT NULL DEFAULT FALSE;
 EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
+-- =========================================================
+-- 19. Payout types for close shift
+-- =========================================================
+CREATE TABLE IF NOT EXISTS payout_types (
+  id              SERIAL PRIMARY KEY,
+  organization_id INT NOT NULL,
+  name            VARCHAR(100) NOT NULL,
+  sort_order      INT DEFAULT 0,
+  created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- =========================================================
+-- 20. Shift close records
+-- =========================================================
+CREATE TABLE IF NOT EXISTS shift_closes (
+  id                    SERIAL PRIMARY KEY,
+  organization_id       INT NOT NULL,
+  location_id           INT,
+  user_id               INT NOT NULL,
+  closed_at             TIMESTAMPTZ DEFAULT NOW(),
+  bank_start            DECIMAL(10,2) DEFAULT 0,
+  bank_end              DECIMAL(10,2) DEFAULT 0,
+  cash_sales            DECIMAL(10,2) DEFAULT 0,
+  cash_tips             DECIMAL(10,2) DEFAULT 0,
+  cc_sales              DECIMAL(10,2) DEFAULT 0,
+  cc_tips               DECIMAL(10,2) DEFAULT 0,
+  payouts_json          JSONB DEFAULT '[]',
+  cc_tips_cash_payout   BOOLEAN DEFAULT FALSE,
+  bag_amount            DECIMAL(10,2) DEFAULT 0,
+  over_short            DECIMAL(10,2) DEFAULT 0,
+  notes                 TEXT,
+  receipt_register_data JSONB,
+  receipt_cc_data       JSONB
+);
+
+-- General settings key for receipt mode
+-- No schema change needed — uses existing settings table

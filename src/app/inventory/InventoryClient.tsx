@@ -464,6 +464,16 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
                             Check In Order
                         </Button>
                     )}
+                    {canSubtractStock && (
+                        <Button
+                            variant="outlined"
+                            color="warning"
+                            onClick={() => router.push('/inventory/close-shift')}
+                            size="small"
+                        >
+                            Close Shift
+                        </Button>
+                    )}
                     <Button
                         variant="outlined"
                         onClick={() => { fetchActivity(); setShowActivityModal(true); }}
