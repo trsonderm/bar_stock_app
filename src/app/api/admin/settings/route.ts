@@ -52,7 +52,8 @@ export async function POST(req: NextRequest) {
         'report_emails', 'report_time', 'low_stock_threshold',
         'backup_time', 'low_stock_alert_enabled', 'low_stock_alert_emails', 'low_stock_alert_time', 'report_title',
         'low_stock_alert_title',
-        'company_name', 'billing_email', 'track_bottle_levels', 'report_per_location'
+        'company_name', 'billing_email', 'track_bottle_levels', 'report_per_location',
+        'shift_report_emails', 'shift_report_schedule', 'shift_report_enabled', 'shift_report_title',
     ];
 
     try {

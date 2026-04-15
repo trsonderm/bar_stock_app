@@ -14,6 +14,7 @@ class Scheduler {
             { name: 'Billing Check', cron: '0 5 * * *', run: () => this.checkBilling() },
             { name: 'Report Schedules', cron: '* * * * *', run: () => this.runDueReportSchedules() },
             { name: 'Low Stock Alerts', cron: '* * * * *', run: () => this.runDueLowStockAlerts() },
+            { name: 'Shift Report Emails', cron: '* * * * *', run: () => this.runShiftReportEmails() },
         ];
     }
 
@@ -393,6 +394,15 @@ class Scheduler {
             }
         } catch (e) {
             console.error('[Scheduler] runDueLowStockAlerts error:', e);
+        }
+    }
+
+    private async runShiftReportEmails() {
+        try {
+            const { runShiftReportSchedule } = await import('./shift-report-scheduler');
+            await runShiftReportSchedule();
+        } catch (e) {
+            console.error('[Scheduler] Shift report email error:', e);
         }
     }
 

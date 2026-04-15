@@ -21,6 +21,11 @@ export default function ReportingSettingsClient() {
         low_stock_alert_emails: { to: [], cc: [], bcc: [] } as any,
         low_stock_alert_schedule: { frequency: 'daily', time: '14:00' } as any, // Replaces alert_time
         low_stock_alert_title: 'URGENT: Low Stock Alert',
+
+        shift_report_emails: { to: [], cc: [], bcc: [] } as any,
+        shift_report_schedule: { frequency: 'per_shift', time: '00:00' } as any,
+        shift_report_enabled: 'false',
+        shift_report_title: 'Shift Close Report',
     });
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -54,6 +59,13 @@ export default function ReportingSettingsClient() {
                     } catch { return { frequency: 'daily', time: defaultTime }; }
                 };
 
+                const parseShiftSchedule = (val: string) => {
+                    try {
+                        if (!val) return { frequency: 'per_shift', time: '00:00' };
+                        return JSON.parse(val);
+                    } catch { return { frequency: 'per_shift', time: '00:00' }; }
+                };
+
                 setSettings(prev => ({
                     ...prev,
                     ...s,
@@ -62,6 +74,10 @@ export default function ReportingSettingsClient() {
                     low_stock_alert_emails: parseEmails(s.low_stock_alert_emails),
                     low_stock_alert_schedule: parseSchedule(s.low_stock_alert_time || s.low_stock_alert_schedule, '14:00'),
                     report_per_location: s.report_per_location || 'false',
+                    shift_report_emails: parseEmails(s.shift_report_emails),
+                    shift_report_schedule: parseShiftSchedule(s.shift_report_schedule),
+                    shift_report_enabled: s.shift_report_enabled || 'false',
+                    shift_report_title: s.shift_report_title || 'Shift Close Report',
                 }));
             }
             if (subData) {
@@ -373,6 +389,125 @@ export default function ReportingSettingsClient() {
                     <p style={{ color: '#6b7280', fontSize: '0.85rem', margin: '0.5rem 0 1.5rem' }}>
                         Email delivery is handled by the <strong style={{ color: '#9ca3af' }}>Reporting</strong> mail account configured in Super Admin → Mail Accounts.
                     </p>
+
+                    {/* Shift Report Email Section */}
+                    <div className={styles.cardTitle} style={{ marginTop: '2rem' }}>Shift Report Emails</div>
+
+                    <div style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <input
+                            type="checkbox"
+                            checked={settings.shift_report_enabled === 'true'}
+                            onChange={(e) => setSettings(prev => ({ ...prev, shift_report_enabled: e.target.checked ? 'true' : 'false' }))}
+                            className="w-4 h-4"
+                        />
+                        <label className={styles.statLabel} style={{ marginBottom: 0 }}>Enable Shift Close Report Emails</label>
+                    </div>
+
+                    {settings.shift_report_enabled === 'true' && (
+                        <div className="pl-6 border-l-2 border-gray-700 ml-2">
+                            <div className="mb-4">
+                                <label className={styles.statLabel}>Shift Report Recipients</label>
+                                <RecipientSelector
+                                    users={allUsers}
+                                    value={settings.shift_report_emails}
+                                    onChange={(val) => setSettings(prev => ({ ...prev, shift_report_emails: val }))}
+                                />
+                            </div>
+
+                            <div style={{ marginBottom: '1rem' }}>
+                                <label className={styles.statLabel}>Send Schedule</label>
+                                <p style={{ color: '#6b7280', fontSize: '0.8rem', marginBottom: '0.5rem', marginTop: '0.25rem' }}>
+                                    "Per Shift" sends immediately after each shift close. Other options aggregate shifts.
+                                </p>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                                    <div>
+                                        <label className={styles.statLabel}>Frequency</label>
+                                        <select
+                                            value={settings.shift_report_schedule?.frequency || 'per_shift'}
+                                            onChange={(e) => setSettings(prev => ({ ...prev, shift_report_schedule: { ...prev.shift_report_schedule, frequency: e.target.value } }))}
+                                            style={{ width: '100%', background: '#1f2937', color: 'white', border: '1px solid #374151', borderRadius: '0.25rem', padding: '0.5rem', fontSize: '0.875rem' }}
+                                        >
+                                            <option value="per_shift">Per Shift (immediate)</option>
+                                            <option value="daily">Daily Digest</option>
+                                            <option value="weekly">Weekly Summary</option>
+                                            <option value="monthly">Monthly Report</option>
+                                        </select>
+                                    </div>
+                                    {settings.shift_report_schedule?.frequency !== 'per_shift' && (
+                                        <div>
+                                            <label className={styles.statLabel}>Send Time</label>
+                                            <input
+                                                type="time"
+                                                value={settings.shift_report_schedule?.time || '08:00'}
+                                                onChange={(e) => setSettings(prev => ({ ...prev, shift_report_schedule: { ...prev.shift_report_schedule, time: e.target.value } }))}
+                                                style={{ width: '100%', background: '#1f2937', color: 'white', border: '1px solid #374151', borderRadius: '0.25rem', padding: '0.5rem', fontSize: '0.875rem' }}
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+
+                                {settings.shift_report_schedule?.frequency === 'weekly' && (
+                                    <div style={{ marginBottom: '1rem' }}>
+                                        <label className={styles.statLabel}>Day of Week</label>
+                                        <select
+                                            value={settings.shift_report_schedule?.dayOfWeek ?? 1}
+                                            onChange={(e) => setSettings(prev => ({ ...prev, shift_report_schedule: { ...prev.shift_report_schedule, dayOfWeek: parseInt(e.target.value) } }))}
+                                            style={{ width: '100%', background: '#1f2937', color: 'white', border: '1px solid #374151', borderRadius: '0.25rem', padding: '0.5rem', fontSize: '0.875rem' }}
+                                        >
+                                            <option value={0}>Sunday</option>
+                                            <option value={1}>Monday</option>
+                                            <option value={2}>Tuesday</option>
+                                            <option value={3}>Wednesday</option>
+                                            <option value={4}>Thursday</option>
+                                            <option value={5}>Friday</option>
+                                            <option value={6}>Saturday</option>
+                                        </select>
+                                    </div>
+                                )}
+
+                                {settings.shift_report_schedule?.frequency !== 'per_shift' && (
+                                    <div style={{ marginBottom: '1rem' }}>
+                                        <label className={styles.statLabel}>Shift Inclusion</label>
+                                        <div style={{ display: 'flex', gap: '1.5rem', marginTop: '0.375rem' }}>
+                                            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', color: (settings.shift_report_schedule?.shiftInclusion || 'all_shifts') === 'all_shifts' ? 'white' : '#9ca3af' }}>
+                                                <input
+                                                    type="radio"
+                                                    name="shift_inclusion"
+                                                    value="all_shifts"
+                                                    checked={(settings.shift_report_schedule?.shiftInclusion || 'all_shifts') === 'all_shifts'}
+                                                    onChange={() => setSettings(prev => ({ ...prev, shift_report_schedule: { ...prev.shift_report_schedule, shiftInclusion: 'all_shifts' } }))}
+                                                    style={{ accentColor: '#3b82f6' }}
+                                                />
+                                                All Shifts (each as separate section)
+                                            </label>
+                                            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', color: settings.shift_report_schedule?.shiftInclusion === 'summary_only' ? 'white' : '#9ca3af' }}>
+                                                <input
+                                                    type="radio"
+                                                    name="shift_inclusion"
+                                                    value="summary_only"
+                                                    checked={settings.shift_report_schedule?.shiftInclusion === 'summary_only'}
+                                                    onChange={() => setSettings(prev => ({ ...prev, shift_report_schedule: { ...prev.shift_report_schedule, shiftInclusion: 'summary_only' } }))}
+                                                    style={{ accentColor: '#3b82f6' }}
+                                                />
+                                                Summary Only
+                                            </label>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="mb-4">
+                                <label className={styles.statLabel}>Email Subject</label>
+                                <input
+                                    name="shift_report_title"
+                                    value={settings.shift_report_title}
+                                    onChange={handleChange}
+                                    className={styles.table}
+                                    style={{ background: '#1f2937', color: 'white', padding: '0.5rem', border: '1px solid #374151', borderRadius: '0.25rem', width: '100%' }}
+                                />
+                            </div>
+                        </div>
+                    )}
 
                     <div style={{ marginTop: '1rem', display: 'flex', gap: '1rem' }}>
                         <button

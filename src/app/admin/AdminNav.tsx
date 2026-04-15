@@ -44,6 +44,7 @@ import TrackChangesIcon from '@mui/icons-material/TrackChanges';
 import BuildIcon from '@mui/icons-material/Build';
 import ScheduleIcon from '@mui/icons-material/Schedule';
 import AutoGraphIcon from '@mui/icons-material/AutoGraph';
+import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 
 const drawerWidth = 260;
 
@@ -259,6 +260,9 @@ export default function AdminNav({ user, children }: { user: NavUser, children: 
                 ) : (
                   <ProLockedItem text="Insights" icon={<AutoGraphIcon />} />
                 )}
+
+                {/* SHIFT REPORTS */}
+                <DrawerItem text="Shift Reports" icon={<ReceiptLongIcon />} href="/admin/shift-reports" />
 
                 {/* SETTINGS FOLDER */}
                 <ListItem disablePadding sx={{ display: 'block' }}>

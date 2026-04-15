@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
+import { sendEmail } from '@/lib/mail';
+import { buildShiftReportHtml } from '@/lib/shift-report-email';
 
 export async function GET(req: NextRequest) {
     const session = await getSession();
@@ -128,6 +130,60 @@ export async function POST(req: NextRequest) {
             }),
         ]
     );
+
+    // Send per-shift email if configured
+    try {
+        const shiftSettings = await db.query(`
+            SELECT key, value FROM settings
+            WHERE organization_id = $1
+              AND key IN ('shift_report_enabled', 'shift_report_emails', 'shift_report_schedule', 'shift_report_title')
+        `, [organizationId]);
+
+        const settingsMap: Record<string, string> = {};
+        shiftSettings.forEach((r: any) => settingsMap[r.key] = r.value);
+
+        if (settingsMap.shift_report_enabled === 'true') {
+            let schedule: { frequency?: string } = { frequency: 'per_shift' };
+            try { if (settingsMap.shift_report_schedule) schedule = JSON.parse(settingsMap.shift_report_schedule); } catch { }
+
+            if (schedule.frequency === 'per_shift') {
+                let recipients: string[] = [];
+                try {
+                    const parsed = settingsMap.shift_report_emails ? JSON.parse(settingsMap.shift_report_emails) : null;
+                    if (parsed?.to) recipients = parsed.to;
+                    else if (settingsMap.shift_report_emails) recipients = settingsMap.shift_report_emails.split(',').map((e: string) => e.trim()).filter(Boolean);
+                } catch { }
+
+                if (recipients.length > 0 && result) {
+                    const org = await db.one('SELECT name FROM organizations WHERE id = $1', [organizationId]);
+                    const orgName = org?.name || 'TopShelf';
+
+                    // Fetch the full shift close with user/location names
+                    const fullShift = await db.one(`
+                        SELECT sc.*, u.first_name || ' ' || u.last_name AS user_name, l.name AS location_name
+                        FROM shift_closes sc
+                        LEFT JOIN users u ON sc.user_id = u.id
+                        LEFT JOIN locations l ON sc.location_id = l.id
+                        WHERE sc.id = $1
+                    `, [(result as any).id]);
+
+                    if (fullShift) {
+                        const subject = settingsMap.shift_report_title || 'Shift Close Report';
+                        const dateStr = new Date((result as any).closed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                        const html = buildShiftReportHtml(fullShift, orgName);
+                        await sendEmail('reporting', {
+                            to: recipients,
+                            subject: `${subject} — ${fullShift.user_name || 'Staff'} — ${dateStr}`,
+                            html,
+                            text: `Shift Close Report\nDate: ${dateStr}\nStaff: ${fullShift.user_name || 'N/A'}\nBag Amount: ${bagAmount}\nOver/Short: ${overShort}`,
+                        });
+                    }
+                }
+            }
+        }
+    } catch (e) {
+        console.error('[Shift Close] Per-shift email error:', e);
+    }
 
     return NextResponse.json({
         success: true,
