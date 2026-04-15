@@ -61,11 +61,26 @@ export default function AdminNav({ user, children }: { user: NavUser, children: 
 
     const [mobileOpen, setMobileOpen] = useState(false);
 
-    // Submenu states
+    // Submenu states — auto-open based on current path
     const [productOpen, setProductOpen] = useState(false);
     const [orderOpen, setOrderOpen] = useState(false);
     const [settingsOpen, setSettingsOpen] = useState(false);
     const [reportingOpen, setReportingOpen] = useState(false);
+
+    useEffect(() => {
+        if (pathname.startsWith('/admin/reports') || pathname.startsWith('/admin/reporting') || pathname.startsWith('/admin/shift-reports')) {
+            setReportingOpen(true);
+        }
+        if (pathname.startsWith('/admin/products') || pathname.startsWith('/admin/prices') || pathname.startsWith('/admin/audit')) {
+            setProductOpen(true);
+        }
+        if (pathname.startsWith('/admin/orders') || pathname.startsWith('/admin/reports/smart-order')) {
+            setOrderOpen(true);
+        }
+        if (pathname.startsWith('/admin/settings') || pathname.startsWith('/admin/categories') || pathname.startsWith('/admin/users') || pathname.startsWith('/admin/billing') || pathname.startsWith('/admin/suppliers')) {
+            setSettingsOpen(true);
+        }
+    }, [pathname]);
 
     // Locations and Top right menu state
     const [myLocations, setMyLocations] = useState<{ id: number, name: string }[]>([]);
