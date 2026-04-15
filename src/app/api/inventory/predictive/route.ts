@@ -39,8 +39,8 @@ export async function GET(req: NextRequest) {
             FROM activity_logs
             WHERE organization_id = $1
               AND action = 'SUBTRACT_STOCK'
-              AND timestamp >= NOW() - ($2 || ' days')::INTERVAL
-              AND (details->>'locationId')::int = $3
+              AND timestamp >= NOW() - ($2 * INTERVAL '1 day')
+              AND ($3::int IS NULL OR (details->>'locationId')::int = $3::int)
             GROUP BY 1, 2
             ORDER BY 2 ASC
         `, [orgId, ANALYSIS_DAYS, locationId]);
@@ -90,7 +90,7 @@ export async function GET(req: NextRequest) {
                     totalWeight += weight;
                 });
                 return weightedSum / totalWeight; // Weighted Daily Avg
-            } else if (modelType === 'LINEAR') {
+            } else if (modelType === 'LINEAR' || modelType === 'LINEAR_REGRESSION') {
                 // Linear Regression: y = mx + b
                 const n = denseHistory.length;
                 let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
