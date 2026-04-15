@@ -17,6 +17,7 @@ import {
     Cpu,
     ScanLine,
     HelpCircle,
+    Shield,
 } from 'lucide-react';
 
 export default function SuperAdminNav() {
@@ -32,6 +33,7 @@ export default function SuperAdminNav() {
         { name: 'DB Maintenance Tools', href: '/super-admin/maintenance', icon: Database },
         { name: 'Database Backups', href: '/super-admin/backups', icon: Database },
         { name: 'Site Settings', href: '/super-admin/settings', icon: Settings },
+        { name: 'Security', href: '/super-admin/security', icon: Shield },
         { name: 'ML Models', href: '/super-admin/ml-models', icon: Cpu },
         { name: 'Bottle Lookup', href: '/super-admin/bottle-lookup', icon: ScanLine },
         { name: 'Help Editor', href: '/super-admin/help-editor', icon: HelpCircle },

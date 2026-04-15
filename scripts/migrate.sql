@@ -408,3 +408,55 @@ CREATE TABLE IF NOT EXISTS help_articles (
   created_at  TIMESTAMPTZ DEFAULT NOW(),
   updated_at  TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- =========================================================
+-- 23. Security monitoring tables
+-- =========================================================
+
+-- Login attempt log (all successes + failures with IP/UA)
+CREATE TABLE IF NOT EXISTS login_attempts (
+  id              SERIAL PRIMARY KEY,
+  ip_address      TEXT NOT NULL,
+  user_agent      TEXT,
+  email           TEXT,
+  user_id         INT,
+  organization_id INT,
+  success         BOOLEAN NOT NULL DEFAULT FALSE,
+  fail_reason     TEXT,
+  attempted_at    TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_login_attempts_ip       ON login_attempts (ip_address);
+CREATE INDEX IF NOT EXISTS idx_login_attempts_email    ON login_attempts (email);
+CREATE INDEX IF NOT EXISTS idx_login_attempts_user_id  ON login_attempts (user_id);
+CREATE INDEX IF NOT EXISTS idx_login_attempts_at       ON login_attempts (attempted_at DESC);
+
+-- Security events audit log (blocks, locks, flags applied by super admin)
+CREATE TABLE IF NOT EXISTS security_events (
+  id           SERIAL PRIMARY KEY,
+  event_type   TEXT NOT NULL,
+  entity_id    TEXT,
+  note         TEXT,
+  reviewed_by  INT,
+  reviewed_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Account lockout column on users (idempotent)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name='users' AND column_name='is_locked'
+  ) THEN
+    ALTER TABLE users ADD COLUMN is_locked BOOLEAN DEFAULT FALSE;
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name='users' AND column_name='session_invalidated_at'
+  ) THEN
+    ALTER TABLE users ADD COLUMN session_invalidated_at TIMESTAMPTZ;
+  END IF;
+END $$;

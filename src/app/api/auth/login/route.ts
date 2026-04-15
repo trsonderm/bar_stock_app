@@ -6,7 +6,50 @@ import { validateStationToken } from '@/lib/dba';
 import * as fs from 'fs';
 import path from 'path';
 
+function getClientIp(req: NextRequest): string {
+    return (
+        req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
+        req.headers.get('x-real-ip') ||
+        'unknown'
+    );
+}
+
+async function recordLoginAttempt(opts: {
+    ip: string;
+    userAgent: string;
+    email: string | null;
+    userId: number | null;
+    organizationId: number | null;
+    success: boolean;
+    failReason: string | null;
+}) {
+    try {
+        await db.execute(
+            `INSERT INTO login_attempts (ip_address, user_agent, email, user_id, organization_id, success, fail_reason)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+            [opts.ip, opts.userAgent.slice(0, 512), opts.email, opts.userId, opts.organizationId, opts.success, opts.failReason]
+        );
+    } catch { /* non-blocking — table may not exist on old deployments */ }
+}
+
 export async function POST(req: NextRequest) {
+    const ip = getClientIp(req);
+    const userAgent = req.headers.get('user-agent') || '';
+
+    // Enforce IP block list
+    try {
+        const blockedRow = await db.one(
+            `SELECT value FROM system_settings WHERE key = 'security_blocked_ips' LIMIT 1`, []
+        ).catch(() => null);
+        if (blockedRow) {
+            const blocked: string[] = JSON.parse(blockedRow.value);
+            if (blocked.includes(ip)) {
+                await recordLoginAttempt({ ip, userAgent, email: null, userId: null, organizationId: null, success: false, failReason: 'ip_blocked' });
+                return NextResponse.json({ error: 'Access denied' }, { status: 403 });
+            }
+        }
+    } catch { /* non-fatal */ }
+
     try {
         const body = await req.json();
         const { pin, email, password } = body;
@@ -46,6 +89,12 @@ export async function POST(req: NextRequest) {
         }
 
         if (matchedUser) {
+            // Block login if account is locked by security system
+            if (matchedUser.is_locked) {
+                await recordLoginAttempt({ ip, userAgent, email: email || null, userId: matchedUser.id, organizationId: matchedUser.organization_id || 1, success: false, failReason: 'account_locked' });
+                return NextResponse.json({ error: 'Your account has been temporarily locked. Contact your administrator.' }, { status: 403 });
+            }
+
             // Block login if email verification is required and not yet verified
             if (email && password) {
                 const verifySetting = await db.one("SELECT value FROM system_settings WHERE key = 'require_email_verification'");
@@ -76,11 +125,28 @@ export async function POST(req: NextRequest) {
 
             const token = await createSessionToken(sessionUser);
 
+            await recordLoginAttempt({
+                ip, userAgent,
+                email: email || null,
+                userId: matchedUser.id,
+                organizationId: matchedUser.organization_id || 1,
+                success: true,
+                failReason: null,
+            });
+
             const response = NextResponse.json({ success: true, role: matchedUser.role, isSuperAdmin });
             response.cookies.set('session', token, COOKIE_OPTIONS);
 
             return response;
         } else {
+            await recordLoginAttempt({
+                ip, userAgent,
+                email: email || null,
+                userId: null,
+                organizationId: null,
+                success: false,
+                failReason: 'invalid_credentials',
+            });
             return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
         }
 
