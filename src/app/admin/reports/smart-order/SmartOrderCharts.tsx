@@ -130,7 +130,7 @@ export default function SmartOrderCharts({ suggestions, history, selectedItemNam
                                     <YAxis yAxisId="right" orientation="right" stroke="#ef4444" unit="d" />
                                     <Tooltip
                                         contentStyle={TOOLTIP_STYLE}
-                                        formatter={(value: any, name: string) => [safeNum(value), name]}
+                                        formatter={(value: any, name: string | undefined) => [safeNum(value), name ?? '']}
                                     />
                                     <Legend />
                                     <Bar yAxisId="left" dataKey="Stock" fill="#34d399" name="Current Stock" barSize={20} />
