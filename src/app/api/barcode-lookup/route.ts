@@ -5,7 +5,7 @@ import { DEFAULT_BOTTLE_LOOKUP_CONFIG, BottleLookupConfig } from '@/lib/bottle-l
 
 interface LookupResult {
     found: boolean;
-    source: 'local' | 'external' | null;
+    source: 'local' | 'site' | 'external' | null;
     barcode: string;
     name?: string;
     type?: string;
@@ -15,6 +15,7 @@ interface LookupResult {
     raw?: any;
     external_available?: boolean;
     checked_local?: boolean;
+    checked_site?: boolean;
     checked_external?: boolean;
 }
 
@@ -126,6 +127,7 @@ export async function GET(req: NextRequest) {
     } catch { }
 
     let checkedLocal = false;
+    let checkedSite = false;
     let checkedExternal = false;
 
     // 1. Local lookup — check JSONB barcodes array AND legacy barcode TEXT column
@@ -160,13 +162,39 @@ export async function GET(req: NextRequest) {
         }
     }
 
-    // 2. External lookup
+    // 2. Site bottle DB lookup
+    if (!localOnly && config.site_lookup_enabled) {
+        checkedSite = true;
+        try {
+            const siteRow = await db.one(
+                `SELECT id, barcode, brand, name, size, abv, type, secondary_type, image_data
+                 FROM site_bottle_db WHERE barcode = $1 LIMIT 1`,
+                [barcode]
+            );
+            if (siteRow) {
+                return NextResponse.json({
+                    found: true,
+                    source: 'site',
+                    barcode,
+                    name: siteRow.brand ? `${siteRow.brand} ${siteRow.name}` : siteRow.name,
+                    type: siteRow.type,
+                    secondary_type: siteRow.secondary_type,
+                    checked_local: checkedLocal,
+                    checked_site: true,
+                } as LookupResult);
+            }
+        } catch (e) {
+            console.error('[barcode-lookup site]', e);
+        }
+    }
+
+    // 3. External lookup
     const externalEnabled = !localOnly && config.external_lookup_enabled && config.external_lookup_provider !== 'none';
     if (externalEnabled) {
         checkedExternal = true;
         try {
             const result = await fetchExternalLookup(barcode, config);
-            if (result) return NextResponse.json({ ...result, checked_local: checkedLocal, checked_external: true });
+            if (result) return NextResponse.json({ ...result, checked_local: checkedLocal, checked_site: checkedSite, checked_external: true });
         } catch (e) {
             console.error('[barcode-lookup external]', e);
         }
@@ -177,6 +205,7 @@ export async function GET(req: NextRequest) {
         source: null,
         barcode,
         checked_local: checkedLocal,
+        checked_site: checkedSite,
         checked_external: checkedExternal,
         external_available: config.external_lookup_enabled && config.external_lookup_provider !== 'none',
     } as LookupResult);

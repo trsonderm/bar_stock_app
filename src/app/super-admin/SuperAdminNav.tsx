@@ -36,6 +36,7 @@ export default function SuperAdminNav() {
         { name: 'Security', href: '/super-admin/security', icon: Shield },
         { name: 'ML Models', href: '/super-admin/ml-models', icon: Cpu },
         { name: 'Bottle Lookup', href: '/super-admin/bottle-lookup', icon: ScanLine },
+        { name: 'Bottle Lookup DB', href: '/super-admin/bottle-lookup-db', icon: ScanLine },
         { name: 'Help Editor', href: '/super-admin/help-editor', icon: HelpCircle },
         { name: 'Mail Accounts', href: '/super-admin/mail-accounts', icon: Settings },
         { name: 'Report Builder', href: '/super-admin/reports/custom', icon: FileBarChart },

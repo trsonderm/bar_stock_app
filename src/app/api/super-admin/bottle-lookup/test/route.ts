@@ -140,6 +140,7 @@ export async function GET(req: NextRequest) {
                 const config = await loadConfig();
                 send('config', {
                     local_lookup_enabled: config.local_lookup_enabled,
+                    site_lookup_enabled: config.site_lookup_enabled,
                     external_lookup_enabled: config.external_lookup_enabled,
                     external_lookup_provider: config.external_lookup_provider,
                     has_upcitemdb_key: !!config.upcitemdb_api_key,
@@ -168,7 +169,33 @@ export async function GET(req: NextRequest) {
                     send('step', { step: 'local', status: 'skipped', message: 'Local lookup disabled.' } satisfies StepEvent);
                 }
 
-                // Step 2 — external
+                // Step 2 — site bottle DB
+                if (config.site_lookup_enabled) {
+                    send('step', { step: 'site', status: 'checking', message: 'Searching site bottle database...' } satisfies StepEvent);
+                    const t1 = Date.now();
+                    try {
+                        const siteRow = await db.one(
+                            `SELECT id, barcode, brand, name, size, abv, type, secondary_type FROM site_bottle_db WHERE barcode = $1 LIMIT 1`,
+                            [barcode]
+                        );
+                        const durationMs = Date.now() - t1;
+                        if (siteRow) {
+                            const displayName = siteRow.brand ? `${siteRow.brand} ${siteRow.name}` : siteRow.name;
+                            send('step', { step: 'site', status: 'hit', message: `Found in site DB: ${displayName}`, durationMs, result: siteRow } satisfies StepEvent);
+                            send('done', { success: true, source: 'site', result: siteRow });
+                            controller.close();
+                            return;
+                        } else {
+                            send('step', { step: 'site', status: 'miss', message: 'Not found in site bottle database.', durationMs } satisfies StepEvent);
+                        }
+                    } catch (e: any) {
+                        send('step', { step: 'site', status: 'error', message: `Site DB error: ${e?.message || 'unknown'}`, durationMs: Date.now() - t1 } satisfies StepEvent);
+                    }
+                } else {
+                    send('step', { step: 'site', status: 'skipped', message: 'Site bottle DB lookup disabled.' } satisfies StepEvent);
+                }
+
+                // Step 3 — external
                 if (!config.external_lookup_enabled || config.external_lookup_provider === 'none') {
                     send('step', { step: 'external', status: 'skipped', message: 'External lookup disabled.' } satisfies StepEvent);
                     send('done', { success: false, source: null, result: null });

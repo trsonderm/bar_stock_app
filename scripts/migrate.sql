@@ -472,3 +472,24 @@ BEGIN
     ALTER TABLE users ADD COLUMN session_invalidated_at TIMESTAMPTZ;
   END IF;
 END $$;
+
+-- =========================================================
+-- 24. Site Bottle Lookup Database (central barcode registry)
+-- =========================================================
+CREATE TABLE IF NOT EXISTS site_bottle_db (
+  id                    SERIAL PRIMARY KEY,
+  barcode               TEXT NOT NULL UNIQUE,
+  brand                 TEXT,
+  name                  TEXT NOT NULL,
+  size                  TEXT,
+  abv                   DECIMAL(5,2),
+  type                  TEXT,
+  secondary_type        TEXT,
+  image_data            TEXT,             -- base64 encoded bottle image
+  added_by              INT REFERENCES users(id) ON DELETE SET NULL,
+  imported_from_org_id  INT REFERENCES organizations(id) ON DELETE SET NULL,
+  created_at            TIMESTAMPTZ DEFAULT NOW(),
+  updated_at            TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_site_bottle_db_barcode ON site_bottle_db (barcode);
+CREATE INDEX IF NOT EXISTS idx_site_bottle_db_name    ON site_bottle_db (lower(name));

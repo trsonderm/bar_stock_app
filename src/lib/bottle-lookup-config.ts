@@ -1,5 +1,6 @@
 export interface BottleLookupConfig {
     local_lookup_enabled: boolean;
+    site_lookup_enabled: boolean;
     external_lookup_enabled: boolean;
     external_lookup_provider: 'upcitemdb' | 'barcodelookup' | 'open_food_facts' | 'none';
     upcitemdb_api_key: string;
@@ -11,6 +12,7 @@ export interface BottleLookupConfig {
 
 export const DEFAULT_BOTTLE_LOOKUP_CONFIG: BottleLookupConfig = {
     local_lookup_enabled: true,
+    site_lookup_enabled: false,
     external_lookup_enabled: false,
     external_lookup_provider: 'upcitemdb',
     upcitemdb_api_key: '',

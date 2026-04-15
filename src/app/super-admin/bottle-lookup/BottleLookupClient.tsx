@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 
 interface Config {
     local_lookup_enabled: boolean;
+    site_lookup_enabled: boolean;
     external_lookup_enabled: boolean;
     external_lookup_provider: string;
     upcitemdb_api_key: string;
@@ -19,6 +20,7 @@ interface TestState { running: boolean; steps: Step[]; done: boolean; success: b
 
 const DEFAULT: Config = {
     local_lookup_enabled: true,
+    site_lookup_enabled: false,
     external_lookup_enabled: false,
     external_lookup_provider: 'upcitemdb',
     upcitemdb_api_key: '',
@@ -109,6 +111,19 @@ export default function BottleLookupClient() {
                 <Row label="Save scanned barcodes" description="When a barcode is scanned and matched to a product, store it for future lookups.">
                     <Toggle value={config.save_scanned_barcodes} onChange={v => set('save_scanned_barcodes', v)} />
                 </Row>
+            </Section>
+
+            {/* Site Bottle DB Lookup */}
+            <Section title="Site Bottle Database Lookup">
+                <Row label="Enable site bottle database lookup" description={<>Search the <a href="/super-admin/bottle-lookup-db" style={{ color: '#60a5fa', textDecoration: 'none' }}>site-wide bottle database</a> after local lookup. Build the DB from the Bottle Lookup Database page.</>}>
+                    <Toggle value={config.site_lookup_enabled} onChange={v => set('site_lookup_enabled', v)} />
+                </Row>
+                {config.site_lookup_enabled && (
+                    <div style={{ background: '#1e3a5f', border: '1px solid #1d4ed8', borderRadius: '8px', padding: '0.75rem 1rem', fontSize: '0.85rem', color: '#93c5fd', marginBottom: '0.75rem', marginLeft: '1rem', marginRight: '1rem' }}>
+                        Lookup order when enabled: <strong>Local inventory → Site database → External API</strong>.
+                        Populate the site DB at <a href="/super-admin/bottle-lookup-db" style={{ color: '#60a5fa' }}>Bottle Lookup Database</a>.
+                    </div>
+                )}
             </Section>
 
             {/* External Lookup */}
@@ -309,7 +324,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
     );
 }
 
-function Row({ label, description, children }: { label: string; description?: string; children: React.ReactNode }) {
+function Row({ label, description, children }: { label: string; description?: React.ReactNode; children: React.ReactNode }) {
     return (
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem 1rem', borderBottom: '1px solid #374151', gap: '1rem' }}>
             <div style={{ flex: 1, minWidth: 0 }}>
