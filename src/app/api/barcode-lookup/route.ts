@@ -126,7 +126,7 @@ export async function GET(req: NextRequest) {
         try {
             // Try exact barcode match first
             const byBarcode = await db.one(
-                `SELECT id, name, type, secondary_type, unit_cost FROM items WHERE organization_id = $1 AND barcode = $2 LIMIT 1`,
+                `SELECT id, name, type, secondary_type, unit_cost FROM items WHERE organization_id = $1 AND barcodes ? $2 LIMIT 1`,
                 [session.organizationId, barcode]
             );
             if (byBarcode) {

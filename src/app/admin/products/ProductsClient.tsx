@@ -32,6 +32,7 @@ interface Item {
     order_unit_label?: string;
     order_unit_size?: number;
     use_category_qty_defaults?: boolean;
+    barcodes?: string[];
 }
 
 interface Category {
@@ -78,6 +79,7 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
         order_unit_size: '1',
         subtraction_presets: [1] as number[],
         custom_preset_input: '',
+        barcodes: [] as string[],
     });
 
     // Temp input for stock options
@@ -212,6 +214,7 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
             order_unit_size: '1',
             subtraction_presets: [1],
             custom_preset_input: '',
+            barcodes: [],
         });
         setTempOptionInput('');
         setTempOrderLabel('Pack');
@@ -265,15 +268,22 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
     const handleBarcodeScanForProduct = async (barcode: string) => {
         setShowBarcodeScanner(false);
         setScannedBarcode(barcode);
+        
+        // Always add the scanned barcode to the product's barcodes array
+        setFormData(prev => ({
+            ...prev,
+            barcodes: prev.barcodes.includes(barcode) ? prev.barcodes : [...prev.barcodes, barcode]
+        }));
+
         try {
             const res = await fetch(`/api/barcode-lookup?barcode=${encodeURIComponent(barcode)}`);
             const data = await res.json();
-            if (data.found) {
+            if (data.found && data.name) {
                 setFormData(prev => ({
                     ...prev,
-                    name: data.name || prev.name,
-                    type: data.type || prev.type,
-                    secondary_type: data.secondary_type || prev.secondary_type,
+                    name: prev.name || data.name,
+                    type: prev.type || data.type || 'Liquor',
+                    secondary_type: prev.secondary_type || data.secondary_type,
                 }));
             }
         } catch { }
@@ -325,6 +335,7 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
             order_unit_size: String(item.order_unit_size ?? 1),
             subtraction_presets: Array.isArray(item.stock_options) && item.stock_options.length > 0 ? item.stock_options : [1],
             custom_preset_input: '',
+            barcodes: Array.isArray(item.barcodes) ? item.barcodes : [],
         });
 
         setShowModal(true);
@@ -364,6 +375,7 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                 stock_unit_size: formData.use_category_qty_defaults ? undefined : parseInt(formData.stock_unit_size || '1'),
                 order_unit_label: formData.use_category_qty_defaults ? undefined : formData.order_unit_label,
                 order_unit_size: formData.use_category_qty_defaults ? undefined : parseInt(formData.order_unit_size || '1'),
+                barcodes: formData.barcodes,
             };
 
             const url = '/api/inventory' + (overrideOrgId ? `?orgId=${overrideOrgId}` : '');
@@ -725,6 +737,59 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                             </div>
                         )}
                         <form onSubmit={handleSave}>
+                            <div style={{ marginBottom: '1rem' }}>
+                                <label className={styles.statLabel}>Barcodes</label>
+                                {formData.barcodes.length > 0 ? (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                                        {formData.barcodes.map((bc, idx) => (
+                                            <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#374151', padding: '0.25rem 0.5rem', borderRadius: '4px', fontSize: '0.9rem', color: '#f3f4f6' }}>
+                                                <span>{bc}</span>
+                                                <button type="button" onClick={() => setFormData(prev => ({ ...prev, barcodes: prev.barcodes.filter(b => b !== bc) }))} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '1rem', lineHeight: 1 }}>×</button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div style={{ fontSize: '0.85rem', color: '#9ca3af', marginBottom: '0.5rem' }}>No barcodes assigned.</div>
+                                )}
+                                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                    <input 
+                                        type="text"
+                                        placeholder="Add barcode manually"
+                                        className={styles.input}
+                                        style={{ flex: 1 }}
+                                        onKeyDown={e => {
+                                            if (e.key === 'Enter' && e.currentTarget.value.trim()) {
+                                                e.preventDefault();
+                                                const bc = e.currentTarget.value.trim();
+                                                setFormData(prev => ({
+                                                    ...prev,
+                                                    barcodes: prev.barcodes.includes(bc) ? prev.barcodes : [...prev.barcodes, bc]
+                                                }));
+                                                e.currentTarget.value = '';
+                                            }
+                                        }}
+                                    />
+                                    <button 
+                                        type="button" 
+                                        onClick={(e) => {
+                                            const input = e.currentTarget.previousElementSibling as HTMLInputElement;
+                                            if (input && input.value.trim()) {
+                                                const bc = input.value.trim();
+                                                setFormData(prev => ({
+                                                    ...prev,
+                                                    barcodes: prev.barcodes.includes(bc) ? prev.barcodes : [...prev.barcodes, bc]
+                                                }));
+                                                input.value = '';
+                                            } else {
+                                                setShowBarcodeScanner(true);
+                                            }
+                                        }}
+                                        style={{ background: '#2563eb', color: 'white', border: 'none', borderRadius: '4px', padding: '0 1rem', cursor: 'pointer', fontWeight: 'bold' }}
+                                    >
+                                        Add/Scan
+                                    </button>
+                                </div>
+                            </div>
                             <div style={{ marginBottom: '1rem' }}>
                                 <label className={styles.statLabel}>Name</label>
                                 <input
