@@ -41,7 +41,7 @@ echo "PostgreSQL is ready."
 # All statements in migrate.sql are idempotent — safe to run on existing databases.
 # Uses DO $$ EXCEPTION WHEN duplicate_column ... END $$ and CREATE TABLE IF NOT EXISTS.
 echo "Running schema migrations..."
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 if docker compose exec -T db psql -U postgres -d topshelf < "$SCRIPT_DIR/migrate.sql"; then
     echo "Schema migrations applied successfully."
 else
