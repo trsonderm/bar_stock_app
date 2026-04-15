@@ -85,7 +85,7 @@ export async function GET(req: NextRequest) {
               SELECT
                 i.id, i.name, i.type, i.secondary_type, i.unit_cost, i.sale_price, i.supplier,
                 i.order_size, i.low_stock_threshold,
-                COALESCE(i.barcodes, '[]'::jsonb) as barcodes,
+                '[]'::jsonb as barcodes,
                 COALESCE(i.stock_options, '[]') as stock_options,
                 COALESCE(i.include_in_audit, true) as include_in_audit,
                 true as include_in_low_stock_alerts,

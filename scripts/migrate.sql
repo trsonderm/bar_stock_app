@@ -372,6 +372,18 @@ CREATE TABLE IF NOT EXISTS shift_closes (
 -- =========================================================
 -- 21. Barcode column on items + enable_low_stock_reporting on categories
 -- =========================================================
+-- barcodes (JSONB array) — primary column used by all API queries
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name='items' AND column_name='barcodes'
+  ) THEN
+    ALTER TABLE items ADD COLUMN barcodes JSONB DEFAULT '[]'::jsonb;
+  END IF;
+END $$;
+
+-- barcode (TEXT, legacy singular) — kept for backward compatibility
 DO $$
 BEGIN
   IF NOT EXISTS (

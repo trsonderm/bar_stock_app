@@ -13,6 +13,7 @@ interface LookupResult {
     unit_cost?: number;
     item_id?: number; // if found in local inventory
     raw?: any;
+    external_available?: boolean;
 }
 
 async function fetchExternalLookup(barcode: string, config: BottleLookupConfig): Promise<LookupResult | null> {
@@ -112,6 +113,7 @@ export async function GET(req: NextRequest) {
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const barcode = req.nextUrl.searchParams.get('barcode');
+    const localOnly = req.nextUrl.searchParams.get('localOnly') === 'true';
     if (!barcode) return NextResponse.json({ error: 'Missing barcode' }, { status: 400 });
 
     // Load config
@@ -145,7 +147,7 @@ export async function GET(req: NextRequest) {
     }
 
     // 2. External lookup
-    if (config.external_lookup_enabled && config.external_lookup_provider !== 'none') {
+    if (!localOnly && config.external_lookup_enabled && config.external_lookup_provider !== 'none') {
         try {
             const result = await fetchExternalLookup(barcode, config);
             if (result) return NextResponse.json(result);
@@ -154,5 +156,10 @@ export async function GET(req: NextRequest) {
         }
     }
 
-    return NextResponse.json({ found: false, source: null, barcode } as LookupResult);
+    return NextResponse.json({ 
+        found: false, 
+        source: null, 
+        barcode,
+        external_available: config.external_lookup_enabled && config.external_lookup_provider !== 'none' 
+    } as LookupResult);
 }

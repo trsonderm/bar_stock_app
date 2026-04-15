@@ -91,6 +91,7 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
     // Barcode scan state
     const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
     const [scannedBarcode, setScannedBarcode] = useState('');
+    const [webSearchPendingBarcode, setWebSearchPendingBarcode] = useState<string | null>(null);
 
     // Bulk select state
     const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
@@ -276,7 +277,27 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
         }));
 
         try {
-            const res = await fetch(`/api/barcode-lookup?barcode=${encodeURIComponent(barcode)}`);
+            const res = await fetch(`/api/barcode-lookup?barcode=${encodeURIComponent(barcode)}&localOnly=true`);
+            const data = await res.json();
+            if (data.found && data.name) {
+                setFormData(prev => ({
+                    ...prev,
+                    name: prev.name || data.name,
+                    type: prev.type || data.type || 'Liquor',
+                    secondary_type: prev.secondary_type || data.secondary_type,
+                }));
+            } else if (!data.found && data.external_available) {
+                setWebSearchPendingBarcode(barcode);
+            }
+        } catch { }
+    };
+
+    const handleWebSearchConfirm = async () => {
+        if (!webSearchPendingBarcode) return;
+        const b = webSearchPendingBarcode;
+        setWebSearchPendingBarcode(null);
+        try {
+            const res = await fetch(`/api/barcode-lookup?barcode=${encodeURIComponent(b)}`);
             const data = await res.json();
             if (data.found && data.name) {
                 setFormData(prev => ({
@@ -1265,6 +1286,31 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                 onClose={() => setShowBarcodeScanner(false)}
                 onDetected={handleBarcodeScanForProduct}
             />
+
+            {webSearchPendingBarcode && (
+                <div style={{ position: 'fixed', inset: 0, zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)' }}>
+                    <div style={{ background: '#1f2937', padding: '1.5rem', borderRadius: '8px', maxWidth: '400px', width: '90%', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.5)' }}>
+                        <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: 'white', marginBottom: '1rem' }}>Barcode Not Found Locally</h2>
+                        <p style={{ color: '#d1d5db', marginBottom: '1.5rem', fontSize: '0.95rem', lineHeight: 1.5 }}>
+                            The barcode <strong>{webSearchPendingBarcode}</strong> was not found in your local inventory. Would you like to search the global web database for product details?
+                        </p>
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+                            <button
+                                onClick={() => setWebSearchPendingBarcode(null)}
+                                style={{ background: 'transparent', border: '1px solid #4b5563', color: '#d1d5db', padding: '0.5rem 1rem', borderRadius: '6px', cursor: 'pointer' }}
+                            >
+                                No, thanks
+                            </button>
+                            <button
+                                onClick={handleWebSearchConfirm}
+                                style={{ background: '#2563eb', color: 'white', padding: '0.5rem 1rem', borderRadius: '6px', border: 'none', cursor: 'pointer', fontWeight: 500 }}
+                            >
+                                Yes, search web
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </>
     );
 
