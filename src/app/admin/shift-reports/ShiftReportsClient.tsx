@@ -160,7 +160,7 @@ export default function ShiftReportsClient() {
                 {/* Page Header */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
                     <div>
-                        <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 700 }}>Shift Reports</h1>
+                        <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 700 }}>Shift Close Reports</h1>
                         <p style={{ margin: '0.25rem 0 0', color: '#9ca3af', fontSize: '0.875rem' }}>View, search, print, and email shift close reports</p>
                     </div>
                     <button

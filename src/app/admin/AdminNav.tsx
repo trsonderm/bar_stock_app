@@ -200,6 +200,7 @@ export default function AdminNav({ user, children }: { user: NavUser, children: 
                                 <DrawerItem text="Report Builder" icon={<BuildIcon fontSize="small" />} href="/admin/reports/builder" isSub />
                                 <DrawerItem text="Saved Reports" icon={<AssessmentIcon fontSize="small" />} href="/admin/reports" isSub />
                                 <DrawerItem text="Standard Reports" icon={<AutoGraphIcon fontSize="small" />} href="/admin/reporting" isSub />
+                                <DrawerItem text="Shift Close" icon={<ReceiptLongIcon fontSize="small" />} href="/admin/shift-reports" isSub />
                             </List>
                         </Collapse>
                     </>
@@ -261,8 +262,8 @@ export default function AdminNav({ user, children }: { user: NavUser, children: 
                   <ProLockedItem text="Insights" icon={<AutoGraphIcon />} />
                 )}
 
-                {/* SHIFT REPORTS */}
-                <DrawerItem text="Shift Reports" icon={<ReceiptLongIcon />} href="/admin/shift-reports" />
+                {/* SHIFT CLOSE */}
+                <DrawerItem text="Shift Close" icon={<ReceiptLongIcon />} href="/admin/shift-reports" />
 
                 {/* SETTINGS FOLDER */}
                 <ListItem disablePadding sx={{ display: 'block' }}>
