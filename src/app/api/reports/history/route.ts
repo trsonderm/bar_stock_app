@@ -15,29 +15,45 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ error: 'Item ID required' }, { status: 400 });
     }
 
+    // Resolve location from param or cookie
+    const locParam = req.nextUrl.searchParams.get('locationId');
+    const cookieLoc = req.headers.get('cookie')?.match(/current_location_id=(\d+)/)?.[1];
+    let locationId: number | null = locParam ? parseInt(locParam) : (cookieLoc ? parseInt(cookieLoc) : null);
+
     try {
-        // 1. Get Current Stock & Details
+        // Validate location belongs to org, default to first
+        if (locationId) {
+            const validLoc = await db.one('SELECT id FROM locations WHERE id = $1 AND organization_id = $2', [locationId, organizationId]);
+            if (!validLoc) locationId = null;
+        }
+        if (!locationId) {
+            const defaultLoc = await db.one('SELECT id FROM locations WHERE organization_id = $1 ORDER BY id ASC LIMIT 1', [organizationId]);
+            locationId = defaultLoc?.id ?? null;
+        }
+
+        // 1. Get Current Stock & Details for this location
         const item = await db.one(`
-            SELECT i.name, COALESCE(inv.quantity, 0) as current_stock 
+            SELECT i.name, COALESCE(inv.quantity, 0) as current_stock
             FROM items i
-            LEFT JOIN inventory inv ON i.id = inv.item_id AND inv.location_id = (SELECT id FROM locations WHERE organization_id = $1 LIMIT 1)
+            LEFT JOIN inventory inv ON i.id = inv.item_id AND inv.location_id = $3
             WHERE i.id = $2 AND i.organization_id = $1
-        `, [organizationId, itemId]);
+        `, [organizationId, itemId, locationId]);
 
         if (!item) return NextResponse.json({ error: 'Item not found' }, { status: 404 });
 
-        // 2. Get Logs for past N days
+        // 2. Get Logs for past N days scoped to this location
         const logs = await db.query(`
-            SELECT 
-                timestamp, 
-                action, 
-                details 
-            FROM activity_logs 
-            WHERE organization_id = $1 
-            AND (details->>'itemId')::int = $2
-            AND timestamp > NOW() - INTERVAL '${days} days'
+            SELECT
+                timestamp,
+                action,
+                details
+            FROM activity_logs
+            WHERE organization_id = $1
+              AND (details->>'itemId')::int = $2
+              AND timestamp > NOW() - ($3 * INTERVAL '1 day')
+              AND ($4::int IS NULL OR (details->>'locationId')::int = $4::int)
             ORDER BY timestamp DESC
-        `, [organizationId, itemId]);
+        `, [organizationId, itemId, days, locationId]);
 
         // 3. Reconstruct History (Working Backwards)
         // We have Current Stock.

@@ -135,9 +135,24 @@ function buildSuggestions(
         const stock = parseFloat(String(item.current_stock));
 
         let orderSize = 1;
-        if (Array.isArray(item.order_size) && item.order_size.length > 0) orderSize = Number(item.order_size[0]);
-        else if (typeof item.order_size === 'number') orderSize = item.order_size;
-        if (orderSize <= 0) orderSize = 1;
+        if (Array.isArray(item.order_size) && item.order_size.length > 0) {
+            const first = item.order_size[0];
+            // Handle both legacy number format [1, 6] and new {label, amount} format
+            orderSize = typeof first === 'object' && first !== null
+                ? Number(first.amount)
+                : Number(first);
+        } else if (typeof item.order_size === 'number') {
+            orderSize = item.order_size;
+        } else if (typeof item.order_size === 'string') {
+            try {
+                const parsed = JSON.parse(item.order_size);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                    const first = parsed[0];
+                    orderSize = typeof first === 'object' ? Number(first.amount) : Number(first);
+                }
+            } catch { }
+        }
+        if (!orderSize || isNaN(orderSize) || orderSize <= 0) orderSize = 1;
 
         const pendingQty = pendingMap[item.item_id] || 0;
 

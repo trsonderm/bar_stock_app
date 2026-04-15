@@ -2,7 +2,7 @@
 
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
-    ComposedChart, Line, Area
+    ComposedChart, Line, Area,
 } from 'recharts';
 
 interface ChartProps {
@@ -11,43 +11,61 @@ interface ChartProps {
     selectedItemName?: string;
 }
 
+const TOOLTIP_STYLE = { backgroundColor: '#1f2937', borderColor: '#374151', color: '#fff' };
+const GRID_STROKE = '#374151';
+
+// Safe number coercion — prevents NaN from bubbling into recharts
+const safeNum = (v: any): number => {
+    const n = parseFloat(String(v));
+    return isNaN(n) ? 0 : n;
+};
+
 export default function SmartOrderCharts({ suggestions, history, selectedItemName }: ChartProps) {
-    if (suggestions.length === 0 && (!history || history.length === 0)) return null;
+    const historyChart = (history || []).map(d => ({
+        ...d,
+        stock: safeNum(d.stock),
+        usage: safeNum(d.usage),
+        restock: safeNum(d.restock),
+    }));
 
-    // 0. History Chart Data
-    const historyChart = history || [];
-
-    // 1. Data for Supplier Spend Distribution
-    const supplierData = suggestions.reduce((acc: any, s) => {
+    // Supplier spend — guard against NaN cost
+    const supplierMap: Record<string, number> = {};
+    suggestions.forEach(s => {
         const sup = s.supplier || 'Unassigned';
-        const cost = parseFloat(s.estimated_cost);
-        if (!acc[sup]) acc[sup] = { name: sup, value: 0 };
-        acc[sup].value += cost;
-        return acc;
-    }, {});
-    const supplierChartData = Object.values(supplierData).sort((a: any, b: any) => b.value - a.value);
+        const cost = safeNum(s.estimated_cost);
+        supplierMap[sup] = (supplierMap[sup] || 0) + cost;
+    });
+    const supplierChartData = Object.entries(supplierMap)
+        .map(([name, value]) => ({ name, value }))
+        .sort((a, b) => b.value - a.value);
 
-    // 2. Data for Top Critical Items (Burn vs Stock)
-    const topCritical = suggestions
-        .sort((a, b) => parseFloat(b.days_until_empty) - parseFloat(a.days_until_empty)) // Actually reverse sort by urgency? No, urgency is low days.
+    // Critical items — sort by most urgent (fewest days left)
+    const topCritical = [...suggestions]
         .filter(s => s.priority === 'CRITICAL')
+        .sort((a, b) => safeNum(a.days_until_empty) - safeNum(b.days_until_empty))
         .slice(0, 5)
         .map(s => ({
-            name: s.item_name,
-            Stock: s.current_stock,
-            BurnRate: parseFloat(s.burn_rate),
-            DaysLeft: parseFloat(s.days_until_empty)
+            name: String(s.item_name),
+            Stock: safeNum(s.current_stock),
+            DaysLeft: safeNum(s.days_until_empty),
         }));
+
+    const hasHistory = historyChart.length > 0;
+    const hasSupplier = supplierChartData.length > 0;
+    const hasCritical = topCritical.length > 0;
+
+    if (!hasHistory && !hasSupplier && !hasCritical) return null;
 
     return (
         <div className="space-y-8 print:hidden">
-            {/* Chart 0: Product Trends (Full Width) */}
-            {historyChart.length > 0 && (
+            {/* Trend chart */}
+            {hasHistory && (
                 <div className="bg-gray-800 border border-gray-700 rounded-xl p-6 shadow-lg">
                     <h3 className="text-lg font-bold text-white mb-4">
                         Trend Analysis: <span className="text-blue-400">{selectedItemName}</span>
                     </h3>
-                    <div className="h-72 w-full">
+                    {/* Explicit pixel height avoids ResponsiveContainer width/height(-1) warning */}
+                    <div style={{ width: '100%', height: 288 }}>
                         <ResponsiveContainer width="100%" height="100%">
                             <ComposedChart data={historyChart}>
                                 <defs>
@@ -56,14 +74,16 @@ export default function SmartOrderCharts({ suggestions, history, selectedItemNam
                                         <stop offset="95%" stopColor="#8884d8" stopOpacity={0} />
                                     </linearGradient>
                                 </defs>
-                                <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                                <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} />
                                 <XAxis dataKey="label" stroke="#9ca3af" minTickGap={30} />
                                 <YAxis yAxisId="left" stroke="#9ca3af" />
                                 <YAxis yAxisId="right" orientation="right" stroke="#82ca9d" />
-                                <Tooltip contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151', color: '#fff' }} />
+                                <Tooltip contentStyle={TOOLTIP_STYLE} />
                                 <Legend />
-                                <Area yAxisId="left" type="monotone" dataKey="usage" stroke="#8884d8" fillOpacity={1} fill="url(#colorUsage)" name="Daily Usage" />
-                                <Line yAxisId="left" type="monotone" dataKey="stock" stroke="#82ca9d" strokeWidth={3} dot={false} name="Stock Level" />
+                                <Area yAxisId="left" type="monotone" dataKey="usage" stroke="#8884d8"
+                                    fillOpacity={1} fill="url(#colorUsage)" name="Daily Usage" />
+                                <Line yAxisId="left" type="monotone" dataKey="stock" stroke="#82ca9d"
+                                    strokeWidth={3} dot={false} name="Stock Level" />
                                 <Bar yAxisId="left" dataKey="restock" fill="#34d399" barSize={10} name="Restock" />
                             </ComposedChart>
                         </ResponsiveContainer>
@@ -72,49 +92,53 @@ export default function SmartOrderCharts({ suggestions, history, selectedItemNam
             )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                {/* Chart 1: Estimated Spend by Supplier */}
-                <div className="bg-gray-800 border border-gray-700 rounded-xl p-6 shadow-lg">
-                    <h3 className="text-lg font-bold text-white mb-4">Estimated Spend by Supplier</h3>
-                    <div className="h-64 w-full">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={supplierChartData} layout="vertical">
-                                <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                                <XAxis type="number" stroke="#9ca3af" unit="$" />
-                                <YAxis dataKey="name" type="category" stroke="#9ca3af" width={100} />
-                                <Tooltip
-                                    contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151', color: '#fff' }}
-                                    cursor={{ fill: '#374151', opacity: 0.4 }}
-                                />
-                                <Bar dataKey="value" fill="#60a5fa" radius={[0, 4, 4, 0]} name="Est. Cost" />
-                            </BarChart>
-                        </ResponsiveContainer>
+                {/* Supplier spend */}
+                {hasSupplier && (
+                    <div className="bg-gray-800 border border-gray-700 rounded-xl p-6 shadow-lg">
+                        <h3 className="text-lg font-bold text-white mb-4">Estimated Spend by Supplier</h3>
+                        <div style={{ width: '100%', height: 256 }}>
+                            <ResponsiveContainer width="100%" height="100%">
+                                <BarChart data={supplierChartData} layout="vertical">
+                                    <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} />
+                                    <XAxis type="number" stroke="#9ca3af" unit="$" />
+                                    <YAxis dataKey="name" type="category" stroke="#9ca3af" width={100} />
+                                    <Tooltip
+                                        contentStyle={TOOLTIP_STYLE}
+                                        cursor={{ fill: '#374151', opacity: 0.4 }}
+                                        formatter={(value: any) => [`$${safeNum(value).toFixed(2)}`, 'Est. Cost']}
+                                    />
+                                    <Bar dataKey="value" fill="#60a5fa" radius={[0, 4, 4, 0]} name="Est. Cost" />
+                                </BarChart>
+                            </ResponsiveContainer>
+                        </div>
+                        <p className="text-xs text-gray-400 mt-2">Total estimated cost grouped by supplier.</p>
                     </div>
-                    <p className="text-xs text-gray-400 mt-2">
-                        Visualizes total estimated cost grouped by supplier to help you plan POs.
-                    </p>
-                </div>
+                )}
 
-                {/* Chart 2: Critical Items Analysis */}
-                {topCritical.length > 0 && (
+                {/* Critical items */}
+                {hasCritical && (
                     <div className="bg-gray-800 border border-gray-700 rounded-xl p-6 shadow-lg">
                         <h3 className="text-lg font-bold text-white mb-4">Critical Items Risk Analysis</h3>
-                        <div className="h-64 w-full">
+                        <div style={{ width: '100%', height: 256 }}>
                             <ResponsiveContainer width="100%" height="100%">
                                 <ComposedChart data={topCritical}>
-                                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                                    <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} />
                                     <XAxis dataKey="name" stroke="#9ca3af" scale="point" padding={{ left: 10, right: 10 }} />
                                     <YAxis yAxisId="left" stroke="#9ca3af" />
                                     <YAxis yAxisId="right" orientation="right" stroke="#ef4444" unit="d" />
-                                    <Tooltip contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151', color: '#fff' }} />
+                                    <Tooltip
+                                        contentStyle={TOOLTIP_STYLE}
+                                        formatter={(value: any, name: string) => [safeNum(value), name]}
+                                    />
                                     <Legend />
                                     <Bar yAxisId="left" dataKey="Stock" fill="#34d399" name="Current Stock" barSize={20} />
-                                    <Line yAxisId="right" type="monotone" dataKey="DaysLeft" stroke="#ef4444" strokeWidth={2} name="Days Until Empty" />
+                                    <Line yAxisId="right" type="monotone" dataKey="DaysLeft" stroke="#ef4444"
+                                        strokeWidth={2} name="Days Until Empty" />
                                 </ComposedChart>
                             </ResponsiveContainer>
                         </div>
                         <p className="text-xs text-gray-400 mt-2">
-                            Comparing current stock levels against remaining days of inventory.
-                            <span className="text-red-400"> Red line</span> approaching zero indicates imminent stockout.
+                            <span className="text-red-400">Red line</span> approaching zero = imminent stockout.
                         </p>
                     </div>
                 )}
