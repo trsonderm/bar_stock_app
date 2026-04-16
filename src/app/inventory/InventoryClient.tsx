@@ -135,6 +135,14 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
     const [scanError, setScanError] = useState('');
     const [scanAmount, setScanAmount] = useState(1);
 
+    // Site DB enrichment notification — shown non-blocking after a scan hit
+    const [siteDbNotice, setSiteDbNotice] = useState<{
+        item_id: number;
+        item_name: string;
+        info: { brand: string | null; name: string; size: string | null; abv: number | null; type: string | null; secondary_type: string | null };
+    } | null>(null);
+    const [applyingInfo, setApplyingInfo] = useState(false);
+
     // Pending changes — accumulated until user submits
     // Map of itemId -> { netChange, itemName, originalQty }
     const [pendingChanges, setPendingChanges] = useState<Record<number, { netChange: number; itemName: string; originalQty: number }>>({});
@@ -476,13 +484,16 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
         setScanResult(null);
         setScanError('');
         setScanAmount(1);
+        setSiteDbNotice(null);
         // Look up barcode
         try {
             const res = await fetch(`/api/barcode-lookup?barcode=${encodeURIComponent(barcode)}`);
             const data = await res.json();
+            // Stash site DB enrichment for later (keyed to item once resolved)
+            const pendingSiteInfo = data.site_db_info ?? null;
             if (data.found && data.item_id) {
                 // Matched a local inventory item directly
-                setScanResult({ barcode, item_id: data.item_id, name: data.name });
+                setScanResult({ barcode, item_id: data.item_id, name: data.name, _siteDbInfo: pendingSiteInfo } as any);
             } else if (data.found && data.name) {
                 // External lookup found a product name — try fuzzy match against local inventory
                 const exact = items.find(i => i.name.toLowerCase() === data.name.toLowerCase());
@@ -520,9 +531,36 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
         if (!scanResult?.item_id || !scanMode) return;
         const change = scanMode === 'add' ? scanAmount : -scanAmount;
         handleAdjust(scanResult.item_id, change);
+        // Show site DB info notice if available
+        const siteInfo = (scanResult as any)._siteDbInfo;
+        if (siteInfo) {
+            setSiteDbNotice({ item_id: scanResult.item_id, item_name: scanResult.name ?? '', info: siteInfo });
+        }
         setScanMode(null);
         setScanResult(null);
         setScanError('');
+    };
+
+    const applyItemInfoFromSiteDb = async () => {
+        if (!siteDbNotice) return;
+        setApplyingInfo(true);
+        try {
+            await fetch('/api/inventory', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    id: siteDbNotice.item_id,
+                    ...(siteDbNotice.info.type ? { type: siteDbNotice.info.type } : {}),
+                    ...(siteDbNotice.info.secondary_type ? { secondary_type: siteDbNotice.info.secondary_type } : {}),
+                    ...(siteDbNotice.info.abv != null ? { abv: siteDbNotice.info.abv } : {}),
+                    ...(siteDbNotice.info.size ? { bottle_size: siteDbNotice.info.size } : {}),
+                }),
+            });
+            fetchItems();
+            setSiteDbNotice(null);
+        } finally {
+            setApplyingInfo(false);
+        }
     };
 
     // Filter Logic
@@ -1381,6 +1419,71 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
                         disabled={submitting}
                     >
                         {submitting ? 'Submitting…' : 'Yes, Submit'}
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
+            {/* Site DB Enrichment Notification */}
+            <Dialog
+                open={!!siteDbNotice}
+                onClose={() => setSiteDbNotice(null)}
+                maxWidth="xs"
+                fullWidth
+                PaperProps={{ style: { background: '#111827', color: 'white', border: '1px solid #1d4ed8' } }}
+            >
+                <DialogTitle style={{ borderBottom: '1px solid #374151', fontSize: '1rem', paddingBottom: '0.75rem' }}>
+                    Product Info Available
+                </DialogTitle>
+                <DialogContent style={{ padding: '1.25rem' }}>
+                    <Typography variant="body2" sx={{ color: '#93c5fd', mb: 1.5, fontSize: '0.8rem' }}>
+                        This barcode was found in the Bottle Lookup Database. You can optionally apply the info below to <strong style={{ color: 'white' }}>{siteDbNotice?.item_name}</strong>.
+                    </Typography>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+                        {siteDbNotice?.info.brand && (
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                                <Typography variant="caption" sx={{ color: '#6b7280' }}>Brand</Typography>
+                                <Typography variant="caption" sx={{ color: '#d1d5db', fontWeight: 600 }}>{siteDbNotice.info.brand}</Typography>
+                            </Box>
+                        )}
+                        {siteDbNotice?.info.name && (
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                                <Typography variant="caption" sx={{ color: '#6b7280' }}>Name</Typography>
+                                <Typography variant="caption" sx={{ color: '#d1d5db', fontWeight: 600 }}>{siteDbNotice.info.name}</Typography>
+                            </Box>
+                        )}
+                        {siteDbNotice?.info.size && (
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                                <Typography variant="caption" sx={{ color: '#6b7280' }}>Size</Typography>
+                                <Typography variant="caption" sx={{ color: '#d1d5db', fontWeight: 600 }}>{siteDbNotice.info.size}</Typography>
+                            </Box>
+                        )}
+                        {siteDbNotice?.info.abv != null && (
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                                <Typography variant="caption" sx={{ color: '#6b7280' }}>ABV</Typography>
+                                <Typography variant="caption" sx={{ color: '#d1d5db', fontWeight: 600 }}>{siteDbNotice.info.abv}%</Typography>
+                            </Box>
+                        )}
+                        {siteDbNotice?.info.type && (
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                                <Typography variant="caption" sx={{ color: '#6b7280' }}>Type</Typography>
+                                <Typography variant="caption" sx={{ color: '#d1d5db', fontWeight: 600 }}>
+                                    {siteDbNotice.info.type}{siteDbNotice.info.secondary_type ? ` / ${siteDbNotice.info.secondary_type}` : ''}
+                                </Typography>
+                            </Box>
+                        )}
+                    </Box>
+                </DialogContent>
+                <DialogActions style={{ borderTop: '1px solid #374151', padding: '0.75rem 1rem' }}>
+                    <Button onClick={() => setSiteDbNotice(null)} style={{ color: '#9ca3af' }}>
+                        Dismiss
+                    </Button>
+                    <Button
+                        variant="contained"
+                        disabled={applyingInfo}
+                        onClick={applyItemInfoFromSiteDb}
+                        style={{ background: '#1d4ed8' }}
+                    >
+                        {applyingInfo ? 'Applying…' : 'Apply to Item'}
                     </Button>
                 </DialogActions>
             </Dialog>

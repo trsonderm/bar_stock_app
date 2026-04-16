@@ -17,6 +17,16 @@ interface LookupResult {
     checked_local?: boolean;
     checked_site?: boolean;
     checked_external?: boolean;
+    // Site DB enrichment — always returned when site lookup is enabled and barcode found there,
+    // even if local lookup already matched (so org can optionally apply the extra metadata)
+    site_db_info?: {
+        brand: string | null;
+        name: string;
+        size: string | null;
+        abv: number | null;
+        type: string | null;
+        secondary_type: string | null;
+    } | null;
 }
 
 async function fetchExternalLookup(barcode: string, config: BottleLookupConfig): Promise<LookupResult | null> {
@@ -133,6 +143,31 @@ export async function GET(req: NextRequest) {
     let checkedLocal = false;
     let checkedSite = false;
     let checkedExternal = false;
+    let siteDbInfo: LookupResult['site_db_info'] = null;
+
+    // Pre-fetch site DB info (if enabled) so it can be attached to any response
+    if (!localOnly && config.site_lookup_enabled) {
+        checkedSite = true;
+        try {
+            const siteRow = await db.one(
+                `SELECT brand, name, size, abv, type, secondary_type
+                 FROM site_bottle_db WHERE barcode = $1 LIMIT 1`,
+                [barcode]
+            );
+            if (siteRow) {
+                siteDbInfo = {
+                    brand: siteRow.brand,
+                    name: siteRow.name,
+                    size: siteRow.size,
+                    abv: siteRow.abv,
+                    type: siteRow.type,
+                    secondary_type: siteRow.secondary_type,
+                };
+            }
+        } catch (e) {
+            console.error('[barcode-lookup site]', e);
+        }
+    }
 
     // 1. Local lookup — check JSONB barcodes array AND legacy barcode TEXT column
     if (config.local_lookup_enabled) {
@@ -159,6 +194,7 @@ export async function GET(req: NextRequest) {
                     secondary_type: byBarcode.secondary_type,
                     unit_cost: byBarcode.unit_cost,
                     item_id: byBarcode.id,
+                    site_db_info: siteDbInfo,
                 } as LookupResult);
             }
         } catch (e) {
@@ -166,30 +202,19 @@ export async function GET(req: NextRequest) {
         }
     }
 
-    // 2. Site bottle DB lookup
-    if (!localOnly && config.site_lookup_enabled) {
-        checkedSite = true;
-        try {
-            const siteRow = await db.one(
-                `SELECT id, barcode, brand, name, size, abv, type, secondary_type, image_data
-                 FROM site_bottle_db WHERE barcode = $1 LIMIT 1`,
-                [barcode]
-            );
-            if (siteRow) {
-                return NextResponse.json({
-                    found: true,
-                    source: 'site',
-                    barcode,
-                    name: siteRow.brand ? `${siteRow.brand} ${siteRow.name}` : siteRow.name,
-                    type: siteRow.type,
-                    secondary_type: siteRow.secondary_type,
-                    checked_local: checkedLocal,
-                    checked_site: true,
-                } as LookupResult);
-            }
-        } catch (e) {
-            console.error('[barcode-lookup site]', e);
-        }
+    // 2. Site bottle DB — return as the primary result if local missed
+    if (siteDbInfo) {
+        return NextResponse.json({
+            found: true,
+            source: 'site',
+            barcode,
+            name: siteDbInfo.brand ? `${siteDbInfo.brand} ${siteDbInfo.name}` : siteDbInfo.name,
+            type: siteDbInfo.type,
+            secondary_type: siteDbInfo.secondary_type,
+            site_db_info: siteDbInfo,
+            checked_local: checkedLocal,
+            checked_site: true,
+        } as LookupResult);
     }
 
     // 3. External lookup
@@ -198,7 +223,7 @@ export async function GET(req: NextRequest) {
         checkedExternal = true;
         try {
             const result = await fetchExternalLookup(barcode, config);
-            if (result) return NextResponse.json({ ...result, checked_local: checkedLocal, checked_site: checkedSite, checked_external: true });
+            if (result) return NextResponse.json({ ...result, checked_local: checkedLocal, checked_site: checkedSite, checked_external: true, site_db_info: siteDbInfo });
         } catch (e) {
             console.error('[barcode-lookup external]', e);
         }

@@ -242,7 +242,7 @@ export async function PUT(req: NextRequest) {
 
         if (!canEdit && !canStock) return NextResponse.json({ error: 'Permission denied' }, { status: 403 });
 
-        const { id, unit_cost, sale_price, name, type, quantity, secondary_type, supplier, supplier_id, low_stock_threshold, order_size, stock_options, include_in_audit, include_in_low_stock_alerts, assignedLocations, stock_unit_label, stock_unit_size, order_unit_label, order_unit_size, use_category_qty_defaults, location_supplier_id, location_sale_price, locationId: bodyLocationId, barcodes } = await req.json();
+        const { id, unit_cost, sale_price, name, type, quantity, secondary_type, supplier, supplier_id, low_stock_threshold, order_size, stock_options, include_in_audit, include_in_low_stock_alerts, assignedLocations, stock_unit_label, stock_unit_size, order_unit_label, order_unit_size, use_category_qty_defaults, location_supplier_id, location_sale_price, locationId: bodyLocationId, barcodes, abv, bottle_size } = await req.json();
 
         if (!id) return NextResponse.json({ error: 'Missing ID' }, { status: 400 });
 
@@ -315,6 +315,14 @@ export async function PUT(req: NextRequest) {
             if (barcodes !== undefined) {
                 updates.push(`barcodes = $${pIdx++} `);
                 params.push(JSON.stringify(Array.isArray(barcodes) ? barcodes : []));
+            }
+            if (abv !== undefined) {
+                updates.push(`abv = $${pIdx++} `);
+                params.push(abv !== null ? parseFloat(abv) : null);
+            }
+            if (bottle_size !== undefined) {
+                updates.push(`bottle_size = $${pIdx++} `);
+                params.push(bottle_size || null);
             }
 
             if (updates.length > 0) {

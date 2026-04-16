@@ -55,6 +55,53 @@ const btn = (color: string, disabled = false): React.CSSProperties => ({
     whiteSpace: 'nowrap' as const,
 });
 
+// ─── Size Input with ml / L unit toggle ──────────────────────────────────────
+
+function SizeInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+    // Parse existing value into number + unit
+    const parseSize = (v: string): { num: string; unit: 'ml' | 'L' } => {
+        const m = v.match(/^([\d.]+)\s*(ml|l|L)?$/i);
+        if (!m) return { num: v.replace(/[^\d.]/g, ''), unit: 'ml' };
+        const u = (m[2] || 'ml').toLowerCase() === 'l' ? 'L' : 'ml';
+        return { num: m[1], unit: u };
+    };
+    const parsed = parseSize(value);
+    const [num, setNum] = useState(parsed.num);
+    const [unit, setUnit] = useState<'ml' | 'L'>(parsed.unit);
+
+    // Sync when value changes externally (e.g. edit modal load)
+    useEffect(() => {
+        const p = parseSize(value);
+        setNum(p.num);
+        setUnit(p.unit);
+    }, [value]);
+
+    const emit = (n: string, u: 'ml' | 'L') => {
+        onChange(n ? `${n}${u}` : '');
+    };
+
+    return (
+        <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+            <input
+                style={{ ...inp, flex: 1 }}
+                type="number" min="0" step="any"
+                value={num}
+                placeholder={unit === 'ml' ? 'e.g. 750' : 'e.g. 1.75'}
+                onChange={e => { setNum(e.target.value); emit(e.target.value, unit); }}
+            />
+            <div style={{ display: 'flex', borderRadius: '6px', border: '1px solid #4b5563', overflow: 'hidden', flexShrink: 0 }}>
+                {(['ml', 'L'] as const).map(u => (
+                    <button key={u} type="button" onClick={() => { setUnit(u); emit(num, u); }} style={{
+                        background: unit === u ? '#2563eb' : '#111827',
+                        color: unit === u ? 'white' : '#9ca3af',
+                        border: 'none', padding: '0.45rem 0.6rem', cursor: 'pointer', fontWeight: 600, fontSize: '0.8rem',
+                    }}>{u}</button>
+                ))}
+            </div>
+        </div>
+    );
+}
+
 function classifyByName(name: string): { type: string; secondary_type: string } {
     const l = name.toLowerCase();
     if (/whiskey|whisky|bourbon|scotch|rye/.test(l)) return { type: 'Liquor', secondary_type: 'Whiskey' };
@@ -202,8 +249,8 @@ function ScanAddTab() {
                 {/* Size + ABV */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
                     <div>
-                        <label style={label}>Size</label>
-                        <input style={inp} value={form.size} onChange={e => setF('size', e.target.value)} placeholder="e.g. 750ml, 1L, 1.75L" />
+                        <label style={label}>Size (optional)</label>
+                        <SizeInput value={form.size} onChange={v => setF('size', v)} />
                     </div>
                     <div>
                         <label style={label}>ABV % (optional)</label>
@@ -261,6 +308,108 @@ function ScanAddTab() {
     );
 }
 
+// ─── Edit Modal ───────────────────────────────────────────────────────────────
+
+interface EditForm { barcode: string; brand: string; name: string; size: string; abv: string; type: string; secondary_type: string }
+
+function EditModal({ entry, onClose, onSaved }: { entry: Entry; onClose: () => void; onSaved: (updated: Entry) => void }) {
+    const [form, setForm] = useState<EditForm>({
+        barcode: entry.barcode,
+        brand: entry.brand ?? '',
+        name: entry.name,
+        size: entry.size ?? '',
+        abv: entry.abv != null ? String(entry.abv) : '',
+        type: entry.type ?? 'Liquor',
+        secondary_type: entry.secondary_type ?? '',
+    });
+    const [saving, setSaving] = useState(false);
+    const [error, setError] = useState('');
+    const setF = (k: keyof EditForm, v: string) => setForm(prev => ({ ...prev, [k]: v }));
+    const subTypes = SUB_TYPES[form.type] ?? [];
+
+    const handleSave = async () => {
+        if (!form.name.trim()) { setError('Product name is required.'); return; }
+        setSaving(true); setError('');
+        try {
+            const res = await fetch('/api/super-admin/bottle-lookup-db', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(form),
+            });
+            const data = await res.json();
+            if (!res.ok) { setError(data.error || 'Save failed'); return; }
+            onSaved({ ...entry, ...form, abv: form.abv ? parseFloat(form.abv) : null });
+            onClose();
+        } catch { setError('Network error'); }
+        finally { setSaving(false); }
+    };
+
+    return (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }} onClick={onClose}>
+            <div style={{ background: '#1f2937', border: '1px solid #374151', borderRadius: '12px', padding: '1.5rem', width: '100%', maxWidth: '560px', maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+                    <div style={{ color: '#f3f4f6', fontWeight: 700, fontSize: '1rem' }}>Edit Entry</div>
+                    <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', fontSize: '1.25rem', lineHeight: 1 }}>✕</button>
+                </div>
+
+                <div style={{ marginBottom: '0.75rem' }}>
+                    <label style={label}>Barcode</label>
+                    <input style={{ ...inp, color: '#6b7280' }} value={form.barcode} readOnly />
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                    <div>
+                        <label style={label}>Product Name *</label>
+                        <input style={inp} value={form.name} onChange={e => setF('name', e.target.value)} />
+                    </div>
+                    <div>
+                        <label style={label}>Brand / Company</label>
+                        <input style={inp} value={form.brand} onChange={e => setF('brand', e.target.value)} placeholder="e.g. Jim Beam" />
+                    </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                    <div>
+                        <label style={label}>Size (optional)</label>
+                        <SizeInput value={form.size} onChange={v => setF('size', v)} />
+                    </div>
+                    <div>
+                        <label style={label}>ABV % (optional)</label>
+                        <input style={inp} type="number" min="0" max="100" step="0.1" value={form.abv} onChange={e => setF('abv', e.target.value)} placeholder="e.g. 40" />
+                    </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '1rem' }}>
+                    <div>
+                        <label style={label}>Type</label>
+                        <select style={inp} value={form.type} onChange={e => { setF('type', e.target.value); setF('secondary_type', ''); }}>
+                            {TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                    </div>
+                    {subTypes.length > 0 && (
+                        <div>
+                            <label style={label}>Sub-type</label>
+                            <select style={inp} value={form.secondary_type} onChange={e => setF('secondary_type', e.target.value)}>
+                                <option value="">— None —</option>
+                                {subTypes.filter(Boolean).map(t => <option key={t} value={t}>{t}</option>)}
+                            </select>
+                        </div>
+                    )}
+                </div>
+
+                {error && <div style={{ background: '#3b1515', border: '1px solid #ef4444', borderRadius: '6px', padding: '0.5rem 0.75rem', color: '#fca5a5', fontSize: '0.85rem', marginBottom: '0.75rem' }}>{error}</div>}
+
+                <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+                    <button style={btn('#374151')} onClick={onClose}>Cancel</button>
+                    <button style={btn('#2563eb', saving)} disabled={saving} onClick={handleSave}>
+                        {saving ? 'Saving…' : '💾 Save Changes'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 // ─── Database Tab ─────────────────────────────────────────────────────────────
 
 function DatabaseTab() {
@@ -269,6 +418,7 @@ function DatabaseTab() {
     const [search, setSearch] = useState('');
     const [loading, setLoading] = useState(true);
     const [deleting, setDeleting] = useState<number | null>(null);
+    const [editing, setEditing] = useState<Entry | null>(null);
     const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const load = useCallback((q: string) => {
@@ -296,7 +446,13 @@ function DatabaseTab() {
         setDeleting(null);
     };
 
+    const handleSaved = (updated: Entry) => {
+        setEntries(prev => prev.map(e => e.id === updated.id ? { ...e, ...updated } : e));
+    };
+
     return (
+        <>
+        {editing && <EditModal entry={editing} onClose={() => setEditing(null)} onSaved={handleSaved} />}
         <div style={card}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                 <div style={{ color: '#d1d5db', fontWeight: 700, fontSize: '1rem' }}>
@@ -339,7 +495,11 @@ function DatabaseTab() {
                                     <td style={{ padding: '0.5rem', color: '#6b7280', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>
                                         {new Date(e.created_at).toLocaleDateString()}
                                     </td>
-                                    <td style={{ padding: '0.5rem' }}>
+                                    <td style={{ padding: '0.5rem', display: 'flex', gap: '0.35rem' }}>
+                                        <button
+                                            style={{ ...btn('#1e40af'), padding: '0.25rem 0.6rem', fontSize: '0.75rem' }}
+                                            onClick={() => setEditing(e)}
+                                        >✏️</button>
                                         <button
                                             style={{ ...btn('#7f1d1d'), padding: '0.25rem 0.6rem', fontSize: '0.75rem' }}
                                             disabled={deleting === e.id}
@@ -355,6 +515,7 @@ function DatabaseTab() {
                 </div>
             )}
         </div>
+        </>
     );
 }
 

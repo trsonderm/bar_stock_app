@@ -493,3 +493,14 @@ CREATE TABLE IF NOT EXISTS site_bottle_db (
 );
 CREATE INDEX IF NOT EXISTS idx_site_bottle_db_barcode ON site_bottle_db (barcode);
 CREATE INDEX IF NOT EXISTS idx_site_bottle_db_name    ON site_bottle_db (lower(name));
+
+-- =========================================================
+-- 25. Items table — ABV and bottle size fields
+-- =========================================================
+DO $$ BEGIN
+  ALTER TABLE items ADD COLUMN abv DECIMAL(5,2);
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE items ADD COLUMN bottle_size TEXT;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
