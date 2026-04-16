@@ -135,6 +135,12 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
     const [scanError, setScanError] = useState('');
     const [scanAmount, setScanAmount] = useState(1);
 
+    // Pending changes — accumulated until user submits
+    // Map of itemId -> { netChange, itemName, originalQty }
+    const [pendingChanges, setPendingChanges] = useState<Record<number, { netChange: number; itemName: string; originalQty: number }>>({});
+    const [showSubmitModal, setShowSubmitModal] = useState(false);
+    const [submitting, setSubmitting] = useState(false);
+
     const fetchItems = async () => {
         try {
             const res = await fetch(`/api/inventory?sort=${sort}`);
@@ -222,7 +228,7 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
         }
     };
 
-    const handleAdjust = async (itemId: number, change: number, bottleLevel?: string) => {
+    const handleAdjust = (itemId: number, change: number, bottleLevel?: string) => {
         // Intercept for Bottle Level Tracking
         if (change < 0 && trackBottleLevels && !bottleLevel) {
             const item = items.find(i => i.id === itemId);
@@ -231,25 +237,58 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
                 return;
             }
         }
-        // Optimistic update
+
+        const item = items.find(i => i.id === itemId);
+        if (!item) return;
+
+        // Optimistic UI update
         setItems(prev => prev.map(i => i.id === itemId ? { ...i, quantity: Math.max(0, Number(i.quantity) + change) } : i));
 
+        // Accumulate into pending changes (preserve original qty on first touch)
+        setPendingChanges(prev => {
+            const existing = prev[itemId];
+            return {
+                ...prev,
+                [itemId]: {
+                    netChange: (existing?.netChange ?? 0) + change,
+                    itemName: item.name,
+                    originalQty: existing?.originalQty ?? Number(item.quantity),
+                },
+            };
+        });
+    };
+
+    const submitChanges = async () => {
+        const entries = Object.entries(pendingChanges).filter(([, v]) => v.netChange !== 0);
+        if (entries.length === 0) { setShowSubmitModal(false); return; }
+        setSubmitting(true);
         try {
-            const res = await fetch('/api/inventory/adjust', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ itemId, change, bottleLevel })
-            });
-            if (!res.ok) {
-                const errData = await res.json().catch(() => ({}));
-                fetchItems(); // Sync back
-                alert(`Failed to update stock: ${errData.error || res.statusText}`);
-            } else {
-                fetchActivity();
-            }
-        } catch (e) {
+            await Promise.all(entries.map(([idStr, { netChange }]) =>
+                fetch('/api/inventory/adjust', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ itemId: parseInt(idStr), change: netChange }),
+                })
+            ));
+            setPendingChanges({});
+            setShowSubmitModal(false);
             fetchItems();
+            fetchActivity();
+        } catch {
+            alert('Some changes failed to save. Please try again.');
+        } finally {
+            setSubmitting(false);
         }
+    };
+
+    const cancelAllChanges = () => {
+        // Roll back optimistic qty updates to originals
+        setItems(prev => prev.map(i => {
+            const p = pendingChanges[i.id];
+            return p ? { ...i, quantity: p.originalQty } : i;
+        }));
+        setPendingChanges({});
+        setShowSubmitModal(false);
     };
 
     const handleCreateItem = async (e: React.FormEvent) => {
@@ -561,6 +600,16 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
                     >
                         Activity
                     </Button>
+                    {Object.keys(pendingChanges).length > 0 && (
+                        <Button
+                            variant="contained"
+                            size="small"
+                            onClick={() => setShowSubmitModal(true)}
+                            sx={{ background: '#f59e0b', color: '#000', fontWeight: 700, '&:hover': { background: '#d97706' } }}
+                        >
+                            Submit Changes ({Object.keys(pendingChanges).length})
+                        </Button>
+                    )}
                     <Button variant="text" color="error" onClick={handleLogout} size="small">
                         Logout
                     </Button>
@@ -604,6 +653,49 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
                                 >
                                     {canAddStock ? `Receive Order #${o.id}` : `View Order #${o.id}`}
                                 </Button>
+                            ))}
+                        </Box>
+                    </Box>
+                )}
+
+                {/* Pending Changes Banner */}
+                {Object.keys(pendingChanges).length > 0 && (
+                    <Box sx={{
+                        mb: 2,
+                        p: 1.5,
+                        borderRadius: 2,
+                        background: 'linear-gradient(90deg, rgba(245,158,11,0.15) 0%, rgba(245,158,11,0.05) 100%)',
+                        border: '1px solid rgba(245,158,11,0.4)',
+                    }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+                            <Typography variant="body2" sx={{ color: '#fbbf24', fontWeight: 700 }}>
+                                ⏳ {Object.keys(pendingChanges).length} pending change{Object.keys(pendingChanges).length > 1 ? 's' : ''} — not yet submitted
+                            </Typography>
+                            <Box sx={{ display: 'flex', gap: 1 }}>
+                                <Button size="small" variant="contained" onClick={() => setShowSubmitModal(true)}
+                                    sx={{ background: '#f59e0b', color: '#000', fontWeight: 700, fontSize: '0.75rem', py: 0.5, '&:hover': { background: '#d97706' } }}>
+                                    Submit
+                                </Button>
+                                <Button size="small" variant="outlined" onClick={cancelAllChanges}
+                                    sx={{ borderColor: 'rgba(245,158,11,0.4)', color: '#fbbf24', fontSize: '0.75rem', py: 0.5 }}>
+                                    Cancel All
+                                </Button>
+                            </Box>
+                        </Box>
+                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mt: 0.75 }}>
+                            {Object.entries(pendingChanges).map(([idStr, { itemName, netChange }]) => (
+                                <Box key={idStr} sx={{
+                                    background: 'rgba(245,158,11,0.12)',
+                                    border: '1px solid rgba(245,158,11,0.3)',
+                                    borderRadius: '6px',
+                                    px: 1, py: 0.25,
+                                    display: 'flex', alignItems: 'center', gap: 0.5,
+                                }}>
+                                    <Typography variant="caption" sx={{ color: '#e5e7eb', fontWeight: 500 }}>{itemName}</Typography>
+                                    <Typography variant="caption" sx={{ color: netChange > 0 ? '#4ade80' : '#f87171', fontWeight: 700 }}>
+                                        {netChange > 0 ? `+${netChange}` : netChange}
+                                    </Typography>
+                                </Box>
                             ))}
                         </Box>
                     </Box>
@@ -1221,6 +1313,75 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
                             Scan Again
                         </Button>
                     )}
+                </DialogActions>
+            </Dialog>
+
+            {/* Submit Changes Confirmation Modal */}
+            <Dialog open={showSubmitModal} onClose={() => setShowSubmitModal(false)} maxWidth="sm" fullWidth>
+                <DialogTitle sx={{ borderBottom: '1px solid', borderColor: 'divider' }}>
+                    Submit Stock Changes
+                </DialogTitle>
+                <DialogContent dividers>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                        Review the changes below before submitting. Once submitted, these will be recorded in the inventory log.
+                    </Typography>
+                    <Box component="table" sx={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <Box component="thead">
+                            <Box component="tr" sx={{ borderBottom: '2px solid', borderColor: 'divider' }}>
+                                <Box component="th" sx={{ textAlign: 'left', pb: 1, color: 'text.secondary', fontWeight: 600, fontSize: '0.8rem', textTransform: 'uppercase', pr: 2 }}>Item</Box>
+                                <Box component="th" sx={{ textAlign: 'center', pb: 1, color: 'text.secondary', fontWeight: 600, fontSize: '0.8rem', textTransform: 'uppercase', px: 2 }}>From</Box>
+                                <Box component="th" sx={{ textAlign: 'center', pb: 1, color: 'text.secondary', fontWeight: 600, fontSize: '0.8rem', textTransform: 'uppercase', px: 2 }}>Change</Box>
+                                <Box component="th" sx={{ textAlign: 'center', pb: 1, color: 'text.secondary', fontWeight: 600, fontSize: '0.8rem', textTransform: 'uppercase', pl: 2 }}>To</Box>
+                            </Box>
+                        </Box>
+                        <Box component="tbody">
+                            {Object.entries(pendingChanges).filter(([, v]) => v.netChange !== 0).map(([idStr, { itemName, netChange, originalQty }]) => (
+                                <Box component="tr" key={idStr} sx={{ borderBottom: '1px solid', borderColor: 'divider' }}>
+                                    <Box component="td" sx={{ py: 1.25, pr: 2 }}>
+                                        <Typography variant="body2" fontWeight={600}>{itemName}</Typography>
+                                    </Box>
+                                    <Box component="td" sx={{ py: 1.25, textAlign: 'center', px: 2 }}>
+                                        <Typography variant="body2" color="text.secondary">{originalQty}</Typography>
+                                    </Box>
+                                    <Box component="td" sx={{ py: 1.25, textAlign: 'center', px: 2 }}>
+                                        <Typography variant="body2" fontWeight={700} color={netChange > 0 ? 'success.main' : 'error.main'}>
+                                            {netChange > 0 ? `+${netChange}` : netChange}
+                                        </Typography>
+                                    </Box>
+                                    <Box component="td" sx={{ py: 1.25, textAlign: 'center', pl: 2 }}>
+                                        <Typography variant="body2" fontWeight={700}>
+                                            {Math.max(0, originalQty + netChange)}
+                                        </Typography>
+                                    </Box>
+                                </Box>
+                            ))}
+                        </Box>
+                    </Box>
+                </DialogContent>
+                <DialogActions sx={{ gap: 1, px: 2, py: 1.5 }}>
+                    <Button
+                        variant="outlined"
+                        color="error"
+                        onClick={cancelAllChanges}
+                        disabled={submitting}
+                    >
+                        Cancel All Changes
+                    </Button>
+                    <Button
+                        variant="outlined"
+                        onClick={() => setShowSubmitModal(false)}
+                        disabled={submitting}
+                    >
+                        Keep Without Submitting
+                    </Button>
+                    <Button
+                        variant="contained"
+                        color="success"
+                        onClick={submitChanges}
+                        disabled={submitting}
+                    >
+                        {submitting ? 'Submitting…' : 'Yes, Submit'}
+                    </Button>
                 </DialogActions>
             </Dialog>
 
