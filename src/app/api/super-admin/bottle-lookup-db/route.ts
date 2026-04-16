@@ -60,6 +60,11 @@ export async function POST(req: NextRequest) {
         if (!barcode?.trim()) return NextResponse.json({ error: 'Barcode required' }, { status: 400 });
         if (!name?.trim()) return NextResponse.json({ error: 'Product name required' }, { status: 400 });
 
+        // Normalize UPC-A/EAN-13: strip leading 0 from 13-digit codes
+        const normalizedBarcode = barcode.trim().length === 13 && barcode.trim().startsWith('0')
+            ? barcode.trim().slice(1)
+            : barcode.trim();
+
         const row = await db.one(
             `INSERT INTO site_bottle_db (barcode, brand, name, size, abv, type, secondary_type, image_data, added_by)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -74,7 +79,7 @@ export async function POST(req: NextRequest) {
                updated_at = NOW()
              RETURNING id, barcode, brand, name, size, abv, type, secondary_type, created_at`,
             [
-                barcode.trim(),
+                normalizedBarcode,
                 brand?.trim() || null,
                 name.trim(),
                 size?.trim() || null,

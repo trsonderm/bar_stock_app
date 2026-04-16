@@ -115,9 +115,13 @@ export async function GET(req: NextRequest) {
     const session = await getSession();
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const barcode = req.nextUrl.searchParams.get('barcode');
+    const rawBarcode = req.nextUrl.searchParams.get('barcode');
     const localOnly = req.nextUrl.searchParams.get('localOnly') === 'true';
-    if (!barcode) return NextResponse.json({ error: 'Missing barcode' }, { status: 400 });
+    if (!rawBarcode) return NextResponse.json({ error: 'Missing barcode' }, { status: 400 });
+    // Normalize UPC-A/EAN-13: strip leading 0 from 13-digit codes
+    const barcode = rawBarcode.trim().length === 13 && rawBarcode.trim().startsWith('0')
+        ? rawBarcode.trim().slice(1)
+        : rawBarcode.trim();
 
     // Load config
     let config: BottleLookupConfig = { ...DEFAULT_BOTTLE_LOOKUP_CONFIG };

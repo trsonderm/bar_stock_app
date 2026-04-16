@@ -106,10 +106,19 @@ export default function BarcodeScanner({ open, onClose, onDetected, title = 'Sca
             });
 
             // Detection handler — debounce: require 3 consistent reads
+            // Normalize UPC-A/EAN-13: QuaggaJS pads 12-digit UPC-A with a leading 0
+            // producing a 13-digit EAN-13. Strip it so barcodes match consistently.
+            const normalizeBarcode = (raw: string): string => {
+                const trimmed = raw.trim();
+                if (trimmed.length === 13 && trimmed.startsWith('0')) return trimmed.slice(1);
+                return trimmed;
+            };
+
             const counts: Record<string, number> = {};
             window.Quagga.onDetected((result: any) => {
-                const code = result?.codeResult?.code;
-                if (!code) return;
+                const raw = result?.codeResult?.code;
+                if (!raw) return;
+                const code = normalizeBarcode(raw);
                 counts[code] = (counts[code] || 0) + 1;
                 if (counts[code] >= 3 && detectedRef.current !== code) {
                     detectedRef.current = code;
