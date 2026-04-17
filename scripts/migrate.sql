@@ -504,3 +504,15 @@ EXCEPTION WHEN duplicate_column THEN NULL; END $$;
 DO $$ BEGIN
   ALTER TABLE items ADD COLUMN bottle_size TEXT;
 EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
+-- =========================================================
+-- 26. Items table — Low stock threshold type and factor
+-- =========================================================
+-- Allows threshold to be expressed as fixed, order_qty multiple, or stock_options multiple
+DO $$ BEGIN
+  ALTER TABLE items ADD COLUMN low_stock_threshold_type TEXT DEFAULT 'fixed';
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE items ADD COLUMN low_stock_threshold_factor NUMERIC(10,2);
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;

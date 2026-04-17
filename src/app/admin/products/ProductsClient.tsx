@@ -23,6 +23,8 @@ interface Item {
     location_supplier_id?: number;
     include_in_low_stock_alerts?: boolean;
     low_stock_threshold?: number;
+    low_stock_threshold_type?: 'fixed' | 'order_qty' | 'stock_options';
+    low_stock_threshold_factor?: number | null;
     order_size?: OrderSizeOption[] | number[] | number;
     stock_options?: number[];
     include_in_audit?: boolean;
@@ -67,6 +69,8 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
         quantity: '',
         order_size: [{ label: 'Unit', amount: 1 }] as OrderSizeOption[],
         low_stock_threshold: '5' as string | null,
+        low_stock_threshold_type: 'fixed' as 'fixed' | 'order_qty' | 'stock_options',
+        low_stock_threshold_factor: '5',
         track_quantity: true,
         include_in_audit: true,
         include_in_low_stock_alerts: true,
@@ -203,6 +207,8 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
             quantity: '',
             order_size: [{ label: 'Unit', amount: 1 }],
             low_stock_threshold: '5',
+            low_stock_threshold_type: 'fixed',
+            low_stock_threshold_factor: '5',
             track_quantity: true,
             include_in_audit: true,
             include_in_low_stock_alerts: true,
@@ -345,6 +351,10 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                 return [{ label: 'Unit', amount: 1 }];
             })(),
             low_stock_threshold: item.low_stock_threshold === null || item.low_stock_threshold === undefined ? null : item.low_stock_threshold.toString(),
+            low_stock_threshold_type: item.low_stock_threshold_type || 'fixed',
+            low_stock_threshold_factor: item.low_stock_threshold_factor != null
+                ? item.low_stock_threshold_factor.toString()
+                : (item.low_stock_threshold != null ? item.low_stock_threshold.toString() : '5'),
             track_quantity: true, // Assuming true if it exists, or check quantity
             include_in_audit: item.include_in_audit !== undefined ? item.include_in_audit : true,
             stock_options: Array.isArray(item.stock_options) ? item.stock_options : [],
@@ -382,7 +392,30 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                 // Always scope the quantity update to the currently selected location
                 ...(selectedLocationId ? { locationId: selectedLocationId } : {}),
                 order_size: formData.order_size.length > 0 ? formData.order_size : [{ label: 'Unit', amount: 1 }],
-                low_stock_threshold: formData.low_stock_threshold === null ? null : parseInt(formData.low_stock_threshold || '5'),
+                ...(() => {
+                    if (formData.low_stock_threshold === null) {
+                        return { low_stock_threshold: null, low_stock_threshold_type: null, low_stock_threshold_factor: null };
+                    }
+                    const factor = parseFloat(formData.low_stock_threshold_factor) || 1;
+                    const orderUnitSize = parseInt(formData.order_unit_size || '1') || 1;
+                    const presets = formData.use_category_qty_defaults
+                        ? formData.stock_options
+                        : formData.subtraction_presets;
+                    const maxPreset = presets.length > 0 ? Math.max(...presets) : 1;
+                    let effectiveThreshold: number;
+                    if (formData.low_stock_threshold_type === 'order_qty') {
+                        effectiveThreshold = Math.round(factor * orderUnitSize);
+                    } else if (formData.low_stock_threshold_type === 'stock_options') {
+                        effectiveThreshold = Math.round(factor * maxPreset);
+                    } else {
+                        effectiveThreshold = Math.round(factor);
+                    }
+                    return {
+                        low_stock_threshold: effectiveThreshold,
+                        low_stock_threshold_type: formData.low_stock_threshold_type,
+                        low_stock_threshold_factor: factor,
+                    };
+                })(),
                 track_quantity: formData.track_quantity ? 1 : 0,
                 include_in_audit: formData.include_in_audit,
                 include_in_low_stock_alerts: formData.include_in_low_stock_alerts,
@@ -1214,26 +1247,67 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                             </div>
 
                             <div style={{ marginBottom: '1rem' }}>
-                                <label className={styles.statLabel}>Low Stock Alert</label>
+                                <label className={styles.statLabel}>Low Stock Alert Threshold</label>
                                 <div className="flex items-center gap-2 mb-2">
                                     <input
                                         type="checkbox"
                                         checked={formData.low_stock_threshold === null}
-                                        onChange={e => setFormData({ ...formData, low_stock_threshold: e.target.checked ? null : '5' })}
+                                        onChange={e => setFormData({ ...formData, low_stock_threshold: e.target.checked ? null : formData.low_stock_threshold_factor || '5' })}
                                         style={{ width: '16px', height: '16px' }}
                                     />
                                     <span className="text-sm text-gray-400">Use Global Default</span>
                                 </div>
-                                {formData.low_stock_threshold !== null && (
-                                    <input
-                                        className={styles.input}
-                                        type="number"
-                                        value={formData.low_stock_threshold}
-                                        onChange={e => setFormData({ ...formData, low_stock_threshold: e.target.value })}
-                                        placeholder="5"
-                                        style={{ width: '100px' }}
-                                    />
-                                )}
+                                {formData.low_stock_threshold !== null && (() => {
+                                    const factor = parseFloat(formData.low_stock_threshold_factor) || 1;
+                                    const orderUnitSize = parseInt(formData.order_unit_size || '1') || 1;
+                                    const presets = formData.use_category_qty_defaults ? formData.stock_options : formData.subtraction_presets;
+                                    const maxPreset = presets.length > 0 ? Math.max(...presets) : 1;
+                                    const effectiveFixed = formData.low_stock_threshold_type === 'order_qty'
+                                        ? Math.round(factor * orderUnitSize)
+                                        : formData.low_stock_threshold_type === 'stock_options'
+                                            ? Math.round(factor * maxPreset)
+                                            : Math.round(factor);
+                                    return (
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                            <select
+                                                value={formData.low_stock_threshold_type}
+                                                onChange={e => setFormData({ ...formData, low_stock_threshold_type: e.target.value as any })}
+                                                style={{ background: '#1e293b', color: 'white', border: '1px solid #374151', borderRadius: '4px', padding: '6px 10px', fontSize: '0.875rem' }}
+                                            >
+                                                <option value="fixed">Fixed Amount (units)</option>
+                                                <option value="order_qty">× Order Quantity</option>
+                                                <option value="stock_options">× Stock Options</option>
+                                            </select>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                <input
+                                                    className={styles.input}
+                                                    type="number"
+                                                    min="0.01"
+                                                    step={formData.low_stock_threshold_type === 'fixed' ? '1' : '0.5'}
+                                                    value={formData.low_stock_threshold_factor}
+                                                    onChange={e => setFormData({ ...formData, low_stock_threshold_factor: e.target.value, low_stock_threshold: e.target.value })}
+                                                    placeholder={formData.low_stock_threshold_type === 'fixed' ? '5' : '2'}
+                                                    style={{ width: '90px' }}
+                                                />
+                                                {formData.low_stock_threshold_type === 'order_qty' && (
+                                                    <span style={{ color: '#9ca3af', fontSize: '0.8rem' }}>
+                                                        × {orderUnitSize} {formData.order_unit_label || 'units'}
+                                                        <span style={{ color: '#f59e0b', marginLeft: '0.5rem' }}>= {effectiveFixed} units</span>
+                                                    </span>
+                                                )}
+                                                {formData.low_stock_threshold_type === 'stock_options' && (
+                                                    <span style={{ color: '#9ca3af', fontSize: '0.8rem' }}>
+                                                        × {maxPreset} (max preset)
+                                                        <span style={{ color: '#f59e0b', marginLeft: '0.5rem' }}>= {effectiveFixed} units</span>
+                                                    </span>
+                                                )}
+                                                {formData.low_stock_threshold_type === 'fixed' && (
+                                                    <span style={{ color: '#9ca3af', fontSize: '0.8rem' }}>units</span>
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
                             </div>
 
                             {myLocations.length > 0 && (
