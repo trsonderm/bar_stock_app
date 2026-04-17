@@ -33,8 +33,30 @@ export async function GET(req: NextRequest) {
             locationId = defaultLoc ? defaultLoc.id : 0;
         }
 
+        // Load org-level inventory display settings
+        let showItemsAtAllLocations = true;
+        let sharedInventoryCount = false;
+        try {
+            const orgRow = await db.one('SELECT settings FROM organizations WHERE id = $1', [organizationId]);
+            if (orgRow?.settings) {
+                if (orgRow.settings.show_items_at_all_locations === false) showItemsAtAllLocations = false;
+                if (orgRow.settings.shared_inventory_count === true) sharedInventoryCount = true;
+            }
+        } catch { }
+
         // Refactored Query for Multi-tenancy
         // Usage of $1 for organizationId (reused) and $2 for LocationId
+        // Build inventory JOIN clause based on settings
+        // shared_inventory_count: sum across all locations (no location filter)
+        // show_items_at_all_locations: LEFT JOIN (show items even without inv row at this loc) vs INNER JOIN (only assigned)
+        const invJoin = sharedInventoryCount
+            ? (showItemsAtAllLocations
+                ? `LEFT JOIN inventory inv ON i.id = inv.item_id`
+                : `JOIN inventory inv ON i.id = inv.item_id`)
+            : (showItemsAtAllLocations
+                ? `LEFT JOIN inventory inv ON i.id = inv.item_id AND inv.location_id = $2`
+                : `JOIN inventory inv ON i.id = inv.item_id AND inv.location_id = $2`);
+
         let query = `
       SELECT
         i.id, i.name, i.type, i.secondary_type, i.unit_cost, i.sale_price, i.supplier,
@@ -57,7 +79,7 @@ export async function GET(req: NextRequest) {
         (SELECT json_agg(location_id) FROM inventory WHERE item_id = i.id) as assigned_locations,
         (SELECT ilp.sale_price FROM item_location_prices ilp WHERE ilp.item_id = i.id AND ilp.location_id = $2 LIMIT 1) as location_sale_price
       FROM items i
-      LEFT JOIN inventory inv ON i.id = inv.item_id AND inv.location_id = $2
+      ${invJoin}
       LEFT JOIN item_suppliers isp ON i.id = isp.item_id AND isp.is_preferred = true
       LEFT JOIN (
         SELECT
@@ -483,22 +505,14 @@ export async function PUT(req: NextRequest) {
         if (quantity !== undefined && canStock) {
             console.log(`[PUT Inventory] STOCK UPDATE START for item ${id}, qty: ${quantity}, org: ${organizationId}`);
 
-            // Determine Location (Match GET logic) — body locationId wins over cookie
-            const cookieLoc = req.cookies.get('current_location_id')?.value;
-            let targetLocationId: number | null = bodyLocationId ? parseInt(bodyLocationId) : (cookieLoc ? parseInt(cookieLoc) : null);
+            // Load shared inventory setting
+            let isSharedInventory = false;
+            try {
+                const orgRow = await db.one('SELECT settings FROM organizations WHERE id = $1', [organizationId]);
+                if (orgRow?.settings?.shared_inventory_count === true) isSharedInventory = true;
+            } catch { }
 
-            if (!targetLocationId) {
-                const defaultLoc = await db.one('SELECT id FROM locations WHERE organization_id = $1 ORDER BY id ASC LIMIT 1', [organizationId]);
-                targetLocationId = defaultLoc ? defaultLoc.id : null;
-            }
-
-            if (!targetLocationId) {
-                console.error('[PUT Inventory] No location found for org', organizationId);
-                throw new Error('No location found for org');
-            }
-            console.log(`[PUT Inventory] Using location ${targetLocationId}`);
-
-            // Get current quantity and threshold (allow global items with org_id IS NULL)
+            // Get current quantity and threshold
             const itemOwner = await db.one(`
                 SELECT id, name, low_stock_threshold FROM items
                 WHERE id = $1 AND organization_id = $2
@@ -508,49 +522,104 @@ export async function PUT(req: NextRequest) {
                 return NextResponse.json({ error: 'Item not found' }, { status: 404 });
             }
 
-            let current = await db.one('SELECT quantity FROM inventory WHERE item_id = $1 AND location_id = $2', [id, targetLocationId]);
-            console.log(`[PUT Inventory] Current inventory found:`, current);
-
-            // Auto-create inventory record if missing (e.g. for new items)
-            if (!current) {
-                console.log('[PUT Inventory] Creating new inventory record...');
-                await db.one(
-                    'INSERT INTO inventory (item_id, location_id, organization_id, quantity) VALUES ($1, $2, $3, 0) RETURNING quantity',
-                    [id, targetLocationId, organizationId]
+            if (isSharedInventory) {
+                // Shared mode: get total across all location rows
+                const totalRow = await db.one(
+                    'SELECT COALESCE(SUM(quantity), 0) as total FROM inventory WHERE item_id = $1 AND organization_id = $2',
+                    [id, organizationId]
                 );
-                current = { quantity: 0 };
-            }
-            const oldQty = current ? current.quantity : 0;
+                const oldQty = totalRow ? parseFloat(totalRow.total) : 0;
+                const diff = quantity - oldQty;
 
-            console.log(`[PUT Inventory] Executing Upsert. Old: ${oldQty}, New: ${quantity}`);
-            // Upsert inventory
-            await db.execute(
-                `INSERT INTO inventory(item_id, location_id, quantity, organization_id)
-                VALUES($1, $2, $3, $4) 
-                 ON CONFLICT(item_id, location_id) DO UPDATE SET quantity = $3`,
-                [id, targetLocationId, quantity, organizationId]
-            );
+                // Get all location rows for this item
+                const locRows = await db.query(
+                    'SELECT location_id FROM inventory WHERE item_id = $1 AND organization_id = $2',
+                    [id, organizationId]
+                );
 
-            const diff = quantity - oldQty;
-            if (diff !== 0) {
-                const action = diff > 0 ? 'ADD_STOCK' : 'SUBTRACT_STOCK';
-                let logItemName = name || itemOwner.name || 'Unknown Item';
-
-                await logActivity(session.organizationId, session.id, action, {
-                    itemId: id,
-                    itemName: logItemName,
-                    quantity: Math.abs(diff),
-                    method: 'SET_ADMIN',
-                    oldQty,
-                    newQty: quantity
-                });
-
-                // TRIGGER SMART ORDER
-                if (itemOwner.low_stock_threshold !== null) {
-                    await checkAndTriggerSmartOrder(organizationId, itemOwner, quantity, oldQty);
+                if (locRows.length === 0) {
+                    // No rows yet — create one at default location
+                    const defaultLoc = await db.one('SELECT id FROM locations WHERE organization_id = $1 ORDER BY id ASC LIMIT 1', [organizationId]);
+                    const locId = defaultLoc ? defaultLoc.id : null;
+                    if (locId) {
+                        await db.execute(
+                            'INSERT INTO inventory (item_id, location_id, organization_id, quantity) VALUES ($1, $2, $3, $4) ON CONFLICT (item_id, location_id) DO UPDATE SET quantity = $4',
+                            [id, locId, organizationId, quantity]
+                        );
+                    }
+                } else if (locRows.length === 1) {
+                    // Single row — just set it
+                    await db.execute(
+                        'UPDATE inventory SET quantity = $1 WHERE item_id = $2 AND organization_id = $3',
+                        [quantity, id, organizationId]
+                    );
+                } else {
+                    // Multiple rows — apply delta proportionally (add/subtract evenly from first location)
+                    const firstLocId = locRows[0].location_id;
+                    await db.execute(
+                        'UPDATE inventory SET quantity = GREATEST(0, quantity + $1) WHERE item_id = $2 AND location_id = $3',
+                        [diff, id, firstLocId]
+                    );
                 }
-            }
-        }
+
+                if (diff !== 0) {
+                    const action = diff > 0 ? 'ADD_STOCK' : 'SUBTRACT_STOCK';
+                    await logActivity(session.organizationId, session.id, action, {
+                        itemId: id, itemName: name || itemOwner.name || 'Unknown Item',
+                        quantity: Math.abs(diff), method: 'SET_ADMIN', oldQty, newQty: quantity
+                    });
+                    if (itemOwner.low_stock_threshold !== null) {
+                        await checkAndTriggerSmartOrder(organizationId, itemOwner, quantity, oldQty);
+                    }
+                }
+            } else {
+                // Per-location mode (default)
+                const cookieLoc = req.cookies.get('current_location_id')?.value;
+                let targetLocationId: number | null = bodyLocationId ? parseInt(bodyLocationId) : (cookieLoc ? parseInt(cookieLoc) : null);
+
+                if (!targetLocationId) {
+                    const defaultLoc = await db.one('SELECT id FROM locations WHERE organization_id = $1 ORDER BY id ASC LIMIT 1', [organizationId]);
+                    targetLocationId = defaultLoc ? defaultLoc.id : null;
+                }
+
+                if (!targetLocationId) {
+                    console.error('[PUT Inventory] No location found for org', organizationId);
+                    throw new Error('No location found for org');
+                }
+                console.log(`[PUT Inventory] Using location ${targetLocationId}`);
+
+                let current = await db.one('SELECT quantity FROM inventory WHERE item_id = $1 AND location_id = $2', [id, targetLocationId]);
+                if (!current) {
+                    await db.one(
+                        'INSERT INTO inventory (item_id, location_id, organization_id, quantity) VALUES ($1, $2, $3, 0) RETURNING quantity',
+                        [id, targetLocationId, organizationId]
+                    );
+                    current = { quantity: 0 };
+                }
+                const oldQty = current ? current.quantity : 0;
+
+                console.log(`[PUT Inventory] Executing Upsert. Old: ${oldQty}, New: ${quantity}`);
+                await db.execute(
+                    `INSERT INTO inventory(item_id, location_id, quantity, organization_id)
+                    VALUES($1, $2, $3, $4)
+                     ON CONFLICT(item_id, location_id) DO UPDATE SET quantity = $3`,
+                    [id, targetLocationId, quantity, organizationId]
+                );
+
+                const diff = quantity - oldQty;
+                if (diff !== 0) {
+                    const action = diff > 0 ? 'ADD_STOCK' : 'SUBTRACT_STOCK';
+                    const logItemName = name || itemOwner.name || 'Unknown Item';
+                    await logActivity(session.organizationId, session.id, action, {
+                        itemId: id, itemName: logItemName,
+                        quantity: Math.abs(diff), method: 'SET_ADMIN', oldQty, newQty: quantity
+                    });
+                    if (itemOwner.low_stock_threshold !== null) {
+                        await checkAndTriggerSmartOrder(organizationId, itemOwner, quantity, oldQty);
+                    }
+                }
+            } // end per-location else
+        } // end quantity update block
 
         return NextResponse.json({ success: true });
     } catch (e: any) {

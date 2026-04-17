@@ -35,6 +35,8 @@ export async function GET(req: NextRequest) {
         settingsObj['allow_custom_increment'] = generalSettings.allow_custom_increment ? 'true' : 'false';
         settingsObj['smart_order_per_location'] = generalSettings.smart_order_per_location ? 'true' : 'false';
         settingsObj['per_location_pricing'] = generalSettings.per_location_pricing ? 'true' : 'false';
+        settingsObj['show_items_at_all_locations'] = generalSettings.show_items_at_all_locations === false ? 'false' : 'true';
+        settingsObj['shared_inventory_count'] = generalSettings.shared_inventory_count ? 'true' : 'false';
     }
 
     return NextResponse.json({ settings: settingsObj });
@@ -108,14 +110,16 @@ export async function POST(req: NextRequest) {
         }
 
         // Handle General Settings (JSONB)
-        if (body.stock_count_mode !== undefined || body.allow_custom_increment !== undefined ||
-            body.smart_order_per_location !== undefined || body.per_location_pricing !== undefined) {
+        const generalSettingsKeys = ['stock_count_mode', 'allow_custom_increment', 'smart_order_per_location', 'per_location_pricing', 'show_items_at_all_locations', 'shared_inventory_count'];
+        if (generalSettingsKeys.some(k => body[k] !== undefined)) {
             const org = await db.one('SELECT settings FROM organizations WHERE id = $1', [organizationId]);
             let currentSettings = org.settings || {};
             if (body.stock_count_mode !== undefined) currentSettings.stock_count_mode = body.stock_count_mode;
             if (body.allow_custom_increment !== undefined) currentSettings.allow_custom_increment = body.allow_custom_increment === 'true' || body.allow_custom_increment === true;
             if (body.smart_order_per_location !== undefined) currentSettings.smart_order_per_location = body.smart_order_per_location === 'true' || body.smart_order_per_location === true;
             if (body.per_location_pricing !== undefined) currentSettings.per_location_pricing = body.per_location_pricing === 'true' || body.per_location_pricing === true;
+            if (body.show_items_at_all_locations !== undefined) currentSettings.show_items_at_all_locations = body.show_items_at_all_locations === 'true' || body.show_items_at_all_locations === true;
+            if (body.shared_inventory_count !== undefined) currentSettings.shared_inventory_count = body.shared_inventory_count === 'true' || body.shared_inventory_count === true;
             await db.query('UPDATE organizations SET settings = $1 WHERE id = $2', [currentSettings, organizationId]);
         }
 

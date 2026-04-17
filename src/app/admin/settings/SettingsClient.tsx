@@ -32,6 +32,8 @@ export default function SettingsClient() {
         profit_reporting_mode: 'off',           // 'off' | 'per_item' | 'total'
         order_confirmation_recipients: '[]',    // JSON array of user IDs
         receipt_mode: 'combined',               // 'combined' | 'separate'
+        show_items_at_all_locations: 'true',
+        shared_inventory_count: 'false',
     });
 
     const [users, setUsers] = useState<any[]>([]);
@@ -613,6 +615,53 @@ export default function SettingsClient() {
                     <div style={{ marginTop: '1rem' }}>
                         <button onClick={handleSubmit} style={{ padding: '0.5rem 1rem', background: '#3b82f6', color: 'white', borderRadius: '0.25rem', border: 'none', cursor: 'pointer' }}>
                             Save Preference
+                        </button>
+                    </div>
+                </div>
+
+                {/* Multi-Location Inventory Settings */}
+                <div className={styles.card} style={{ gridColumn: 'span 2' }}>
+                    <div className={styles.cardTitle}>Multi-Location Inventory Settings</div>
+                    <p style={{ color: '#9ca3af', marginBottom: '1rem' }}>
+                        Control how products and stock counts behave across multiple locations.
+                    </p>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                        <div style={{ background: '#1f2937', padding: '1rem', borderRadius: '0.5rem', border: '1px solid #374151', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                            <input
+                                type="checkbox"
+                                id="show_items_at_all_locations"
+                                checked={(settings as any).show_items_at_all_locations !== 'false'}
+                                onChange={e => setSettings(prev => ({ ...prev, show_items_at_all_locations: e.target.checked ? 'true' : 'false' }))}
+                                style={{ width: '20px', height: '20px', flexShrink: 0 }}
+                            />
+                            <label htmlFor="show_items_at_all_locations" style={{ cursor: 'pointer' }}>
+                                <div style={{ color: 'white', fontWeight: 'bold' }}>Show All Products at Every Location</div>
+                                <div style={{ fontSize: '0.85rem', color: '#9ca3af' }}>
+                                    When enabled (default), all products appear in the stock view regardless of which location is selected.
+                                    When disabled, only products assigned to the current location are shown.
+                                </div>
+                            </label>
+                        </div>
+                        <div style={{ background: '#1f2937', padding: '1rem', borderRadius: '0.5rem', border: '1px solid #374151', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                            <input
+                                type="checkbox"
+                                id="shared_inventory_count"
+                                checked={(settings as any).shared_inventory_count === 'true'}
+                                onChange={e => setSettings(prev => ({ ...prev, shared_inventory_count: e.target.checked ? 'true' : 'false' }))}
+                                style={{ width: '20px', height: '20px', flexShrink: 0 }}
+                            />
+                            <label htmlFor="shared_inventory_count" style={{ cursor: 'pointer' }}>
+                                <div style={{ color: 'white', fontWeight: 'bold' }}>One Shared Inventory Count</div>
+                                <div style={{ fontSize: '0.85rem', color: '#9ca3af' }}>
+                                    When enabled, all locations share a single combined inventory count — stock added or removed at any location affects the same total.
+                                    When disabled (default), each location tracks its own separate stock count.
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+                    <div style={{ marginTop: '1rem' }}>
+                        <button onClick={handleSubmit} style={{ padding: '0.5rem 1rem', background: '#3b82f6', color: 'white', borderRadius: '0.25rem', border: 'none', cursor: 'pointer' }}>
+                            Save Settings
                         </button>
                     </div>
                 </div>
