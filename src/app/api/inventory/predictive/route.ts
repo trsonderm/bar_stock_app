@@ -259,7 +259,8 @@ function buildSuggestions(
         const p = { CRITICAL: 0, HIGH: 1, HEALTHY: 2 };
         const pd = p[a.priority] - p[b.priority];
         if (pd !== 0) return pd;
-        return a.days_until_empty - b.days_until_empty;
+        // Within same priority, highest burn rate (most used) first
+        return parseFloat(b.burn_rate) - parseFloat(a.burn_rate);
     });
 
     return suggestions;

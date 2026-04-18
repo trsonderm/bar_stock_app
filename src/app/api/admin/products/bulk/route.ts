@@ -73,28 +73,35 @@ export async function POST(req: NextRequest) {
         if (hasLocationUpdate) {
             const locIds: number[] = (updates.assigned_locations as any[]).map(Number).filter((n: number) => !isNaN(n));
 
-            await db.execute(
-                `DELETE FROM item_locations WHERE item_id = ANY($1::int[]) AND location_id IN (
-                    SELECT id FROM locations WHERE organization_id = $2
-                )`,
-                [item_ids, orgId]
-            );
+            // Get all location IDs for this org so we only touch what we own
+            const orgLocs = await db.query(`SELECT id FROM locations WHERE organization_id = $1`, [orgId]);
+            const orgLocIds: number[] = orgLocs.map((r: any) => r.id);
 
-            if (locIds.length > 0) {
-                // Build parameterized bulk insert
-                const placeholders: string[] = [];
-                const insParams: number[] = [];
-                let insIdx = 1;
-                for (const itemId of item_ids) {
-                    for (const locId of locIds) {
-                        placeholders.push(`($${insIdx++}, $${insIdx++})`);
-                        insParams.push(itemId, locId);
-                    }
+            if (orgLocIds.length > 0) {
+                // Remove location rows that are no longer assigned
+                const locsToRemove = orgLocIds.filter(id => !locIds.includes(id));
+                if (locsToRemove.length > 0) {
+                    await db.execute(
+                        `DELETE FROM inventory WHERE item_id = ANY($1::int[]) AND location_id = ANY($2::int[]) AND organization_id = $3`,
+                        [item_ids, locsToRemove, orgId]
+                    );
                 }
-                await db.execute(
-                    `INSERT INTO item_locations (item_id, location_id) VALUES ${placeholders.join(', ')} ON CONFLICT DO NOTHING`,
-                    insParams
-                );
+
+                if (locIds.length > 0) {
+                    const placeholders: string[] = [];
+                    const insParams: any[] = [];
+                    let insIdx = 1;
+                    for (const itemId of item_ids) {
+                        for (const locId of locIds) {
+                            placeholders.push(`($${insIdx++}, $${insIdx++}, 0, $${insIdx++})`);
+                            insParams.push(itemId, locId, orgId);
+                        }
+                    }
+                    await db.execute(
+                        `INSERT INTO inventory (item_id, location_id, quantity, organization_id) VALUES ${placeholders.join(', ')} ON CONFLICT (item_id, location_id) DO NOTHING`,
+                        insParams
+                    );
+                }
             }
         }
 
