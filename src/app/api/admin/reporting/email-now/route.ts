@@ -171,7 +171,7 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Unknown report type' }, { status: 400 });
         }
 
-        const sent = await sendEmail('reporting', { to: recipients, subject, html });
+        const sent = await sendEmail('reporting', { to: recipients, subject, html }, { emailType: 'manual', organizationId });
         if (!sent) {
             return NextResponse.json({ error: 'Email delivery failed. Check the Reporting mail account in Super Admin → Mail Accounts.' }, { status: 500 });
         }

@@ -176,7 +176,7 @@ export async function POST(req: NextRequest) {
                             subject: `${subject} — ${fullShift.user_name || 'Staff'} — ${dateStr}`,
                             html,
                             text: `Shift Close Report\nDate: ${dateStr}\nStaff: ${fullShift.user_name || 'N/A'}\nBag Amount: ${bagAmount}\nOver/Short: ${overShort}`,
-                        });
+                        }, { emailType: 'shift_report', organizationId, orgName });
                     }
                 }
             }

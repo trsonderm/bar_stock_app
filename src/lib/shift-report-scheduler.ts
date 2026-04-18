@@ -158,7 +158,7 @@ async function sendAllShiftsEmail(
         subject: `${subjectPrefix} — ${frequency.charAt(0).toUpperCase() + frequency.slice(1)} Digest — ${periodLabel}`,
         html,
         text: `${subjectPrefix}\nPeriod: ${periodLabel}\nShifts: ${shifts.length}\n\nView at: ${appUrl}/admin/shift-reports`,
-    });
+    }, { emailType: 'shift_report', organizationId, orgName, scheduled: true });
 }
 
 async function sendSummaryEmail(
@@ -258,5 +258,5 @@ async function sendSummaryEmail(
         subject: `${subjectPrefix} — ${frequency.charAt(0).toUpperCase() + frequency.slice(1)} Summary — ${periodLabel}`,
         html,
         text: `${subjectPrefix} Summary\nPeriod: ${periodLabel}\nShifts: ${summary.total_shifts}\nTotal Bag: ${fmt(summary.total_bag_amount)}\nOver/Short: ${fmt(summary.total_over_short)}\n\nView at: ${appUrl}/admin/shift-reports`,
-    });
+    }, { emailType: 'shift_report', organizationId, orgName, scheduled: true });
 }

@@ -217,6 +217,10 @@ class Scheduler {
             subject: `[TopShelf] ${schedule.report_name} — ${schedule.frequency.charAt(0).toUpperCase() + schedule.frequency.slice(1)} Report`,
             html,
             text: `TopShelf Scheduled Report: ${schedule.report_name}\nGenerated: ${new Date().toLocaleString()}\n\nView your full report at: ${appUrl}/admin/reports`,
+        }, {
+            emailType: 'scheduled_report',
+            organizationId: schedule.organization_id,
+            scheduled: true,
         });
 
         console.log(`[Scheduler] Sent scheduled report "${schedule.report_name}" to ${recipients.join(', ')}`);
@@ -388,6 +392,10 @@ class Scheduler {
                     subject: title,
                     html,
                     text: `${title}\n\n${lowItems.map((i: any) => `${i.name}: ${i.quantity} (threshold: ${i.low_stock_threshold ?? threshold})`).join('\n')}\n\nView inventory: ${appUrl}/inventory`,
+                }, {
+                    emailType: 'low_stock_alert',
+                    organizationId: s.organization_id,
+                    scheduled: true,
                 });
 
                 console.log(`[Scheduler] Sent low stock alert for org ${s.organization_id} to ${recipients.join(', ')}`);

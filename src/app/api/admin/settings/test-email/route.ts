@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
                     </p>
                 </div>
             `,
-        });
+        }, { emailType: 'test', organizationId: session.organizationId });
 
         if (sent) {
             return NextResponse.json({ success: true, message: `Test email sent to ${to}` });

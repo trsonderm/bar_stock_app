@@ -4,6 +4,25 @@ import { syslog } from './syslog';
 
 type MailTier = 'reporting' | 'support' | 'admin' | 'notifications';
 
+export type EmailType =
+    | 'low_stock_alert'
+    | 'scheduled_report'
+    | 'smart_order'
+    | 'shift_report'
+    | 'test'
+    | 'manual'
+    | 'order_received'
+    | 'verification'
+    | 'registration'
+    | 'other';
+
+export interface EmailContext {
+    emailType?: EmailType;
+    organizationId?: number;
+    orgName?: string;
+    scheduled?: boolean;
+}
+
 export async function getSmtpConfig(tier: MailTier) {
     const settings = await db.query('SELECT key, value FROM system_settings');
     const config: Record<string, string> = {};
@@ -13,9 +32,6 @@ export async function getSmtpConfig(tier: MailTier) {
 
     // Port 465 = implicit SSL (secure: true).
     // Port 587 / 25 / anything else = STARTTLS (secure: false, nodemailer upgrades automatically).
-    // Ignore the stored checkbox when the port makes the answer unambiguous — a common
-    // misconfiguration is checking "SSL/TLS" while leaving port 587, which causes the
-    // "wrong version number" OpenSSL error.
     const secureStored = config[`${tier}_smtp_secure`] === 'true';
     const secure = port === 465 ? true : port === 587 || port === 25 ? false : secureStored;
 
@@ -32,24 +48,53 @@ export async function getSmtpConfig(tier: MailTier) {
 
 export async function sendEmail(
     tier: MailTier,
-    options: { to: string | string[]; subject: string; text?: string; html?: string }
-) {
+    options: { to: string | string[]; subject: string; text?: string; html?: string },
+    context?: EmailContext
+): Promise<boolean> {
+    const toArr = Array.isArray(options.to) ? options.to : [options.to];
+
+    const logAttempt = async (status: 'sent' | 'failed' | 'skipped', errorMessage?: string) => {
+        try {
+            await db.execute(
+                `INSERT INTO email_log
+                    (organization_id, org_name, email_type, tier, subject, recipients, html_body, text_body, status, error_message, scheduled)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+                [
+                    context?.organizationId ?? null,
+                    context?.orgName ?? null,
+                    context?.emailType ?? 'other',
+                    tier,
+                    options.subject ?? null,
+                    JSON.stringify({ to: toArr }),
+                    options.html ?? null,
+                    options.text ?? null,
+                    status,
+                    errorMessage ?? null,
+                    context?.scheduled ?? false,
+                ]
+            );
+        } catch (e) {
+            console.error('[mail] Failed to write email_log:', e);
+        }
+    };
+
     const config = await getSmtpConfig(tier);
 
     if (!config.host || !config.auth.user) {
         await syslog.warn('email', `Cannot send email — SMTP not configured for tier "${tier}"`, {
             tier,
             subject: options.subject,
-            to: Array.isArray(options.to) ? options.to.join(', ') : options.to,
+            to: toArr.join(', '),
             reason: 'missing host or user',
         });
+        await logAttempt('skipped', `SMTP not configured for tier "${tier}"`);
         return false;
     }
 
     const meta = {
         tier,
         subject: options.subject,
-        to: Array.isArray(options.to) ? options.to.join(', ') : options.to,
+        to: toArr.join(', '),
         host: config.host,
         port: config.port,
         user: config.auth.user,
@@ -76,7 +121,7 @@ export async function sendEmail(
             ...meta,
             messageId: info.messageId,
         });
-
+        await logAttempt('sent');
         return true;
     } catch (e: any) {
         await syslog.error('email', `SMTP send failed — ${tier} tier — "${options.subject}"`, {
@@ -87,6 +132,7 @@ export async function sendEmail(
             response: e.response,
             stack:    e.stack?.split('\n').slice(0, 5).join('\n'),
         });
+        await logAttempt('failed', e.message);
         return false;
     }
 }

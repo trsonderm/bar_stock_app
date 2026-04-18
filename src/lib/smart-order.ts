@@ -29,11 +29,11 @@ export async function checkAndTriggerSmartOrder(
     // If we were already below, we don't spam.
     const threshold = item.low_stock_threshold;
     if (oldQuantity > threshold && newQuantity <= threshold) {
-        await sendProposalEmail(config, item, newQuantity);
+        await sendProposalEmail(config, item, newQuantity, organizationId);
     }
 }
 
-async function sendProposalEmail(config: any, item: ProposalItem, currentStock: number) {
+async function sendProposalEmail(config: any, item: ProposalItem, currentStock: number, organizationId: number) {
     const emailTo = config.email;
     if (!emailTo) return;
 
@@ -65,5 +65,8 @@ async function sendProposalEmail(config: any, item: ProposalItem, currentStock: 
         to: emailTo,
         subject: `Order Proposal: ${item.name}`,
         html,
+    }, {
+        emailType: 'smart_order',
+        organizationId,
     });
 }
