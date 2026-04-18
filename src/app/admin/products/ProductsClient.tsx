@@ -258,7 +258,11 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                 body: JSON.stringify({ item_ids: Array.from(selectedIds), updates }),
             });
             let data: any = {};
-            try { data = await res.json(); } catch { /* non-JSON response */ }
+            let rawText = '';
+            try {
+                rawText = await res.text();
+                data = JSON.parse(rawText);
+            } catch { /* non-JSON response — data stays {} */ }
             if (res.ok) {
                 setSelectedIds(new Set());
                 setBulkCategory('');
@@ -269,10 +273,10 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                 setBulkLocations([]);
                 fetchData();
             } else {
-                alert(data.error || `Bulk update failed (${res.status})`);
+                alert(data.error || `Bulk update failed (${res.status}):\n${rawText.slice(0, 300)}`);
             }
         } catch (err: any) {
-            alert('Network error: ' + (err?.message || 'Could not reach server'));
+            alert('Failed to reach server: ' + (err?.message || 'Unknown error'));
         } finally {
             setBulkApplying(false);
         }
