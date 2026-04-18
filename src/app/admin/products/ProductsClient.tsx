@@ -103,6 +103,7 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
     const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
     const [bulkCategory, setBulkCategory] = useState('');
     const [bulkSubCategory, setBulkSubCategory] = useState('');
+    const [bulkSubCategoryActive, setBulkSubCategoryActive] = useState(false);
     const [bulkSupplierId, setBulkSupplierId] = useState<string>('');
     const [bulkGlobalSupplier, setBulkGlobalSupplier] = useState('');
     const [bulkLocations, setBulkLocations] = useState<number[]>([]);
@@ -239,10 +240,16 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
         setBulkApplying(true);
         const updates: Record<string, any> = {};
         if (bulkCategory) updates.type = bulkCategory;
-        if (bulkSubCategory !== '') updates.secondary_type = bulkSubCategory;
+        if (bulkSubCategoryActive) updates.secondary_type = bulkSubCategory === '__clear__' ? null : bulkSubCategory || null;
         if (bulkSupplierId !== '') updates.supplier_id = bulkSupplierId === 'none' ? null : parseInt(bulkSupplierId);
         if (bulkGlobalSupplier !== '') updates.global_supplier = bulkGlobalSupplier === 'none' ? null : bulkGlobalSupplier;
         if (bulkLocations.length > 0) updates.assigned_locations = bulkLocations;
+
+        if (Object.keys(updates).length === 0) {
+            alert('Select at least one field to update.');
+            setBulkApplying(false);
+            return;
+        }
 
         try {
             const res = await fetch('/api/admin/products/bulk', {
@@ -250,20 +257,22 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ item_ids: Array.from(selectedIds), updates }),
             });
-            const data = await res.json();
+            let data: any = {};
+            try { data = await res.json(); } catch { /* non-JSON response */ }
             if (res.ok) {
                 setSelectedIds(new Set());
                 setBulkCategory('');
                 setBulkSubCategory('');
+                setBulkSubCategoryActive(false);
                 setBulkSupplierId('');
                 setBulkGlobalSupplier('');
                 setBulkLocations([]);
                 fetchData();
             } else {
-                alert(data.error || 'Bulk update failed');
+                alert(data.error || `Bulk update failed (${res.status})`);
             }
-        } catch {
-            alert('Network error during bulk update');
+        } catch (err: any) {
+            alert('Network error: ' + (err?.message || 'Could not reach server'));
         } finally {
             setBulkApplying(false);
         }
@@ -606,30 +615,51 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                     )}
                 </div>
 
+                {/* Select All / Deselect All row */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                    <button onClick={() => setSelectedIds(new Set(filtered.map(i => i.id)))}
+                        style={{ background: 'none', border: '1px solid #374151', color: '#9ca3af', borderRadius: '6px', padding: '4px 12px', cursor: 'pointer', fontSize: '0.8rem' }}>
+                        Select All ({filtered.length})
+                    </button>
+                    {selectedIds.size > 0 && (
+                        <button onClick={() => setSelectedIds(new Set())}
+                            style={{ background: 'none', border: '1px solid #374151', color: '#9ca3af', borderRadius: '6px', padding: '4px 12px', cursor: 'pointer', fontSize: '0.8rem' }}>
+                            Deselect All
+                        </button>
+                    )}
+                    {selectedIds.size > 0 && (
+                        <span style={{ color: '#60a5fa', fontSize: '0.85rem', fontWeight: 600 }}>{selectedIds.size} selected</span>
+                    )}
+                </div>
+
                 {/* Bulk Action Toolbar */}
                 {selectedIds.size > 0 && (
                     <div style={{ background: '#1e3a5f', border: '1px solid #1d4ed8', borderRadius: '8px', padding: '0.75rem 1rem', marginBottom: '1rem', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.75rem' }}>
-                        <span style={{ color: '#93c5fd', fontWeight: 600, fontSize: '0.9rem', marginRight: '0.25rem' }}>
-                            {selectedIds.size} selected
-                        </span>
+                        <span style={{ color: '#93c5fd', fontWeight: 600, fontSize: '0.85rem' }}>Bulk update {selectedIds.size} items:</span>
 
                         {/* Category */}
-                        <select value={bulkCategory} onChange={e => { setBulkCategory(e.target.value); setBulkSubCategory(''); }}
+                        <select value={bulkCategory} onChange={e => { setBulkCategory(e.target.value); setBulkSubCategory(''); setBulkSubCategoryActive(false); }}
                             className={styles.input} style={{ width: 'auto', fontSize: '0.85rem', padding: '4px 8px' }}>
                             <option value="">— Category —</option>
                             {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
                         </select>
 
-                        {/* Sub-category (shown when category selected) */}
-                        {bulkCategory && (() => {
-                            const cat = categories.find(c => c.name === bulkCategory);
-                            if (!cat?.sub_categories?.length) return null;
+                        {/* Sub-category — standalone, shows all sub-cats or category-scoped */}
+                        {(() => {
+                            const subCats: string[] = bulkCategory
+                                ? (categories.find(c => c.name === bulkCategory)?.sub_categories ?? [])
+                                : Array.from(new Set(categories.flatMap(c => c.sub_categories ?? []))).sort();
+                            if (subCats.length === 0) return null;
                             return (
-                                <select value={bulkSubCategory} onChange={e => setBulkSubCategory(e.target.value)}
-                                    className={styles.input} style={{ width: 'auto', fontSize: '0.85rem', padding: '4px 8px' }}>
+                                <select
+                                    value={bulkSubCategoryActive ? bulkSubCategory : ''}
+                                    onChange={e => { setBulkSubCategoryActive(true); setBulkSubCategory(e.target.value); }}
+                                    className={styles.input}
+                                    style={{ width: 'auto', fontSize: '0.85rem', padding: '4px 8px', borderColor: bulkSubCategoryActive ? '#3b82f6' : undefined }}
+                                >
                                     <option value="">— Sub-Category —</option>
-                                    <option value="none">(Clear)</option>
-                                    {cat.sub_categories.map((s: string) => <option key={s} value={s}>{s}</option>)}
+                                    <option value="__clear__">(Clear)</option>
+                                    {subCats.map((s: string) => <option key={s} value={s}>{s}</option>)}
                                 </select>
                             );
                         })()}
@@ -652,9 +682,10 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                             <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
                                 <span style={{ color: '#9ca3af', fontSize: '0.8rem' }}>Locations:</span>
                                 {myLocations.map(loc => (
-                                    <label key={loc.id} style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', color: '#d1d5db', fontSize: '0.8rem' }}>
+                                    <label key={loc.id} style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', color: '#d1d5db', fontSize: '0.8rem' }}>
                                         <input type="checkbox" checked={bulkLocations.includes(loc.id)}
-                                            onChange={e => setBulkLocations(prev => e.target.checked ? [...prev, loc.id] : prev.filter(id => id !== loc.id))} />
+                                            onChange={e => setBulkLocations(prev => e.target.checked ? [...prev, loc.id] : prev.filter(id => id !== loc.id))}
+                                            style={{ width: '16px', height: '16px', cursor: 'pointer' }} />
                                         {loc.name}
                                     </label>
                                 ))}
@@ -665,7 +696,7 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                             style={{ background: bulkApplying ? '#374151' : '#2563eb', color: 'white', border: 'none', borderRadius: '6px', padding: '5px 14px', cursor: 'pointer', fontWeight: 600, fontSize: '0.85rem' }}>
                             {bulkApplying ? 'Applying...' : 'Apply to Selected'}
                         </button>
-                        <button onClick={() => setSelectedIds(new Set())}
+                        <button onClick={() => { setSelectedIds(new Set()); setBulkCategory(''); setBulkSubCategory(''); setBulkSubCategoryActive(false); setBulkSupplierId(''); setBulkGlobalSupplier(''); setBulkLocations([]); }}
                             style={{ background: 'none', border: '1px solid #374151', color: '#9ca3af', borderRadius: '6px', padding: '5px 10px', cursor: 'pointer', fontSize: '0.8rem' }}>
                             Clear
                         </button>
@@ -676,14 +707,14 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                     <table className={styles.table}>
                         <thead>
                             <tr>
-                                <th style={{ width: '36px' }}>
+                                <th style={{ width: '44px' }}>
                                     <input type="checkbox"
                                         checked={filtered.length > 0 && filtered.every(i => selectedIds.has(i.id))}
                                         onChange={e => {
                                             if (e.target.checked) setSelectedIds(new Set(filtered.map(i => i.id)));
                                             else setSelectedIds(new Set());
                                         }}
-                                        style={{ cursor: 'pointer' }}
+                                        style={{ cursor: 'pointer', width: '18px', height: '18px' }}
                                     />
                                 </th>
                                 <th>Name</th>
@@ -704,7 +735,7 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                                     <td>
                                         <input type="checkbox" checked={selectedIds.has(item.id)}
                                             onChange={() => toggleSelect(item.id)}
-                                            style={{ cursor: 'pointer' }} />
+                                            style={{ cursor: 'pointer', width: '18px', height: '18px' }} />
                                     </td>
                                     <td>{item.name}</td>
                                     <td>{item.type}</td>
