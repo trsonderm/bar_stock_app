@@ -44,6 +44,9 @@ interface Item {
     quantity: number;
     unit_cost: number;
     stock_options?: number[] | string;
+    order_size?: number[] | string;
+    order_unit_size?: number;
+    order_unit_label?: string;
 }
 
 interface ActivityLog {
@@ -840,9 +843,37 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
                                             )}
                                         </Typography>
                                     </Box>
-                                    <Typography variant="h4" fontWeight="bold" color="text.primary">
-                                        {Number(item.quantity).toFixed(2).replace(/\.00$/, '')}
-                                    </Typography>
+                                    {/* Quantity display: breakdown on left, raw count on right */}
+                                    <Box sx={{ display: 'flex', alignItems: 'flex-end', gap: 1.5, flexShrink: 0 }}>
+                                        {(() => {
+                                            const qty = Number(item.quantity);
+                                            let unitSize = item.order_unit_size && Number(item.order_unit_size) > 1 ? Number(item.order_unit_size) : 0;
+                                            if (!unitSize) {
+                                                let oArr = item.order_size;
+                                                if (typeof oArr === 'string') { try { oArr = JSON.parse(oArr); } catch { } }
+                                                if (Array.isArray(oArr) && oArr.length > 0) {
+                                                    const f = Number(oArr[0]);
+                                                    if (f > 1) unitSize = f;
+                                                }
+                                            }
+                                            if (!unitSize || qty <= 0) return null;
+                                            const wholeUnits = Math.floor(qty);
+                                            const cases = Math.floor(wholeUnits / unitSize);
+                                            const remainder = wholeUnits % unitSize;
+                                            const label = item.order_unit_label || 'case';
+                                            const parts: string[] = [];
+                                            if (cases > 0) parts.push(`${cases} ${cases === 1 ? label : label + 's'}`);
+                                            if (remainder > 0 || cases === 0) parts.push(`${remainder}`);
+                                            return (
+                                                <Typography variant="body2" sx={{ color: 'text.secondary', textAlign: 'right', lineHeight: 1.3, fontSize: '0.8rem', mb: 0.5 }}>
+                                                    {parts.join(' ')}
+                                                </Typography>
+                                            );
+                                        })()}
+                                        <Typography variant="h4" fontWeight="bold" color="text.primary">
+                                            {Number(item.quantity).toFixed(2).replace(/\.00$/, '')}
+                                        </Typography>
+                                    </Box>
                                 </Box>
 
                                 <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
