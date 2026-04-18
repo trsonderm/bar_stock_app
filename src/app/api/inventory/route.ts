@@ -67,6 +67,7 @@ export async function GET(req: NextRequest) {
         COALESCE(i.stock_options, '[]') as stock_options,
         COALESCE(i.include_in_audit, true) as include_in_audit,
         COALESCE(i.include_in_low_stock_alerts, true) as include_in_low_stock_alerts,
+        COALESCE(i.exclude_from_smart_order, false) as exclude_from_smart_order,
         COALESCE(i.stock_unit_label, 'unit') as stock_unit_label,
         COALESCE(i.stock_unit_size, 1) as stock_unit_size,
         COALESCE(i.order_unit_label, 'case') as order_unit_label,
@@ -115,6 +116,7 @@ export async function GET(req: NextRequest) {
                 COALESCE(i.stock_options, '[]') as stock_options,
                 COALESCE(i.include_in_audit, true) as include_in_audit,
                 true as include_in_low_stock_alerts,
+                false as exclude_from_smart_order,
                 COALESCE(i.stock_unit_label, 'unit') as stock_unit_label,
                 COALESCE(i.stock_unit_size, 1) as stock_unit_size,
                 COALESCE(i.order_unit_label, 'case') as order_unit_label,
@@ -268,7 +270,7 @@ export async function PUT(req: NextRequest) {
 
         if (!canEdit && !canStock) return NextResponse.json({ error: 'Permission denied' }, { status: 403 });
 
-        const { id, unit_cost, sale_price, name, type, quantity, secondary_type, supplier, supplier_id, low_stock_threshold, low_stock_threshold_type, low_stock_threshold_factor, order_size, stock_options, include_in_audit, include_in_low_stock_alerts, assignedLocations, stock_unit_label, stock_unit_size, order_unit_label, order_unit_size, use_category_qty_defaults, location_supplier_id, location_sale_price, locationId: bodyLocationId, barcodes, abv, bottle_size } = await req.json();
+        const { id, unit_cost, sale_price, name, type, quantity, secondary_type, supplier, supplier_id, low_stock_threshold, low_stock_threshold_type, low_stock_threshold_factor, order_size, stock_options, include_in_audit, include_in_low_stock_alerts, exclude_from_smart_order, assignedLocations, stock_unit_label, stock_unit_size, order_unit_label, order_unit_size, use_category_qty_defaults, location_supplier_id, location_sale_price, locationId: bodyLocationId, barcodes, abv, bottle_size } = await req.json();
 
         if (!id) return NextResponse.json({ error: 'Missing ID' }, { status: 400 });
 
@@ -337,6 +339,10 @@ export async function PUT(req: NextRequest) {
             if (low_stock_threshold_factor !== undefined) {
                 updates.push(`low_stock_threshold_factor = $${pIdx++} `);
                 params.push(low_stock_threshold_factor != null ? parseFloat(low_stock_threshold_factor) : null);
+            }
+            if (exclude_from_smart_order !== undefined) {
+                updates.push(`exclude_from_smart_order = $${pIdx++} `);
+                params.push(exclude_from_smart_order === true || exclude_from_smart_order === 'true');
             }
             if (stock_options !== undefined) {
                 updates.push(`stock_options = $${pIdx++} `);

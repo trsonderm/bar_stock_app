@@ -516,3 +516,10 @@ EXCEPTION WHEN duplicate_column THEN NULL; END $$;
 DO $$ BEGIN
   ALTER TABLE items ADD COLUMN low_stock_threshold_factor NUMERIC(10,2);
 EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
+-- =========================================================
+-- 27. Items table — Smart Order exclusion flag
+-- =========================================================
+DO $$ BEGIN
+  ALTER TABLE items ADD COLUMN exclude_from_smart_order BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;

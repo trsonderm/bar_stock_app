@@ -22,6 +22,7 @@ interface Item {
     supplier_id?: number;
     location_supplier_id?: number;
     include_in_low_stock_alerts?: boolean;
+    exclude_from_smart_order?: boolean;
     low_stock_threshold?: number;
     low_stock_threshold_type?: 'fixed' | 'order_qty' | 'stock_options';
     low_stock_threshold_factor?: number | null;
@@ -74,6 +75,7 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
         track_quantity: true,
         include_in_audit: true,
         include_in_low_stock_alerts: true,
+        exclude_from_smart_order: false,
         stock_options: [] as number[],
         assignedLocations: [] as number[],
         use_category_qty_defaults: true,
@@ -107,6 +109,7 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
     const [bulkApplying, setBulkApplying] = useState(false);
 
     const [stockMode, setStockMode] = useState<string>('CATEGORY');
+    const [modalTab, setModalTab] = useState<'basic' | 'inventory' | 'alerts'>('basic');
 
     // Multi-location Logic
     const [myLocations, setMyLocations] = useState<{ id: number, name: string }[]>([]);
@@ -212,6 +215,7 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
             track_quantity: true,
             include_in_audit: true,
             include_in_low_stock_alerts: true,
+            exclude_from_smart_order: false,
             stock_options: [],
             assignedLocations: [],
             use_category_qty_defaults: true,
@@ -227,6 +231,7 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
         setTempOrderLabel('Pack');
         setTempOrderAmount('');
         setAddToAllLocations(false);
+        setModalTab('basic');
     };
 
     const handleBulkApply = async () => {
@@ -334,6 +339,7 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
             supplier_id: item.supplier_id,
             location_supplier_id: item.location_supplier_id,
             include_in_low_stock_alerts: item.include_in_low_stock_alerts !== false,
+            exclude_from_smart_order: item.exclude_from_smart_order === true,
             unit_cost: item.unit_cost !== undefined ? item.unit_cost.toString() : '',
             quantity: item.quantity !== undefined ? item.quantity.toString() : '',
             order_size: (() => {
@@ -369,6 +375,7 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
             barcodes: Array.isArray(item.barcodes) ? item.barcodes : [],
         });
 
+        setModalTab('basic');
         setShowModal(true);
     };
 
@@ -419,6 +426,7 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                 track_quantity: formData.track_quantity ? 1 : 0,
                 include_in_audit: formData.include_in_audit,
                 include_in_low_stock_alerts: formData.include_in_low_stock_alerts,
+                exclude_from_smart_order: formData.exclude_from_smart_order,
                 stock_options: formData.use_category_qty_defaults
                     ? (formData.stock_options.length > 0 ? formData.stock_options : null)
                     : (formData.subtraction_presets.length > 0 ? formData.subtraction_presets : null),
@@ -771,473 +779,362 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                 </div>
             </div>
 
-            {showModal && (
-                <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 100 }}>
-                    <div style={{ background: '#111827', padding: '2rem', borderRadius: '1rem', width: '90%', maxWidth: '500px', border: '1px solid #374151', maxHeight: '90vh', overflowY: 'auto' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
-                            <h2 style={{ margin: 0, color: 'white' }}>{editingId ? 'Edit Product' : 'Add New Product'}</h2>
-                            <button
-                                type="button"
-                                onClick={() => setShowBarcodeScanner(true)}
-                                style={{ background: '#0891b2', color: 'white', border: 'none', borderRadius: '6px', padding: '6px 14px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}
-                            >
-                                <span style={{ fontSize: '1rem' }}>📷</span> Scan Barcode
-                            </button>
+            {showModal && (() => {
+                // Inline tooltip helper
+                const Tip = ({ text }: { text: string }) => (
+                    <span title={text} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '16px', height: '16px', borderRadius: '50%', background: '#374151', color: '#9ca3af', fontSize: '0.65rem', fontWeight: 'bold', marginLeft: '5px', cursor: 'help', flexShrink: 0 }}>?</span>
+                );
+                const tabStyle = (t: typeof modalTab) => ({
+                    flex: 1, padding: '0.6rem 0.5rem', fontSize: '0.82rem', fontWeight: modalTab === t ? 700 : 400,
+                    background: modalTab === t ? '#1d4ed8' : 'transparent', color: modalTab === t ? 'white' : '#9ca3af',
+                    border: 'none', borderBottom: modalTab === t ? '2px solid #3b82f6' : '2px solid transparent',
+                    cursor: 'pointer', transition: 'all 0.15s',
+                });
+                return (
+                <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', justifyContent: 'center', alignItems: 'flex-start', zIndex: 100, overflowY: 'auto', padding: '16px 8px' }}>
+                    <div style={{ background: '#111827', borderRadius: '12px', width: '100%', maxWidth: '560px', border: '1px solid #374151', marginTop: 'auto', marginBottom: 'auto' }}>
+                        {/* Header */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem 1.25rem', borderBottom: '1px solid #1f2937' }}>
+                            <h2 style={{ margin: 0, color: 'white', fontSize: '1.1rem' }}>{editingId ? 'Edit Product' : 'Add New Product'}</h2>
+                            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                                <button type="button" onClick={() => setShowBarcodeScanner(true)}
+                                    style={{ background: '#0891b2', color: 'white', border: 'none', borderRadius: '6px', padding: '8px 12px', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                    <span>📷</span> Scan
+                                </button>
+                                <button type="button" onClick={() => setShowModal(false)}
+                                    style={{ background: '#374151', color: '#9ca3af', border: 'none', borderRadius: '6px', width: '32px', height: '32px', cursor: 'pointer', fontSize: '1.1rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                    ×
+                                </button>
+                            </div>
+                        </div>
+                        {/* Tab bar */}
+                        <div style={{ display: 'flex', borderBottom: '1px solid #1f2937' }}>
+                            <button type="button" style={tabStyle('basic')} onClick={() => setModalTab('basic')}>Basic Info</button>
+                            <button type="button" style={tabStyle('inventory')} onClick={() => setModalTab('inventory')}>Inventory</button>
+                            <button type="button" style={tabStyle('alerts')} onClick={() => setModalTab('alerts')}>Alerts &amp; Orders</button>
                         </div>
                         {scannedBarcode && (
-                            <div style={{ background: '#1e3a5f', border: '1px solid #1d4ed8', borderRadius: '6px', padding: '0.5rem 0.75rem', marginBottom: '1rem', fontSize: '0.8rem', color: '#93c5fd', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div style={{ background: '#1e3a5f', border: '1px solid #1d4ed8', borderRadius: '6px', padding: '0.5rem 0.75rem', margin: '0.75rem 1.25rem 0', fontSize: '0.8rem', color: '#93c5fd', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                 <span>Scanned: <strong>{scannedBarcode}</strong></span>
                                 <button type="button" onClick={() => setScannedBarcode('')} style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', fontSize: '1rem', lineHeight: 1 }}>×</button>
                             </div>
                         )}
                         <form onSubmit={handleSave}>
-                            <div style={{ marginBottom: '1rem' }}>
-                                <label className={styles.statLabel}>Barcodes</label>
-                                {formData.barcodes.length > 0 ? (
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                                        {formData.barcodes.map((bc, idx) => (
-                                            <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#374151', padding: '0.25rem 0.5rem', borderRadius: '4px', fontSize: '0.9rem', color: '#f3f4f6' }}>
-                                                <span>{bc}</span>
-                                                <button type="button" onClick={() => setFormData(prev => ({ ...prev, barcodes: prev.barcodes.filter(b => b !== bc) }))} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '1rem', lineHeight: 1 }}>×</button>
-                                            </div>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <div style={{ fontSize: '0.85rem', color: '#9ca3af', marginBottom: '0.5rem' }}>No barcodes assigned.</div>
-                                )}
-                                <div style={{ display: 'flex', gap: '0.5rem' }}>
-                                    <input 
-                                        type="text"
-                                        placeholder="Add barcode manually"
-                                        className={styles.input}
-                                        style={{ flex: 1 }}
-                                        onKeyDown={e => {
-                                            if (e.key === 'Enter' && e.currentTarget.value.trim()) {
-                                                e.preventDefault();
-                                                const bc = e.currentTarget.value.trim();
-                                                setFormData(prev => ({
-                                                    ...prev,
-                                                    barcodes: prev.barcodes.includes(bc) ? prev.barcodes : [...prev.barcodes, bc]
-                                                }));
-                                                e.currentTarget.value = '';
-                                            }
-                                        }}
-                                    />
-                                    <button 
-                                        type="button" 
-                                        onClick={(e) => {
-                                            const input = e.currentTarget.previousElementSibling as HTMLInputElement;
-                                            if (input && input.value.trim()) {
-                                                const bc = input.value.trim();
-                                                setFormData(prev => ({
-                                                    ...prev,
-                                                    barcodes: prev.barcodes.includes(bc) ? prev.barcodes : [...prev.barcodes, bc]
-                                                }));
-                                                input.value = '';
-                                            } else {
-                                                setShowBarcodeScanner(true);
-                                            }
-                                        }}
-                                        style={{ background: '#2563eb', color: 'white', border: 'none', borderRadius: '4px', padding: '0 1rem', cursor: 'pointer', fontWeight: 'bold' }}
-                                    >
-                                        Add/Scan
-                                    </button>
-                                </div>
-                            </div>
-                            <div style={{ marginBottom: '1rem' }}>
-                                <label className={styles.statLabel}>Name</label>
+                        <div style={{ padding: '1.25rem', maxHeight: 'calc(90vh - 160px)', overflowY: 'auto' }}>
+
+                        {/* ── TAB 1: BASIC INFO ─────────────────────────────── */}
+                        {modalTab === 'basic' && (<div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+
+                            {/* Name */}
+                            <div>
+                                <label className={styles.statLabel} style={{ display: 'flex', alignItems: 'center' }}>
+                                    Product Name <span style={{ color: '#ef4444', marginLeft: 2 }}>*</span>
+                                    <Tip text="The display name used in inventory lists, reports, and the stock view." />
+                                </label>
                                 <input
-                                    style={{ width: '100%' }}
+                                    style={{ width: '100%', minHeight: '44px' }}
                                     className={styles.input}
                                     value={formData.name}
                                     onChange={e => setFormData({ ...formData, name: e.target.value })}
                                     required
                                     autoFocus
+                                    placeholder="e.g. Tito's Vodka 750ml"
                                 />
                             </div>
-                            <div style={{ marginBottom: '1rem' }}>
-                                <label className={styles.statLabel}>Category</label>
-                                <select
-                                    style={{ width: '100%' }}
-                                    className={styles.input}
-                                    value={formData.type}
-                                    onChange={e => setFormData({ ...formData, type: e.target.value })}
-                                >
-                                    {categories.length > 0 ? (
-                                        categories.map((c, i) => <option key={`cat-${c.id}-${i}`} value={c.name}>{c.name}</option>)
-                                    ) : (
-                                        <option value="">No categories</option>
-                                    )}
-                                </select>
-                            </div>
-                            {/* SubCategory Logic */}
-                            {(() => {
-                                const cat = categories.find(c => c.name === formData.type);
-                                if (cat && cat.sub_categories && cat.sub_categories.length > 0) {
-                                    return (
-                                        <div style={{ marginBottom: '1rem' }}>
-                                            <label className={styles.statLabel}>Sub-Category</label>
-                                            <select
-                                                style={{ width: '100%' }}
-                                                className={styles.input}
-                                                value={formData.secondary_type}
-                                                onChange={e => setFormData({ ...formData, secondary_type: e.target.value })}
-                                            >
-                                                <option value="">(None)</option>
-                                                {cat.sub_categories.map((sub: string) => <option key={sub} value={sub}>{sub}</option>)}
-                                            </select>
-                                        </div>
-                                    );
-                                }
-                                return null;
-                            })()}
 
-                            <div style={{ marginBottom: '1rem' }}>
-                                <label className={styles.statLabel}>
+                            {/* Category + Sub-Category */}
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                                <div>
+                                    <label className={styles.statLabel} style={{ display: 'flex', alignItems: 'center' }}>
+                                        Category
+                                        <Tip text="Groups this product with similar items. Determines which stock-counting buttons appear." />
+                                    </label>
+                                    <select style={{ width: '100%', minHeight: '44px' }} className={styles.input}
+                                        value={formData.type} onChange={e => setFormData({ ...formData, type: e.target.value })}>
+                                        {categories.length > 0
+                                            ? categories.map((c, i) => <option key={`cat-${c.id}-${i}`} value={c.name}>{c.name}</option>)
+                                            : <option value="">No categories</option>}
+                                    </select>
+                                </div>
+                                {(() => {
+                                    const cat = categories.find(c => c.name === formData.type);
+                                    if (cat && cat.sub_categories && cat.sub_categories.length > 0) {
+                                        return (
+                                            <div>
+                                                <label className={styles.statLabel}>Sub-Category</label>
+                                                <select style={{ width: '100%', minHeight: '44px' }} className={styles.input}
+                                                    value={formData.secondary_type} onChange={e => setFormData({ ...formData, secondary_type: e.target.value })}>
+                                                    <option value="">(None)</option>
+                                                    {cat.sub_categories.map((sub: string) => <option key={sub} value={sub}>{sub}</option>)}
+                                                </select>
+                                            </div>
+                                        );
+                                    }
+                                    return null;
+                                })()}
+                            </div>
+
+                            {/* Supplier */}
+                            <div>
+                                <label className={styles.statLabel} style={{ display: 'flex', alignItems: 'center' }}>
                                     Supplier
-                                    {myLocations.length > 1 && <span style={{ fontSize: '0.75rem', color: '#6b7280', marginLeft: '6px' }}>(global default)</span>}
+                                    {myLocations.length > 1 && <span style={{ fontSize: '0.72rem', color: '#6b7280', marginLeft: '5px' }}>(global default)</span>}
+                                    <Tip text="The vendor who supplies this product. Used when generating smart order proposals and purchase orders." />
                                 </label>
                                 {suppliers.length > 0 ? (
-                                    <select
-                                        style={{ width: '100%' }}
-                                        className={styles.input}
+                                    <select style={{ width: '100%', minHeight: '44px' }} className={styles.input}
                                         value={formData.supplier_id || ''}
                                         onChange={e => {
                                             const id = e.target.value ? parseInt(e.target.value) : undefined;
                                             const name = id ? suppliers.find(s => s.id === id)?.name : '';
                                             setFormData({ ...formData, supplier_id: id, supplier: name || '' });
-                                        }}
-                                    >
+                                        }}>
                                         <option value="">Select Supplier</option>
                                         {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                                     </select>
                                 ) : (
-                                    <input
-                                        style={{ width: '100%' }}
-                                        className={styles.input}
-                                        value={formData.supplier}
-                                        onChange={e => setFormData({ ...formData, supplier: e.target.value })}
-                                    />
+                                    <input style={{ width: '100%', minHeight: '44px' }} className={styles.input}
+                                        value={formData.supplier} onChange={e => setFormData({ ...formData, supplier: e.target.value })} />
                                 )}
                             </div>
 
+                            {/* Per-location supplier override */}
                             {myLocations.length > 1 && selectedLocationId && suppliers.length > 0 && (
-                                <div style={{ marginBottom: '1rem', padding: '0.75rem', background: '#1e293b', borderRadius: '0.5rem', border: '1px solid #334155' }}>
+                                <div style={{ padding: '0.75rem', background: '#1e293b', borderRadius: '8px', border: '1px solid #334155' }}>
                                     <label className={styles.statLabel}>
                                         Supplier for{' '}
-                                        <span style={{ color: '#f59e0b' }}>
-                                            {myLocations.find(l => l.id === selectedLocationId)?.name}
-                                        </span>
-                                        <span style={{ fontSize: '0.75rem', color: '#6b7280', marginLeft: '6px' }}>(overrides global)</span>
+                                        <span style={{ color: '#f59e0b' }}>{myLocations.find(l => l.id === selectedLocationId)?.name}</span>
+                                        <span style={{ fontSize: '0.72rem', color: '#6b7280', marginLeft: '5px' }}>(overrides global)</span>
                                     </label>
-                                    <select
-                                        style={{ width: '100%' }}
-                                        className={styles.input}
+                                    <select style={{ width: '100%', minHeight: '44px' }} className={styles.input}
                                         value={formData.location_supplier_id || ''}
-                                        onChange={e => {
-                                            const id = e.target.value ? parseInt(e.target.value) : undefined;
-                                            setFormData({ ...formData, location_supplier_id: id });
-                                        }}
-                                    >
+                                        onChange={e => setFormData({ ...formData, location_supplier_id: e.target.value ? parseInt(e.target.value) : undefined })}>
                                         <option value="">Use global supplier</option>
                                         {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                                     </select>
                                 </div>
                             )}
 
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
-                                <div>
-                                    <label className={styles.statLabel}>Cost ($)</label>
-                                    <input
-                                        style={{ width: '100%' }}
-                                        className={styles.input}
-                                        type="number" step="0.01"
-                                        value={formData.unit_cost}
-                                        onChange={e => setFormData({ ...formData, unit_cost: e.target.value })}
-                                    />
-                                </div>
-                                <div>
-                                    <label className={styles.statLabel}>Order Sizes</label>
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', background: '#374151', padding: '0.5rem', borderRadius: '0.5rem', minHeight: '42px' }}>
-                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-                                            {formData.order_size.map((size, idx) => (
-                                                <span key={idx} style={{
-                                                    background: '#d97706', color: 'white', padding: '2px 8px', borderRadius: '4px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap'
-                                                }}>
-                                                    {size.label}: {size.amount}
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setFormData(prev => ({ ...prev, order_size: prev.order_size.filter((_, i) => i !== idx) }))}
-                                                        style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', padding: 0, fontSize: '0.85rem', fontWeight: 'bold' }}
-                                                    >
-                                                        x
-                                                    </button>
-                                                </span>
-                                            ))}
-                                        </div>
-                                        <div style={{ display: 'flex', gap: '4px', marginTop: '4px' }}>
-                                            {tempOrderLabel !== 'Custom' ? (
-                                                <select
-                                                    className={styles.input}
-                                                    value={tempOrderLabel}
-                                                    onChange={e => setTempOrderLabel(e.target.value)}
-                                                    style={{ width: '80px', padding: '2px 4px', fontSize: '0.9rem' }}
-                                                >
-                                                    <option value="Unit">Unit</option>
-                                                    <option value="Pack">Pack</option>
-                                                    <option value="Case">Case</option>
-                                                    <option value="Custom">Custom</option>
-                                                </select>
-                                            ) : (
-                                                <input
-                                                    className={styles.input}
-                                                    placeholder="Type..."
-                                                    onChange={e => setTempOrderLabel(e.target.value)}
-                                                    style={{ width: '80px', padding: '2px 4px', fontSize: '0.9rem' }}
-                                                    autoFocus
-                                                />
-                                            )}
-
-                                            <input
-                                                className={styles.input}
-                                                value={tempOrderAmount}
-                                                onChange={e => setTempOrderAmount(e.target.value)}
-                                                placeholder="Qty"
-                                                type="number"
-                                                style={{ width: '60px', padding: '2px 4px', fontSize: '0.9rem' }}
-                                            />
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    const val = parseInt(tempOrderAmount);
-                                                    if (!isNaN(val) && val > 0 && tempOrderLabel.trim() !== '') {
-                                                        const newOpt = { label: tempOrderLabel.trim(), amount: val };
-                                                        setFormData(prev => ({
-                                                            ...prev,
-                                                            order_size: [...prev.order_size, newOpt]
-                                                        }));
-                                                        setTempOrderAmount('');
-                                                        setTempOrderLabel('Pack');
-                                                    }
-                                                }}
-                                                style={{ background: '#10b981', color: 'white', border: 'none', borderRadius: '4px', padding: '2px 6px', cursor: 'pointer', fontSize: '0.9rem' }}
-                                            >
-                                                +
-                                            </button>
-                                        </div>
+                            {/* Barcodes */}
+                            <div>
+                                <label className={styles.statLabel} style={{ display: 'flex', alignItems: 'center' }}>
+                                    Barcodes
+                                    <Tip text="Attach UPC/EAN barcodes so staff can scan this product to add or subtract stock automatically." />
+                                </label>
+                                {formData.barcodes.length > 0 ? (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginBottom: '0.5rem' }}>
+                                        {formData.barcodes.map((bc, idx) => (
+                                            <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#374151', padding: '6px 10px', borderRadius: '6px', fontSize: '0.88rem', color: '#f3f4f6' }}>
+                                                <span style={{ fontFamily: 'monospace' }}>{bc}</span>
+                                                <button type="button" onClick={() => setFormData(prev => ({ ...prev, barcodes: prev.barcodes.filter(b => b !== bc) }))}
+                                                    style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '1.1rem', lineHeight: 1, padding: '0 4px' }}>×</button>
+                                            </div>
+                                        ))}
                                     </div>
+                                ) : (
+                                    <div style={{ fontSize: '0.83rem', color: '#6b7280', marginBottom: '0.4rem' }}>No barcodes assigned yet.</div>
+                                )}
+                                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                    <input type="text" placeholder="Enter barcode number" className={styles.input}
+                                        style={{ flex: 1, minHeight: '44px' }}
+                                        onKeyDown={e => {
+                                            if (e.key === 'Enter' && e.currentTarget.value.trim()) {
+                                                e.preventDefault();
+                                                const bc = e.currentTarget.value.trim();
+                                                setFormData(prev => ({ ...prev, barcodes: prev.barcodes.includes(bc) ? prev.barcodes : [...prev.barcodes, bc] }));
+                                                e.currentTarget.value = '';
+                                            }
+                                        }} />
+                                    <button type="button"
+                                        onClick={e => {
+                                            const input = e.currentTarget.previousElementSibling as HTMLInputElement;
+                                            if (input?.value.trim()) {
+                                                const bc = input.value.trim();
+                                                setFormData(prev => ({ ...prev, barcodes: prev.barcodes.includes(bc) ? prev.barcodes : [...prev.barcodes, bc] }));
+                                                input.value = '';
+                                            } else {
+                                                setShowBarcodeScanner(true);
+                                            }
+                                        }}
+                                        style={{ background: '#2563eb', color: 'white', border: 'none', borderRadius: '8px', padding: '0 1rem', cursor: 'pointer', fontWeight: 'bold', minHeight: '44px', whiteSpace: 'nowrap' }}>
+                                        + Add
+                                    </button>
+                                </div>
+                            </div>
+
+                        </div>)}
+
+                        {/* ── TAB 2: INVENTORY & ORDERING ───────────────────── */}
+                        {modalTab === 'inventory' && (<div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+
+                            {/* Cost + Inventory Qty */}
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                                <div>
+                                    <label className={styles.statLabel} style={{ display: 'flex', alignItems: 'center' }}>
+                                        Unit Cost ($)
+                                        <Tip text="Cost per individual unit. Used in inventory value reports and profit margin calculations." />
+                                    </label>
+                                    <input style={{ width: '100%', minHeight: '44px' }} className={styles.input}
+                                        type="number" step="0.01" value={formData.unit_cost}
+                                        onChange={e => setFormData({ ...formData, unit_cost: e.target.value })} />
                                 </div>
                                 <div>
-                                    <label className={styles.statLabel}>
-                                        Inventory Qty
+                                    <label className={styles.statLabel} style={{ display: 'flex', alignItems: 'center' }}>
+                                        Qty on Hand
                                         {myLocations.length > 1 && selectedLocationId && (
-                                            <span style={{ color: '#60a5fa', fontWeight: 400, marginLeft: '0.4rem' }}>
+                                            <span style={{ color: '#60a5fa', fontWeight: 400, marginLeft: '4px', fontSize: '0.72rem' }}>
                                                 — {myLocations.find(l => l.id === selectedLocationId)?.name}
                                             </span>
                                         )}
+                                        <Tip text="Current stock count at the selected location. You can also adjust this from the Stock View page." />
                                     </label>
-                                    <input
-                                        style={{ width: '100%' }}
-                                        className={styles.input}
-                                        type="number" step="any"
-                                        value={formData.quantity}
-                                        onChange={e => setFormData({ ...formData, quantity: e.target.value })}
-                                    />
+                                    <input style={{ width: '100%', minHeight: '44px' }} className={styles.input}
+                                        type="number" step="any" value={formData.quantity}
+                                        onChange={e => setFormData({ ...formData, quantity: e.target.value })} />
                                 </div>
                             </div>
 
-                            <div style={{ marginBottom: '0.75rem' }}>
-                                <label className={styles.statLabel} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                                    <input
-                                        type="checkbox"
-                                        checked={formData.include_in_audit}
-                                        onChange={e => setFormData({ ...formData, include_in_audit: e.target.checked })}
-                                        style={{ width: '18px', height: '18px' }}
-                                    />
-                                    Include in Audit
+                            {/* Order Sizes */}
+                            <div>
+                                <label className={styles.statLabel} style={{ display: 'flex', alignItems: 'center' }}>
+                                    Order Sizes
+                                    <Tip text="Define the quantities you typically order from your supplier. E.g. 'Unit: 1' for individual bottles, 'Case: 12' for cases. Used in purchase orders." />
                                 </label>
-                                <p className="text-xs text-gray-500 mt-1" style={{ marginLeft: '26px', fontSize: '0.78rem', color: '#6b7280' }}>
-                                    If unchecked, this item will be hidden from default audit views.
-                                </p>
-                            </div>
-
-                            <div style={{ marginBottom: '1rem' }}>
-                                <label className={styles.statLabel} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                                    <input
-                                        type="checkbox"
-                                        checked={formData.include_in_low_stock_alerts}
-                                        onChange={e => setFormData({ ...formData, include_in_low_stock_alerts: e.target.checked })}
-                                        style={{ width: '18px', height: '18px' }}
-                                    />
-                                    Include in Low Stock Alerts
-                                </label>
-                                <p style={{ marginLeft: '26px', fontSize: '0.78rem', color: '#6b7280', margin: '2px 0 0 26px' }}>
-                                    If unchecked, this item will never trigger a low stock notification.
-                                </p>
-                            </div>
-
-                            {stockMode === 'PRODUCT' && (
-                                <div style={{ marginBottom: '1rem' }}>
-                                    <label className={styles.statLabel}>Counting Options</label>
-                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', background: '#374151', padding: '0.5rem', borderRadius: '0.5rem' }}>
-                                        {formData.stock_options.map((opt) => (
-                                            <span key={opt} style={{
-                                                background: '#3b82f6', color: 'white', padding: '2px 8px', borderRadius: '4px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '4px'
-                                            }}>
-                                                {opt}
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setFormData(prev => ({ ...prev, stock_options: prev.stock_options.filter(o => o !== opt) }))}
-                                                    style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', padding: 0, fontSize: '0.85rem', fontWeight: 'bold' }}
-                                                >
-                                                    x
-                                                </button>
+                                <div style={{ background: '#1f2937', border: '1px solid #374151', borderRadius: '8px', padding: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                                        {formData.order_size.map((size, idx) => (
+                                            <span key={idx} style={{ background: '#d97706', color: 'white', padding: '4px 10px', borderRadius: '6px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                {size.label}: {size.amount}
+                                                <button type="button" onClick={() => setFormData(prev => ({ ...prev, order_size: prev.order_size.filter((_, i) => i !== idx) }))}
+                                                    style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', padding: 0, fontSize: '0.85rem', fontWeight: 'bold' }}>×</button>
                                             </span>
                                         ))}
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                            <input
-                                                className={styles.input}
-                                                value={tempOptionInput}
-                                                onChange={e => setTempOptionInput(e.target.value)}
-                                                onKeyDown={(e) => {
-                                                    if (e.key === 'Enter') {
-                                                        e.preventDefault();
-                                                        const val = parseInt(tempOptionInput);
-                                                        if (!isNaN(val) && !formData.stock_options.includes(val)) {
-                                                            setFormData(prev => ({
-                                                                ...prev,
-                                                                stock_options: [...prev.stock_options, val].sort((a, b) => a - b)
-                                                            }));
-                                                            setTempOptionInput('');
-                                                        }
-                                                    }
-                                                }}
-                                                placeholder="Add #"
-                                                style={{ width: '80px' }}
-                                            />
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    const val = parseInt(tempOptionInput);
-                                                    if (!isNaN(val) && !formData.stock_options.includes(val)) {
-                                                        setFormData(prev => ({
-                                                            ...prev,
-                                                            stock_options: [...prev.stock_options, val].sort((a, b) => a - b)
-                                                        }));
-                                                        setTempOptionInput('');
-                                                    }
-                                                }}
-                                                style={{ background: '#10b981', color: 'white', border: 'none', borderRadius: '4px', padding: '4px 8px', cursor: 'pointer' }}
-                                            >
-                                                +
-                                            </button>
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                        {tempOrderLabel !== 'Custom' ? (
+                                            <select className={styles.input} value={tempOrderLabel} onChange={e => setTempOrderLabel(e.target.value)}
+                                                style={{ width: '90px', padding: '6px', fontSize: '0.85rem', minHeight: '40px' }}>
+                                                <option value="Unit">Unit</option>
+                                                <option value="Pack">Pack</option>
+                                                <option value="Case">Case</option>
+                                                <option value="Custom">Custom…</option>
+                                            </select>
+                                        ) : (
+                                            <input className={styles.input} placeholder="Label" autoFocus
+                                                onChange={e => setTempOrderLabel(e.target.value)}
+                                                style={{ width: '90px', padding: '6px', fontSize: '0.85rem', minHeight: '40px' }} />
+                                        )}
+                                        <input className={styles.input} value={tempOrderAmount} onChange={e => setTempOrderAmount(e.target.value)}
+                                            placeholder="Qty" type="number" style={{ width: '70px', padding: '6px', fontSize: '0.85rem', minHeight: '40px' }} />
+                                        <button type="button"
+                                            onClick={() => {
+                                                const val = parseInt(tempOrderAmount);
+                                                if (!isNaN(val) && val > 0 && tempOrderLabel.trim()) {
+                                                    setFormData(prev => ({ ...prev, order_size: [...prev.order_size, { label: tempOrderLabel.trim(), amount: val }] }));
+                                                    setTempOrderAmount('');
+                                                    if (!['Unit', 'Pack', 'Case'].includes(tempOrderLabel)) setTempOrderLabel('Pack');
+                                                }
+                                            }}
+                                            style={{ background: '#10b981', color: 'white', border: 'none', borderRadius: '6px', padding: '6px 12px', cursor: 'pointer', minHeight: '40px', fontWeight: 700 }}>
+                                            + Add
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Include in Audit */}
+                            <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', cursor: 'pointer', padding: '0.75rem', background: '#1f2937', borderRadius: '8px', border: '1px solid #374151' }}>
+                                <input type="checkbox" checked={formData.include_in_audit}
+                                    onChange={e => setFormData({ ...formData, include_in_audit: e.target.checked })}
+                                    style={{ width: '20px', height: '20px', marginTop: '2px', flexShrink: 0, accentColor: '#3b82f6' }} />
+                                <div>
+                                    <div style={{ color: 'white', fontWeight: 600, fontSize: '0.9rem' }}>Include in Audit</div>
+                                    <div style={{ color: '#6b7280', fontSize: '0.78rem', marginTop: '2px' }}>Show this item in audit/counts. Uncheck to hide low-importance items.</div>
+                                </div>
+                            </label>
+
+                            {/* Stock Counting Options — PRODUCT mode */}
+                            {stockMode === 'PRODUCT' && (
+                                <div>
+                                    <label className={styles.statLabel} style={{ display: 'flex', alignItems: 'center' }}>
+                                        Counting Options
+                                        <Tip text="Quick-add buttons shown in Product Level counting mode. Leave empty to use category defaults." />
+                                    </label>
+                                    <div style={{ background: '#1f2937', border: '1px solid #374151', borderRadius: '8px', padding: '0.75rem', display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                                        {formData.stock_options.map(opt => (
+                                            <span key={opt} style={{ background: '#3b82f6', color: 'white', padding: '4px 10px', borderRadius: '6px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                {opt}
+                                                <button type="button" onClick={() => setFormData(prev => ({ ...prev, stock_options: prev.stock_options.filter(o => o !== opt) }))}
+                                                    style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', padding: 0, fontWeight: 'bold' }}>×</button>
+                                            </span>
+                                        ))}
+                                        <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                                            <input className={styles.input} value={tempOptionInput} onChange={e => setTempOptionInput(e.target.value)}
+                                                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); const v = parseInt(tempOptionInput); if (!isNaN(v) && !formData.stock_options.includes(v)) { setFormData(prev => ({ ...prev, stock_options: [...prev.stock_options, v].sort((a, b) => a - b) })); setTempOptionInput(''); } } }}
+                                                placeholder="Add #" style={{ width: '70px', padding: '4px' }} />
+                                            <button type="button"
+                                                onClick={() => { const v = parseInt(tempOptionInput); if (!isNaN(v) && !formData.stock_options.includes(v)) { setFormData(prev => ({ ...prev, stock_options: [...prev.stock_options, v].sort((a, b) => a - b) })); setTempOptionInput(''); } }}
+                                                style={{ background: '#10b981', color: 'white', border: 'none', borderRadius: '4px', padding: '6px 10px', cursor: 'pointer', fontWeight: 700 }}>+</button>
                                         </div>
                                     </div>
-                                    <p className="text-xs text-gray-500 mt-1">Leave empty to use category defaults.</p>
                                 </div>
                             )}
 
-                            {/* Quantity Units Section */}
-                            <div style={{ marginBottom: '1rem', padding: '1rem', background: '#1e293b', borderRadius: '0.5rem', border: '1px solid #334155' }}>
-                                <label className={styles.statLabel} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', marginBottom: '0.75rem' }}>
-                                    <input
-                                        type="checkbox"
-                                        checked={formData.use_category_qty_defaults}
+                            {/* Quantity Units section */}
+                            <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: '8px', padding: '0.875rem' }}>
+                                <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', cursor: 'pointer' }}>
+                                    <input type="checkbox" checked={formData.use_category_qty_defaults}
                                         onChange={e => setFormData({ ...formData, use_category_qty_defaults: e.target.checked })}
-                                        style={{ width: '16px', height: '16px' }}
-                                    />
-                                    <span style={{ color: 'white', fontWeight: 600 }}>Use Category Quantity Defaults</span>
+                                        style={{ width: '18px', height: '18px', marginTop: '2px', flexShrink: 0, accentColor: '#3b82f6' }} />
+                                    <div>
+                                        <div style={{ color: 'white', fontWeight: 600, fontSize: '0.9rem' }}>Use Category Defaults</div>
+                                        <div style={{ color: '#6b7280', fontSize: '0.78rem', marginTop: '2px' }}>Inherit stock buttons and units from the category. Uncheck to customise for this product.</div>
+                                    </div>
                                 </label>
                                 {!formData.use_category_qty_defaults && (
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                                        {/* Stock unit label only */}
+                                    <div style={{ marginTop: '0.875rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                                         <div>
-                                            <label className={styles.statLabel}>Stock Unit Label</label>
-                                            <input
-                                                className={styles.input}
-                                                placeholder="e.g. bottle, can, unit"
-                                                value={formData.stock_unit_label}
+                                            <label className={styles.statLabel} style={{ display: 'flex', alignItems: 'center' }}>
+                                                Stock Unit Label
+                                                <Tip text="What one unit is called — e.g. 'bottle', 'can', 'keg'. Shown next to stock counts." />
+                                            </label>
+                                            <input className={styles.input} placeholder="e.g. bottle, can, unit" value={formData.stock_unit_label}
                                                 onChange={e => setFormData({ ...formData, stock_unit_label: e.target.value })}
-                                                style={{ marginBottom: 0 }}
-                                            />
+                                                style={{ minHeight: '44px' }} />
                                         </div>
-
-                                        {/* Subtraction preset amounts for stock view */}
                                         <div>
-                                            <label className={styles.statLabel}>Subtraction Amounts (for Stock View)</label>
-                                            <p style={{ fontSize: '0.78rem', color: '#6b7280', margin: '0 0 0.5rem' }}>
-                                                Preset buttons shown when removing stock. Click to toggle; add custom values below.
-                                            </p>
+                                            <label className={styles.statLabel} style={{ display: 'flex', alignItems: 'center' }}>
+                                                Subtraction Amounts
+                                                <Tip text="Quick-subtract buttons shown when removing stock in the Stock View. Tap to toggle common values, or add a custom amount." />
+                                            </label>
                                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginBottom: '0.5rem' }}>
                                                 {[1, 6, 12].map(preset => {
                                                     const active = formData.subtraction_presets.includes(preset);
                                                     return (
-                                                        <button
-                                                            key={preset}
-                                                            type="button"
-                                                            onClick={() => setFormData(prev => ({
-                                                                ...prev,
-                                                                subtraction_presets: active
-                                                                    ? prev.subtraction_presets.filter(p => p !== preset)
-                                                                    : [...prev.subtraction_presets, preset].sort((a, b) => a - b)
-                                                            }))}
-                                                            style={{
-                                                                padding: '4px 14px',
-                                                                background: active ? '#3b82f6' : '#374151',
-                                                                color: active ? 'white' : '#9ca3af',
-                                                                border: `1px solid ${active ? '#3b82f6' : '#4b5563'}`,
-                                                                borderRadius: '4px',
-                                                                cursor: 'pointer',
-                                                                fontWeight: active ? 700 : 400,
-                                                                fontSize: '0.9rem'
-                                                            }}
-                                                        >
+                                                        <button key={preset} type="button"
+                                                            onClick={() => setFormData(prev => ({ ...prev, subtraction_presets: active ? prev.subtraction_presets.filter(p => p !== preset) : [...prev.subtraction_presets, preset].sort((a, b) => a - b) }))}
+                                                            style={{ padding: '6px 16px', background: active ? '#3b82f6' : '#374151', color: active ? 'white' : '#9ca3af', border: `1px solid ${active ? '#3b82f6' : '#4b5563'}`, borderRadius: '6px', cursor: 'pointer', fontWeight: active ? 700 : 400, minHeight: '40px' }}>
                                                             {preset}
                                                         </button>
                                                     );
                                                 })}
-                                                {/* Custom presets already added */}
                                                 {formData.subtraction_presets.filter(p => ![1, 6, 12].includes(p)).map(preset => (
-                                                    <span key={preset} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 10px', background: '#3b82f6', color: 'white', borderRadius: '4px', fontSize: '0.9rem' }}>
+                                                    <span key={preset} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 10px', background: '#3b82f6', color: 'white', borderRadius: '6px', fontSize: '0.9rem' }}>
                                                         {preset}
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => setFormData(prev => ({ ...prev, subtraction_presets: prev.subtraction_presets.filter(p => p !== preset) }))}
-                                                            style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', padding: 0, fontWeight: 'bold', lineHeight: 1 }}
-                                                        >×</button>
+                                                        <button type="button" onClick={() => setFormData(prev => ({ ...prev, subtraction_presets: prev.subtraction_presets.filter(p => p !== preset) }))}
+                                                            style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', padding: 0, fontWeight: 'bold' }}>×</button>
                                                     </span>
                                                 ))}
                                             </div>
-                                            {/* Add custom preset */}
-                                            <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
-                                                <input
-                                                    className={styles.input}
-                                                    type="number"
-                                                    min="1"
-                                                    placeholder="Custom #"
+                                            <div style={{ display: 'flex', gap: '0.4rem' }}>
+                                                <input className={styles.input} type="number" min="1" placeholder="Custom value"
                                                     value={formData.custom_preset_input}
                                                     onChange={e => setFormData({ ...formData, custom_preset_input: e.target.value })}
-                                                    style={{ width: '100px', marginBottom: 0 }}
-                                                    onKeyDown={e => {
-                                                        if (e.key === 'Enter') {
-                                                            e.preventDefault();
-                                                            const val = parseInt(formData.custom_preset_input);
-                                                            if (!isNaN(val) && val > 0 && !formData.subtraction_presets.includes(val)) {
-                                                                setFormData(prev => ({ ...prev, subtraction_presets: [...prev.subtraction_presets, val].sort((a, b) => a - b), custom_preset_input: '' }));
-                                                            }
-                                                        }
-                                                    }}
-                                                />
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        const val = parseInt(formData.custom_preset_input);
-                                                        if (!isNaN(val) && val > 0 && !formData.subtraction_presets.includes(val)) {
-                                                            setFormData(prev => ({ ...prev, subtraction_presets: [...prev.subtraction_presets, val].sort((a, b) => a - b), custom_preset_input: '' }));
-                                                        }
-                                                    }}
-                                                    style={{ background: '#10b981', color: 'white', border: 'none', borderRadius: '4px', padding: '6px 12px', cursor: 'pointer', fontWeight: 700 }}
-                                                >
+                                                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); const v = parseInt(formData.custom_preset_input); if (!isNaN(v) && v > 0 && !formData.subtraction_presets.includes(v)) setFormData(prev => ({ ...prev, subtraction_presets: [...prev.subtraction_presets, v].sort((a, b) => a - b), custom_preset_input: '' })); } }}
+                                                    style={{ width: '120px', minHeight: '40px' }} />
+                                                <button type="button"
+                                                    onClick={() => { const v = parseInt(formData.custom_preset_input); if (!isNaN(v) && v > 0 && !formData.subtraction_presets.includes(v)) setFormData(prev => ({ ...prev, subtraction_presets: [...prev.subtraction_presets, v].sort((a, b) => a - b), custom_preset_input: '' })); }}
+                                                    style={{ background: '#10b981', color: 'white', border: 'none', borderRadius: '6px', padding: '6px 14px', cursor: 'pointer', fontWeight: 700, minHeight: '40px' }}>
                                                     + Add
                                                 </button>
                                             </div>
@@ -1246,17 +1143,54 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                                 )}
                             </div>
 
-                            <div style={{ marginBottom: '1rem' }}>
-                                <label className={styles.statLabel}>Low Stock Alert Threshold</label>
-                                <div className="flex items-center gap-2 mb-2">
-                                    <input
-                                        type="checkbox"
-                                        checked={formData.low_stock_threshold === null}
-                                        onChange={e => setFormData({ ...formData, low_stock_threshold: e.target.checked ? null : formData.low_stock_threshold_factor || '5' })}
-                                        style={{ width: '16px', height: '16px' }}
-                                    />
-                                    <span className="text-sm text-gray-400">Use Global Default</span>
+                            {/* Assigned Locations */}
+                            {myLocations.length > 0 && (
+                                <div style={{ padding: '0.875rem', background: '#1e293b', borderRadius: '8px', border: '1px solid #3b82f6' }}>
+                                    <label className={styles.statLabel} style={{ display: 'flex', alignItems: 'center', marginBottom: '0.5rem' }}>
+                                        Assigned Locations
+                                        <Tip text="Which locations track inventory for this product. Unassigned locations won't show it in their stock counts." />
+                                    </label>
+                                    <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                                        {myLocations.map(loc => (
+                                            <label key={loc.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'white', cursor: 'pointer' }}>
+                                                <input type="checkbox" checked={formData.assignedLocations.includes(loc.id)}
+                                                    onChange={e => { if (e.target.checked) setFormData(p => ({ ...p, assignedLocations: [...p.assignedLocations, loc.id] })); else setFormData(p => ({ ...p, assignedLocations: p.assignedLocations.filter(id => id !== loc.id) })); }}
+                                                    style={{ width: '18px', height: '18px', accentColor: '#3b82f6' }} />
+                                                {loc.name}
+                                            </label>
+                                        ))}
+                                    </div>
                                 </div>
+                            )}
+
+                        </div>)}
+
+                        {/* ── TAB 3: ALERTS & SMART ORDER ───────────────────── */}
+                        {modalTab === 'alerts' && (<div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+
+                            {/* Low Stock Alerts toggle */}
+                            <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', cursor: 'pointer', padding: '0.875rem', background: '#1f2937', borderRadius: '8px', border: '1px solid #374151' }}>
+                                <input type="checkbox" checked={formData.include_in_low_stock_alerts}
+                                    onChange={e => setFormData({ ...formData, include_in_low_stock_alerts: e.target.checked })}
+                                    style={{ width: '20px', height: '20px', marginTop: '2px', flexShrink: 0, accentColor: '#f59e0b' }} />
+                                <div>
+                                    <div style={{ color: 'white', fontWeight: 600, fontSize: '0.9rem' }}>Include in Low Stock Alerts</div>
+                                    <div style={{ color: '#6b7280', fontSize: '0.78rem', marginTop: '2px' }}>When stock drops below the threshold, a low-stock email alert is sent. Uncheck to silence alerts for this item.</div>
+                                </div>
+                            </label>
+
+                            {/* Low Stock Threshold */}
+                            <div style={{ padding: '0.875rem', background: '#1f2937', borderRadius: '8px', border: '1px solid #374151' }}>
+                                <label className={styles.statLabel} style={{ display: 'flex', alignItems: 'center', marginBottom: '0.5rem' }}>
+                                    Low Stock Threshold
+                                    <Tip text="Stock level that triggers alerts and smart order suggestions. Choose 'Global Default' to use the org-wide setting configured in Reporting Settings." />
+                                </label>
+                                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '0.6rem', cursor: 'pointer' }}>
+                                    <input type="checkbox" checked={formData.low_stock_threshold === null}
+                                        onChange={e => setFormData({ ...formData, low_stock_threshold: e.target.checked ? null : formData.low_stock_threshold_factor || '5' })}
+                                        style={{ width: '16px', height: '16px', accentColor: '#3b82f6' }} />
+                                    <span style={{ color: '#9ca3af', fontSize: '0.88rem' }}>Use Global Default</span>
+                                </label>
                                 {formData.low_stock_threshold !== null && (() => {
                                     const factor = parseFloat(formData.low_stock_threshold_factor) || 1;
                                     const orderUnitSize = parseInt(formData.order_unit_size || '1') || 1;
@@ -1269,82 +1203,66 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                                             : Math.round(factor);
                                     return (
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                                            <select
-                                                value={formData.low_stock_threshold_type}
+                                            <select value={formData.low_stock_threshold_type}
                                                 onChange={e => setFormData({ ...formData, low_stock_threshold_type: e.target.value as any })}
-                                                style={{ background: '#1e293b', color: 'white', border: '1px solid #374151', borderRadius: '4px', padding: '6px 10px', fontSize: '0.875rem' }}
-                                            >
+                                                style={{ background: '#111827', color: 'white', border: '1px solid #374151', borderRadius: '6px', padding: '8px 10px', fontSize: '0.875rem', minHeight: '44px' }}>
                                                 <option value="fixed">Fixed Amount (units)</option>
                                                 <option value="order_qty">× Order Quantity</option>
                                                 <option value="stock_options">× Stock Options</option>
                                             </select>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                                <input
-                                                    className={styles.input}
-                                                    type="number"
-                                                    min="0.01"
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                                <input className={styles.input} type="number" min="0.01"
                                                     step={formData.low_stock_threshold_type === 'fixed' ? '1' : '0.5'}
                                                     value={formData.low_stock_threshold_factor}
                                                     onChange={e => setFormData({ ...formData, low_stock_threshold_factor: e.target.value, low_stock_threshold: e.target.value })}
                                                     placeholder={formData.low_stock_threshold_type === 'fixed' ? '5' : '2'}
-                                                    style={{ width: '90px' }}
-                                                />
-                                                {formData.low_stock_threshold_type === 'order_qty' && (
-                                                    <span style={{ color: '#9ca3af', fontSize: '0.8rem' }}>
-                                                        × {orderUnitSize} {formData.order_unit_label || 'units'}
-                                                        <span style={{ color: '#f59e0b', marginLeft: '0.5rem' }}>= {effectiveFixed} units</span>
-                                                    </span>
-                                                )}
-                                                {formData.low_stock_threshold_type === 'stock_options' && (
-                                                    <span style={{ color: '#9ca3af', fontSize: '0.8rem' }}>
-                                                        × {maxPreset} (max preset)
-                                                        <span style={{ color: '#f59e0b', marginLeft: '0.5rem' }}>= {effectiveFixed} units</span>
-                                                    </span>
-                                                )}
-                                                {formData.low_stock_threshold_type === 'fixed' && (
-                                                    <span style={{ color: '#9ca3af', fontSize: '0.8rem' }}>units</span>
-                                                )}
+                                                    style={{ width: '100px', minHeight: '44px' }} />
+                                                <span style={{ color: '#9ca3af', fontSize: '0.82rem' }}>
+                                                    {formData.low_stock_threshold_type === 'order_qty' && <>× {orderUnitSize} {formData.order_unit_label || 'units'}</>}
+                                                    {formData.low_stock_threshold_type === 'stock_options' && <>× {maxPreset} (max preset)</>}
+                                                    {formData.low_stock_threshold_type === 'fixed' && <>units</>}
+                                                    {formData.low_stock_threshold_type !== 'fixed' && <span style={{ color: '#f59e0b', marginLeft: '0.4rem', fontWeight: 600 }}>= {effectiveFixed} units</span>}
+                                                </span>
                                             </div>
                                         </div>
                                     );
                                 })()}
                             </div>
 
-                            {myLocations.length > 0 && (
-                                <div style={{ marginBottom: '1rem', padding: '1rem', background: '#1e293b', borderRadius: '0.5rem', border: '1px solid #3b82f6' }}>
-                                    <label className={styles.statLabel} style={{ marginBottom: '0.5rem', display: 'block' }}>Assigned Locations</label>
-                                    <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-                                        {myLocations.map(loc => (
-                                            <label key={loc.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'white', cursor: 'pointer' }}>
-                                                <input
-                                                    type="checkbox"
-                                                    checked={formData.assignedLocations.includes(loc.id)}
-                                                    onChange={e => {
-                                                        if (e.target.checked) setFormData(p => ({ ...p, assignedLocations: [...p.assignedLocations, loc.id] }));
-                                                        else setFormData(p => ({ ...p, assignedLocations: p.assignedLocations.filter(id => id !== loc.id) }));
-                                                    }}
-                                                    style={{ width: '18px', height: '18px', accentColor: '#3b82f6' }}
-                                                />
-                                                {loc.name}
-                                            </label>
-                                        ))}
+                            {/* Exclude from Smart Order */}
+                            <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', cursor: 'pointer', padding: '0.875rem', background: '#1f2937', borderRadius: '8px', border: `1px solid ${formData.exclude_from_smart_order ? '#dc2626' : '#374151'}` }}>
+                                <input type="checkbox" checked={formData.exclude_from_smart_order}
+                                    onChange={e => setFormData({ ...formData, exclude_from_smart_order: e.target.checked })}
+                                    style={{ width: '20px', height: '20px', marginTop: '2px', flexShrink: 0, accentColor: '#dc2626' }} />
+                                <div>
+                                    <div style={{ color: 'white', fontWeight: 600, fontSize: '0.9rem' }}>Exclude from Smart Order</div>
+                                    <div style={{ color: '#6b7280', fontSize: '0.78rem', marginTop: '2px' }}>
+                                        When checked, this product will never appear in AI-generated order suggestions, even if stock is low.
+                                        Useful for seasonal items, discontinued lines, or products you buy ad-hoc.
                                     </div>
-                                    <p className="text-xs text-gray-400 mt-2">
-                                        Select the locations where this product should be tracked.
-                                    </p>
+                                    {formData.exclude_from_smart_order && (
+                                        <div style={{ marginTop: '6px', fontSize: '0.78rem', color: '#fca5a5', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                            ⚠ Excluded — will not appear in Smart Order proposals
+                                        </div>
+                                    )}
                                 </div>
-                            )}
+                            </label>
 
-                            <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end', marginTop: '1rem' }}>
-                                <button type="button" onClick={() => setShowModal(false)} style={{ padding: '0.5rem 1rem', background: 'transparent', color: '#9ca3af', border: '1px solid #374151', borderRadius: '0.5rem', cursor: 'pointer' }}>Cancel</button>
-                                <button type="submit" style={{ padding: '0.5rem 1rem', background: '#d97706', color: 'white', border: 'none', borderRadius: '0.5rem', cursor: 'pointer', fontWeight: 'bold' }}>
+                        </div>)}
+
+                        </div>{/* end scrollable content */}
+
+                            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', padding: '1rem 1.25rem', borderTop: '1px solid #1f2937' }}>
+                                <button type="button" onClick={() => setShowModal(false)} style={{ padding: '0.6rem 1.25rem', background: 'transparent', color: '#9ca3af', border: '1px solid #374151', borderRadius: '8px', cursor: 'pointer', minHeight: '44px' }}>Cancel</button>
+                                <button type="submit" style={{ padding: '0.6rem 1.5rem', background: '#d97706', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', minHeight: '44px' }}>
                                     {editingId ? 'Save Changes' : 'Create Product'}
                                 </button>
                             </div>
                         </form>
-                    </div >
-                </div >
-            )}
+                    </div>
+                </div>
+                );
+            })()}
 
             {importFile && (
                 <CsvMappingModal

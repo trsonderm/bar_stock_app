@@ -16,6 +16,9 @@ interface Suggestion {
     reason: string;
     priority: 'CRITICAL' | 'HIGH' | 'HEALTHY';
     model: string;
+    data_points?: number;
+    analysis_days?: number;
+    insufficient_data?: boolean;
 }
 
 interface LocationData {
@@ -60,6 +63,7 @@ export default function SmartOrderClient() {
     const [availableSignatures, setAvailableSignatures] = useState<any[]>([]);
     const [showSignatureModal, setShowSignatureModal] = useState(false);
     const [emailing, setEmailing] = useState(false);
+    const [expandedItemId, setExpandedItemId] = useState<number | null>(null);
 
     // Load ML model config
     useEffect(() => {
@@ -485,35 +489,94 @@ export default function SmartOrderClient() {
                         <tbody className="divide-y divide-gray-700 bg-gray-800">
                             {filtered.length === 0 ? (
                                 <tr><td colSpan={8} className="px-6 py-8 text-center text-gray-500">No suggestions for this criteria.</td></tr>
-                            ) : filtered.map(s => (
-                                <tr key={s.item_id} className="hover:bg-gray-700/50 transition-colors">
-                                    <td className="px-6 py-4">{priorityBadge(s.priority)}</td>
-                                    <td className="px-6 py-4 font-medium text-white">{s.item_name}</td>
-                                    <td className="px-6 py-4">{s.supplier || 'Unassigned'}</td>
-                                    <td className="px-6 py-4">
-                                        <div className="flex flex-col">
-                                            <span className="text-white">{s.current_stock} units</span>
-                                            <span className="text-xs text-gray-500">Burn: {s.burn_rate}/day</span>
-                                            {s.pending_order > 0 && <span className="text-xs text-blue-400">+{s.pending_order} pending</span>}
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-4">
-                                        <span className={s.days_until_empty < 3 ? 'text-red-400 font-bold' : ''}>
-                                            {s.days_until_empty} days
-                                        </span>
-                                    </td>
-                                    <td className="px-6 py-4 text-white">{s.suggested_order > 0 ? s.suggested_order : '—'}</td>
-                                    <td className="px-6 py-4 text-white">${s.estimated_cost}</td>
-                                    <td className="px-6 py-4 text-right">
-                                        {s.suggested_order > 0 && (
-                                            <button onClick={() => handlePlaceOrder(s)}
-                                                className="bg-blue-600 hover:bg-blue-500 text-white text-xs px-3 py-1.5 rounded">
-                                                Place Order
-                                            </button>
+                            ) : filtered.map(s => {
+                                const isExpanded = expandedItemId === s.item_id;
+                                return (
+                                    <>
+                                        <tr key={s.item_id}
+                                            onClick={() => setExpandedItemId(isExpanded ? null : s.item_id)}
+                                            className="hover:bg-gray-700/50 transition-colors cursor-pointer">
+                                            <td className="px-6 py-4">{priorityBadge(s.priority)}</td>
+                                            <td className="px-6 py-4 font-medium text-white">
+                                                <div className="flex flex-col gap-1">
+                                                    <span>{s.item_name}</span>
+                                                    {s.insufficient_data && (
+                                                        <span className="inline-flex items-center gap-1 text-xs font-semibold text-amber-300 bg-amber-900/40 border border-amber-700/60 rounded-full px-2 py-0.5 w-fit">
+                                                            ⚠ Insufficient Data
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-4">{s.supplier || 'Unassigned'}</td>
+                                            <td className="px-6 py-4">
+                                                <div className="flex flex-col">
+                                                    <span className="text-white">{s.current_stock} units</span>
+                                                    <span className="text-xs text-gray-500">Burn: {s.burn_rate}/day</span>
+                                                    {s.pending_order > 0 && <span className="text-xs text-blue-400">+{s.pending_order} pending</span>}
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <span className={s.days_until_empty < 3 ? 'text-red-400 font-bold' : ''}>
+                                                    {s.days_until_empty} days
+                                                </span>
+                                            </td>
+                                            <td className="px-6 py-4 text-white">{s.suggested_order > 0 ? s.suggested_order : '—'}</td>
+                                            <td className="px-6 py-4 text-white">${s.estimated_cost}</td>
+                                            <td className="px-6 py-4 text-right">
+                                                {s.suggested_order > 0 && (
+                                                    <button onClick={e => { e.stopPropagation(); handlePlaceOrder(s); }}
+                                                        className="bg-blue-600 hover:bg-blue-500 text-white text-xs px-3 py-1.5 rounded">
+                                                        Place Order
+                                                    </button>
+                                                )}
+                                            </td>
+                                        </tr>
+                                        {isExpanded && (
+                                            <tr key={`${s.item_id}-detail`} className="bg-gray-900/60">
+                                                <td colSpan={8} className="px-6 py-4">
+                                                    <div className="flex flex-wrap gap-6 text-sm">
+                                                        <div className="flex flex-col gap-1">
+                                                            <span className="text-gray-400 text-xs uppercase tracking-wide">Forecast Model</span>
+                                                            <span className="text-white font-medium">{s.model || 'SMA'}</span>
+                                                        </div>
+                                                        <div className="flex flex-col gap-1">
+                                                            <span className="text-gray-400 text-xs uppercase tracking-wide">Analysis Window</span>
+                                                            <span className="text-white font-medium">{s.analysis_days ?? forecastDays} days</span>
+                                                        </div>
+                                                        <div className="flex flex-col gap-1">
+                                                            <span className="text-gray-400 text-xs uppercase tracking-wide">Data Points Used</span>
+                                                            <span className={`font-medium ${(s.data_points ?? 0) < 7 ? 'text-amber-300' : 'text-white'}`}>
+                                                                {s.data_points ?? 0} usage events
+                                                            </span>
+                                                        </div>
+                                                        <div className="flex flex-col gap-1">
+                                                            <span className="text-gray-400 text-xs uppercase tracking-wide">Avg Daily Burn</span>
+                                                            <span className="text-white font-medium">{s.burn_rate} units/day</span>
+                                                        </div>
+                                                        <div className="flex flex-col gap-1">
+                                                            <span className="text-gray-400 text-xs uppercase tracking-wide">Prediction Confidence</span>
+                                                            <span className={`font-medium ${s.insufficient_data ? 'text-amber-300' : 'text-green-400'}`}>
+                                                                {s.insufficient_data ? 'Low — not enough history' : 'Normal'}
+                                                            </span>
+                                                        </div>
+                                                        {s.reason && (
+                                                            <div className="flex flex-col gap-1">
+                                                                <span className="text-gray-400 text-xs uppercase tracking-wide">Reason</span>
+                                                                <span className="text-gray-300">{s.reason}</span>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    {s.insufficient_data && (
+                                                        <div className="mt-3 text-xs text-amber-200 bg-amber-900/20 border border-amber-700/40 rounded px-3 py-2">
+                                                            This item has fewer than 7 recorded usage events in the analysis window. Predictions may be unreliable. Keep logging stock subtractions to improve accuracy.
+                                                        </div>
+                                                    )}
+                                                </td>
+                                            </tr>
                                         )}
-                                    </td>
-                                </tr>
-                            ))}
+                                    </>
+                                );
+                            })}
                         </tbody>
                         <tfoot className="bg-gray-900 border-t border-gray-700">
                             <tr>

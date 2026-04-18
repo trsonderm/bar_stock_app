@@ -10,6 +10,7 @@ interface InventoryRow {
     current_stock: number;
     low_stock_threshold: number;
     order_size: any;
+    exclude_from_smart_order?: boolean;
 }
 interface SupplierRow {
     item_id: number;
@@ -31,6 +32,9 @@ interface Suggestion {
     reason: string;
     priority: 'CRITICAL' | 'HIGH' | 'HEALTHY';
     model: string;
+    data_points: number;          // number of days with usage events
+    analysis_days: number;        // window used
+    insufficient_data: boolean;   // true when < 7 distinct days of data
 }
 
 // ── Burn-rate calculation (all models) ───────────────────────────────────────
@@ -131,8 +135,14 @@ function buildSuggestions(
     const suggestions: Suggestion[] = [];
 
     for (const item of inventory) {
+        // Skip items explicitly excluded from smart ordering
+        if (item.exclude_from_smart_order) continue;
+
         const burnRate = calcBurnRate(item.item_id, itemUsageMap, analysisDays, modelType);
         const stock = parseFloat(String(item.current_stock));
+        const history = itemUsageMap[item.item_id] || [];
+        const dataPoints = history.length; // distinct days with usage events
+        const insufficientData = dataPoints < 7;
 
         let orderSize = 1;
         if (Array.isArray(item.order_size) && item.order_size.length > 0) {
@@ -169,6 +179,7 @@ function buildSuggestions(
                 suggested_order: orderSize, estimated_cost: '0.00',
                 reason: 'Below manual threshold — no usage history',
                 priority: 'HIGH', model: modelType,
+                data_points: dataPoints, analysis_days: analysisDays, insufficient_data: true,
             });
             continue;
         }
@@ -214,6 +225,7 @@ function buildSuggestions(
                     reason: `Run out in ${Math.floor(physicalDaysLeft)}d. Needs ${unitsToOrder} more.`,
                     priority: physicalDaysLeft < leadTime ? 'CRITICAL' : 'HIGH',
                     model: modelType,
+                    data_points: dataPoints, analysis_days: analysisDays, insufficient_data: insufficientData,
                 });
             } else if (pendingQty > 0) {
                 suggestions.push({
@@ -223,8 +235,9 @@ function buildSuggestions(
                     days_until_empty: Math.floor(physicalDaysLeft),
                     supplier: supplier?.supplier_name || 'Unassigned',
                     suggested_order: 0, estimated_cost: '0.00',
-                    reason: `Pending order covers need`,
+                    reason: 'Pending order covers need',
                     priority: 'HEALTHY', model: modelType,
+                    data_points: dataPoints, analysis_days: analysisDays, insufficient_data: insufficientData,
                 });
             }
         } else {
@@ -237,6 +250,7 @@ function buildSuggestions(
                 suggested_order: 0, estimated_cost: '0.00',
                 reason: `Sufficient stock (> ${Math.floor(daysUntilArrival + safetyBufferDays)}d)`,
                 priority: 'HEALTHY', model: modelType,
+                data_points: dataPoints, analysis_days: analysisDays, insufficient_data: insufficientData,
             });
         }
     }
@@ -359,7 +373,8 @@ export async function GET(req: NextRequest) {
                     i.name as item_name,
                     COALESCE(inv.quantity, 0) as current_stock,
                     COALESCE(i.low_stock_threshold, 5) as low_stock_threshold,
-                    i.order_size
+                    i.order_size,
+                    COALESCE(i.exclude_from_smart_order, false) as exclude_from_smart_order
                 FROM items i
                 JOIN inventory inv ON i.id = inv.item_id AND inv.location_id = $2
                 WHERE i.organization_id = $1
