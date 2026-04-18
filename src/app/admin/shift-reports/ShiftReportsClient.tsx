@@ -39,6 +39,27 @@ const inputStyle: React.CSSProperties = {
     outline: 'none',
 };
 
+interface AdminShiftForm {
+    userId: string;
+    closedAt: string;
+    locationId: string;
+    bankStart: string;
+    bankEnd: string;
+    cashSales: string;
+    cashTips: string;
+    ccSales: string;
+    ccTips: string;
+    ccTipsCashPayout: boolean;
+    notes: string;
+    payouts: { typeId: string; typeName: string; amount: string }[];
+}
+
+const EMPTY_FORM: AdminShiftForm = {
+    userId: '', closedAt: '', locationId: '',
+    bankStart: '', bankEnd: '', cashSales: '', cashTips: '',
+    ccSales: '', ccTips: '', ccTipsCashPayout: false, notes: '', payouts: [],
+};
+
 export default function ShiftReportsClient() {
     const [shiftCloses, setShiftCloses] = useState<ShiftClose[]>([]);
     const [total, setTotal] = useState(0);
@@ -56,6 +77,15 @@ export default function ShiftReportsClient() {
     const [emailError, setEmailError] = useState('');
     const [locations, setLocations] = useState<{ id: number; name: string }[]>([]);
     const [sampleMode, setSampleMode] = useState(false);
+
+    // Admin create shift state
+    const [showCreateModal, setShowCreateModal] = useState(false);
+    const [createForm, setCreateForm] = useState<AdminShiftForm>(EMPTY_FORM);
+    const [createUsers, setCreateUsers] = useState<{ id: number; name: string }[]>([]);
+    const [createPayoutTypes, setCreatePayoutTypes] = useState<{ id: number; name: string }[]>([]);
+    const [createLoading, setCreateLoading] = useState(false);
+    const [createError, setCreateError] = useState('');
+    const [createSuccess, setCreateSuccess] = useState('');
 
     const LIMIT = 20;
 
@@ -85,6 +115,63 @@ export default function ShiftReportsClient() {
             .then(r => r.json())
             .then(data => setLocations(data.locations || []));
     }, []);
+
+    const openCreateModal = () => {
+        setCreateError('');
+        setCreateSuccess('');
+        setCreateForm({
+            ...EMPTY_FORM,
+            closedAt: new Date().toISOString().slice(0, 16),
+        });
+        if (createUsers.length === 0) {
+            fetch('/api/admin/shift-close')
+                .then(r => r.json())
+                .then(data => {
+                    setCreateUsers(data.users || []);
+                    setCreatePayoutTypes(data.payoutTypes || []);
+                });
+        }
+        setShowCreateModal(true);
+    };
+
+    const handleCreateShift = async () => {
+        if (!createForm.userId) { setCreateError('Select an employee.'); return; }
+        setCreateLoading(true);
+        setCreateError('');
+        try {
+            const res = await fetch('/api/admin/shift-close', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    userId: createForm.userId,
+                    closedAt: createForm.closedAt || undefined,
+                    locationId: createForm.locationId || undefined,
+                    bankStart: createForm.bankStart,
+                    bankEnd: createForm.bankEnd,
+                    cashSales: createForm.cashSales,
+                    cashTips: createForm.cashTips,
+                    ccSales: createForm.ccSales,
+                    ccTips: createForm.ccTips,
+                    ccTipsCashPayout: createForm.ccTipsCashPayout,
+                    notes: createForm.notes,
+                    payouts: createForm.payouts
+                        .filter(p => p.typeName && parseFloat(p.amount) > 0)
+                        .map(p => ({ typeId: p.typeId, typeName: p.typeName, amount: parseFloat(p.amount) })),
+                }),
+            });
+            const rawText = await res.text();
+            let data: any;
+            try { data = JSON.parse(rawText); } catch { data = { error: rawText }; }
+            if (!res.ok) { setCreateError(data.error || 'Failed to create shift'); return; }
+            setCreateSuccess(`Shift created — Bag: ${fmt(data.bagAmount)} | Over/Short: ${fmt(data.overShort)}`);
+            fetchReports();
+            setTimeout(() => { setShowCreateModal(false); setCreateForm(EMPTY_FORM); setCreateSuccess(''); }, 2500);
+        } catch {
+            setCreateError('Network error');
+        } finally {
+            setCreateLoading(false);
+        }
+    };
 
     useEffect(() => {
         if (!sampleMode) fetchReports();
@@ -163,21 +250,38 @@ export default function ShiftReportsClient() {
                         <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 700 }}>Shift Close Reports</h1>
                         <p style={{ margin: '0.25rem 0 0', color: '#9ca3af', fontSize: '0.875rem' }}>View, search, print, and email shift close reports</p>
                     </div>
-                    <button
-                        onClick={() => { setSampleMode(!sampleMode); setSelectedShift(null); }}
-                        style={{
-                            padding: '0.5rem 1rem',
-                            border: '1px solid #3b82f6',
-                            borderRadius: '0.375rem',
-                            background: sampleMode ? '#3b82f6' : 'transparent',
-                            color: sampleMode ? 'white' : '#3b82f6',
-                            cursor: 'pointer',
-                            fontSize: '0.875rem',
-                            fontWeight: 600,
-                        }}
-                    >
-                        {sampleMode ? 'Exit Preview' : 'Preview Sample'}
-                    </button>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <button
+                            onClick={openCreateModal}
+                            style={{
+                                padding: '0.5rem 1rem',
+                                border: 'none',
+                                borderRadius: '0.375rem',
+                                background: '#16a34a',
+                                color: 'white',
+                                cursor: 'pointer',
+                                fontSize: '0.875rem',
+                                fontWeight: 600,
+                            }}
+                        >
+                            + Create Entry
+                        </button>
+                        <button
+                            onClick={() => { setSampleMode(!sampleMode); setSelectedShift(null); }}
+                            style={{
+                                padding: '0.5rem 1rem',
+                                border: '1px solid #3b82f6',
+                                borderRadius: '0.375rem',
+                                background: sampleMode ? '#3b82f6' : 'transparent',
+                                color: sampleMode ? 'white' : '#3b82f6',
+                                cursor: 'pointer',
+                                fontSize: '0.875rem',
+                                fontWeight: 600,
+                            }}
+                        >
+                            {sampleMode ? 'Exit Preview' : 'Preview Sample'}
+                        </button>
+                    </div>
                 </div>
 
                 {/* Search + Filter Bar */}
@@ -422,6 +526,135 @@ export default function ShiftReportsClient() {
                                 style={{ padding: '0.5rem 1.25rem', background: emailing ? '#374151' : '#1d4ed8', color: 'white', border: 'none', borderRadius: '0.375rem', cursor: emailing ? 'not-allowed' : 'pointer', fontSize: '0.875rem', fontWeight: 600 }}
                             >
                                 {emailing ? 'Sending...' : 'Send Email'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {/* Create Shift Entry Modal */}
+            {showCreateModal && (
+                <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 1001, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', overflowY: 'auto' }}>
+                    <div style={{ background: '#111827', border: '1px solid #374151', borderRadius: '0.75rem', padding: '1.5rem', width: '100%', maxWidth: '560px', maxHeight: '90vh', overflowY: 'auto' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+                            <h3 style={{ margin: 0, color: 'white', fontSize: '1.1rem', fontWeight: 700 }}>Create Shift Entry</h3>
+                            <button onClick={() => setShowCreateModal(false)} style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', fontSize: '1.2rem' }}>✕</button>
+                        </div>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                            {/* Employee */}
+                            <div style={{ gridColumn: '1 / -1' }}>
+                                <label style={{ display: 'block', fontSize: '0.75rem', color: '#9ca3af', marginBottom: '0.25rem' }}>Employee *</label>
+                                <select value={createForm.userId} onChange={e => setCreateForm(f => ({ ...f, userId: e.target.value }))} style={{ ...inputStyle, width: '100%' }}>
+                                    <option value="">Select employee…</option>
+                                    {createUsers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                                </select>
+                            </div>
+
+                            {/* Date / Time */}
+                            <div>
+                                <label style={{ display: 'block', fontSize: '0.75rem', color: '#9ca3af', marginBottom: '0.25rem' }}>Shift Date & Time</label>
+                                <input type="datetime-local" value={createForm.closedAt} onChange={e => setCreateForm(f => ({ ...f, closedAt: e.target.value }))} style={{ ...inputStyle, width: '100%', colorScheme: 'dark', boxSizing: 'border-box' }} />
+                            </div>
+
+                            {/* Location */}
+                            {locations.length > 1 && (
+                                <div>
+                                    <label style={{ display: 'block', fontSize: '0.75rem', color: '#9ca3af', marginBottom: '0.25rem' }}>Location</label>
+                                    <select value={createForm.locationId} onChange={e => setCreateForm(f => ({ ...f, locationId: e.target.value }))} style={{ ...inputStyle, width: '100%' }}>
+                                        <option value="">No location</option>
+                                        {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                                    </select>
+                                </div>
+                            )}
+
+                            {/* Financials grid */}
+                            {[
+                                { key: 'bankStart', label: 'Bank Start' },
+                                { key: 'bankEnd', label: 'Bank End' },
+                                { key: 'cashSales', label: 'Cash Sales' },
+                                { key: 'cashTips', label: 'Cash Tips' },
+                                { key: 'ccSales', label: 'CC Sales' },
+                                { key: 'ccTips', label: 'CC Tips' },
+                            ].map(({ key, label }) => (
+                                <div key={key}>
+                                    <label style={{ display: 'block', fontSize: '0.75rem', color: '#9ca3af', marginBottom: '0.25rem' }}>{label}</label>
+                                    <input
+                                        type="number" step="0.01" min="0" placeholder="0.00"
+                                        value={(createForm as any)[key]}
+                                        onChange={e => setCreateForm(f => ({ ...f, [key]: e.target.value }))}
+                                        style={{ ...inputStyle, width: '100%', boxSizing: 'border-box' }}
+                                    />
+                                </div>
+                            ))}
+
+                            {/* CC Tips as cash payout */}
+                            <div style={{ gridColumn: '1 / -1' }}>
+                                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', color: '#d1d5db', cursor: 'pointer' }}>
+                                    <input type="checkbox" checked={createForm.ccTipsCashPayout} onChange={e => setCreateForm(f => ({ ...f, ccTipsCashPayout: e.target.checked }))} style={{ accentColor: '#d97706' }} />
+                                    CC tips paid out as cash
+                                </label>
+                            </div>
+
+                            {/* Payouts */}
+                            <div style={{ gridColumn: '1 / -1' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.375rem' }}>
+                                    <label style={{ fontSize: '0.75rem', color: '#9ca3af' }}>Payouts</label>
+                                    <button
+                                        onClick={() => setCreateForm(f => ({ ...f, payouts: [...f.payouts, { typeId: '', typeName: '', amount: '' }] }))}
+                                        style={{ background: 'none', border: '1px solid #374151', color: '#d97706', borderRadius: '0.25rem', padding: '0.2rem 0.5rem', cursor: 'pointer', fontSize: '0.75rem' }}
+                                    >
+                                        + Add
+                                    </button>
+                                </div>
+                                {createForm.payouts.map((p, i) => (
+                                    <div key={i} style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', alignItems: 'center' }}>
+                                        <select
+                                            value={p.typeId}
+                                            onChange={e => {
+                                                const pt = createPayoutTypes.find(t => String(t.id) === e.target.value);
+                                                setCreateForm(f => { const ps = [...f.payouts]; ps[i] = { ...ps[i], typeId: e.target.value, typeName: pt?.name || '' }; return { ...f, payouts: ps }; });
+                                            }}
+                                            style={{ ...inputStyle, flex: 2 }}
+                                        >
+                                            <option value="">Type…</option>
+                                            {createPayoutTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                                            <option value="__custom__">Custom…</option>
+                                        </select>
+                                        {p.typeId === '__custom__' && (
+                                            <input placeholder="Label" value={p.typeName} onChange={e => setCreateForm(f => { const ps = [...f.payouts]; ps[i] = { ...ps[i], typeName: e.target.value }; return { ...f, payouts: ps }; })} style={{ ...inputStyle, flex: 2 }} />
+                                        )}
+                                        <input type="number" step="0.01" min="0" placeholder="$0.00" value={p.amount} onChange={e => setCreateForm(f => { const ps = [...f.payouts]; ps[i] = { ...ps[i], amount: e.target.value }; return { ...f, payouts: ps }; })} style={{ ...inputStyle, flex: 1 }} />
+                                        <button onClick={() => setCreateForm(f => ({ ...f, payouts: f.payouts.filter((_, j) => j !== i) }))} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '1rem', padding: '0 0.25rem' }}>✕</button>
+                                    </div>
+                                ))}
+                            </div>
+
+                            {/* Notes */}
+                            <div style={{ gridColumn: '1 / -1' }}>
+                                <label style={{ display: 'block', fontSize: '0.75rem', color: '#9ca3af', marginBottom: '0.25rem' }}>Notes</label>
+                                <textarea
+                                    value={createForm.notes}
+                                    onChange={e => setCreateForm(f => ({ ...f, notes: e.target.value }))}
+                                    rows={2}
+                                    placeholder="Optional notes about the shift..."
+                                    style={{ ...inputStyle, width: '100%', resize: 'vertical', boxSizing: 'border-box' }}
+                                />
+                            </div>
+                        </div>
+
+                        {createError && <div style={{ color: '#ef4444', fontSize: '0.85rem', marginTop: '0.75rem' }}>{createError}</div>}
+                        {createSuccess && <div style={{ color: '#10b981', fontSize: '0.85rem', marginTop: '0.75rem' }}>{createSuccess}</div>}
+
+                        <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '1.25rem' }}>
+                            <button onClick={() => setShowCreateModal(false)} style={{ padding: '0.5rem 1rem', background: '#374151', color: 'white', border: 'none', borderRadius: '0.375rem', cursor: 'pointer', fontSize: '0.875rem' }}>
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleCreateShift}
+                                disabled={createLoading}
+                                style={{ padding: '0.5rem 1.5rem', background: createLoading ? '#374151' : '#16a34a', color: 'white', border: 'none', borderRadius: '0.375rem', cursor: createLoading ? 'not-allowed' : 'pointer', fontSize: '0.875rem', fontWeight: 600 }}
+                            >
+                                {createLoading ? 'Creating…' : 'Create Shift'}
                             </button>
                         </div>
                     </div>

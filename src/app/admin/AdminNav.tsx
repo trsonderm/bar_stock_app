@@ -45,6 +45,7 @@ import BuildIcon from '@mui/icons-material/Build';
 import ScheduleIcon from '@mui/icons-material/Schedule';
 import AutoGraphIcon from '@mui/icons-material/AutoGraph';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
+import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
 
 const drawerWidth = 260;
 
@@ -71,6 +72,7 @@ export default function AdminNav({ user, children }: { user: NavUser, children: 
         if (pathname.startsWith('/admin/reports') || pathname.startsWith('/admin/reporting') || pathname.startsWith('/admin/shift-reports')) {
             setReportingOpen(true);
         }
+        // finances is a top-level item, no folder needed
         if (pathname.startsWith('/admin/products') || pathname.startsWith('/admin/prices') || pathname.startsWith('/admin/audit')) {
             setProductOpen(true);
         }
@@ -279,6 +281,13 @@ export default function AdminNav({ user, children }: { user: NavUser, children: 
 
                 {/* SHIFT CLOSE */}
                 <DrawerItem text="Shift Close" icon={<ReceiptLongIcon />} href="/admin/shift-reports" />
+
+                {/* FINANCES */}
+                {isPro ? (
+                    <DrawerItem text="Finances" icon={<AttachMoneyIcon />} href="/admin/finances" />
+                ) : (
+                    <ProLockedItem text="Finances" icon={<AttachMoneyIcon />} />
+                )}
 
                 {/* SETTINGS FOLDER */}
                 <ListItem disablePadding sx={{ display: 'block' }}>
