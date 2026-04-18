@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
 interface PayoutType {
@@ -488,7 +489,9 @@ export default function CloseShiftClient({ user }: CloseShiftClientProps) {
     const [submitting, setSubmitting] = useState(false);
     const [submitted, setSubmitted] = useState(false);
     const [submitResult, setSubmitResult] = useState<any>(null);
+    const [showCancelConfirm, setShowCancelConfirm] = useState(false);
     const [ocrModalOpen, setOcrModalOpen] = useState(false);
+    const router = useRouter();
     const [ocrType, setOcrType] = useState<'register' | 'cc'>('register');
     const [receiptMode, setReceiptMode] = useState<'combined' | 'separate'>('combined');
     const [locationId, setLocationId] = useState<number | null>(null);
@@ -689,9 +692,16 @@ export default function CloseShiftClient({ user }: CloseShiftClientProps) {
                 zIndex: 100,
             }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                    <Link href="/inventory" style={{ color: '#6b7280', textDecoration: 'none', fontSize: '0.9rem' }}>
+                    <button
+                        onClick={() => {
+                            const hasData = Object.values(form).some(v => v !== '' && v !== false) ||
+                                payouts.some(p => p.amount !== '');
+                            if (hasData) { setShowCancelConfirm(true); } else { router.push('/inventory'); }
+                        }}
+                        style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', fontSize: '0.9rem', padding: 0 }}
+                    >
                         ← Back
-                    </Link>
+                    </button>
                     <h1 style={{ color: 'white', margin: 0, fontSize: '1.125rem', fontWeight: 700 }}>Close Shift</h1>
                 </div>
                 <LiveClock />
@@ -913,26 +923,44 @@ export default function CloseShiftClient({ user }: CloseShiftClientProps) {
                     />
                 </div>
 
-                {/* Submit */}
-                <button
-                    onClick={handleSubmit}
-                    disabled={submitting || !form.bankEnd}
-                    style={{
-                        width: '100%',
-                        padding: '1rem',
-                        background: form.bankEnd ? '#1d4ed8' : '#374151',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '0.625rem',
-                        fontSize: '1rem',
-                        fontWeight: 700,
-                        cursor: form.bankEnd ? 'pointer' : 'not-allowed',
-                        opacity: submitting ? 0.7 : 1,
-                        marginBottom: '5rem',
-                    }}
-                >
-                    {submitting ? 'Submitting...' : 'Submit Shift Close'}
-                </button>
+                {/* Submit / Cancel */}
+                <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '5rem' }}>
+                    <button
+                        onClick={() => setShowCancelConfirm(true)}
+                        disabled={submitting}
+                        style={{
+                            flex: '0 0 auto',
+                            padding: '1rem 1.5rem',
+                            background: '#374151',
+                            color: '#d1d5db',
+                            border: '1px solid #4b5563',
+                            borderRadius: '0.625rem',
+                            fontSize: '0.95rem',
+                            fontWeight: 600,
+                            cursor: submitting ? 'not-allowed' : 'pointer',
+                        }}
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        onClick={handleSubmit}
+                        disabled={submitting || !form.bankEnd}
+                        style={{
+                            flex: 1,
+                            padding: '1rem',
+                            background: form.bankEnd ? '#1d4ed8' : '#374151',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '0.625rem',
+                            fontSize: '1rem',
+                            fontWeight: 700,
+                            cursor: form.bankEnd ? 'pointer' : 'not-allowed',
+                            opacity: submitting ? 0.7 : 1,
+                        }}
+                    >
+                        {submitting ? 'Submitting...' : 'Submit Shift Close'}
+                    </button>
+                </div>
             </div>
 
             {/* Section 5: Sticky Summary Panel */}
@@ -991,6 +1019,33 @@ export default function CloseShiftClient({ user }: CloseShiftClientProps) {
                 onClose={() => setOcrModalOpen(false)}
                 onFieldsExtracted={handleOcrFields}
             />
+
+            {/* Cancel Confirmation Modal */}
+            {showCancelConfirm && (
+                <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+                    <div style={{ background: '#1f2937', border: '1px solid #374151', borderRadius: '0.75rem', padding: '1.75rem', maxWidth: '380px', width: '100%', textAlign: 'center' }}>
+                        <div style={{ fontSize: '2rem', marginBottom: '0.75rem' }}>⚠️</div>
+                        <h3 style={{ color: 'white', margin: '0 0 0.5rem', fontSize: '1.1rem', fontWeight: 700 }}>Cancel Shift Close?</h3>
+                        <p style={{ color: '#9ca3af', fontSize: '0.875rem', margin: '0 0 1.5rem', lineHeight: 1.5 }}>
+                            Your entered data will be lost and the shift will not be recorded.
+                        </p>
+                        <div style={{ display: 'flex', gap: '0.75rem' }}>
+                            <button
+                                onClick={() => setShowCancelConfirm(false)}
+                                style={{ flex: 1, padding: '0.75rem', background: '#374151', color: 'white', border: 'none', borderRadius: '0.5rem', cursor: 'pointer', fontWeight: 600, fontSize: '0.9rem' }}
+                            >
+                                Keep Editing
+                            </button>
+                            <button
+                                onClick={() => router.push('/inventory')}
+                                style={{ flex: 1, padding: '0.75rem', background: '#dc2626', color: 'white', border: 'none', borderRadius: '0.5rem', cursor: 'pointer', fontWeight: 600, fontSize: '0.9rem' }}
+                            >
+                                Yes, Cancel
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

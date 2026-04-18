@@ -547,3 +547,21 @@ CREATE INDEX IF NOT EXISTS email_log_org_idx     ON email_log(organization_id);
 CREATE INDEX IF NOT EXISTS email_log_sent_at_idx ON email_log(sent_at DESC);
 CREATE INDEX IF NOT EXISTS email_log_status_idx  ON email_log(status);
 CREATE INDEX IF NOT EXISTS email_log_type_idx    ON email_log(email_type);
+
+-- =========================================================
+-- 29. Report schedules — separate schedule table for saved reports
+-- =========================================================
+CREATE TABLE IF NOT EXISTS report_schedules (
+    id              SERIAL PRIMARY KEY,
+    report_id       INT NOT NULL REFERENCES saved_reports(id) ON DELETE CASCADE,
+    organization_id INT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    frequency       VARCHAR(20)  NOT NULL DEFAULT 'daily',
+    recipients      TEXT,
+    next_run_at     TIMESTAMPTZ,
+    active          BOOLEAN      DEFAULT TRUE,
+    created_at      TIMESTAMPTZ  DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS report_schedules_org_idx      ON report_schedules(organization_id);
+CREATE INDEX IF NOT EXISTS report_schedules_next_run_idx ON report_schedules(next_run_at) WHERE active = TRUE;
+CREATE UNIQUE INDEX IF NOT EXISTS report_schedules_report_uniq ON report_schedules(report_id, organization_id);
