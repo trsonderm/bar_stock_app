@@ -19,15 +19,26 @@ export async function GET(req: NextRequest) {
 
     try {
         const params: any[] = [session.organizationId, start, end];
+
+        // Filter by location: prefer direct location_id match on schedule,
+        // fall back to user_locations join for legacy schedules with no location_id
         const locationFilter = locationId
-            ? `AND us.user_id IN (SELECT user_id FROM user_locations WHERE location_id = $${params.push(parseInt(locationId))})`
+            ? `AND (
+                us.location_id = $${params.push(parseInt(locationId))}
+                OR (us.location_id IS NULL AND us.user_id IN (
+                    SELECT user_id FROM user_locations WHERE location_id = $${params.length}
+                ))
+            )`
             : '';
 
         const schedules = await db.query(`
-            SELECT us.*, u.first_name, u.last_name, s.label as shift_name, s.start_time, s.end_time, s.color
+            SELECT us.*, u.first_name, u.last_name, s.label as shift_name,
+                   s.start_time, s.end_time, s.color,
+                   l.name as location_name
             FROM user_schedules us
             JOIN users u ON us.user_id = u.id
             JOIN shifts s ON us.shift_id = s.id
+            LEFT JOIN locations l ON us.location_id = l.id
             WHERE us.organization_id = $1
             AND us.date >= $2 AND us.date <= $3
             ${locationFilter}
@@ -51,7 +62,7 @@ export async function POST(req: NextRequest) {
 
     try {
         const body = await req.json();
-        const { userIds, shiftId, dates, isRecurring } = body;
+        const { userIds, shiftId, dates, isRecurring, locationId: bodyLocationId } = body;
 
         if (!userIds || !shiftId || !dates || !Array.isArray(userIds) || !Array.isArray(dates)) {
             return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
@@ -59,20 +70,21 @@ export async function POST(req: NextRequest) {
 
         const organizationId = session.organizationId;
         const recurringGroupId = isRecurring && dates.length > 1 ? randomUUID() : null;
+        const locId = bodyLocationId ? parseInt(bodyLocationId) : null;
 
         for (const date of dates) {
             for (const userId of userIds) {
                 // Delete existing schedule for this user on this date
                 await db.query(`
-                    DELETE FROM user_schedules 
+                    DELETE FROM user_schedules
                     WHERE organization_id = $1 AND user_id = $2 AND date = $3
                 `, [organizationId, userId, date]);
 
                 // Insert new
                 await db.query(`
-                    INSERT INTO user_schedules (organization_id, user_id, shift_id, date, recurring_group_id)
-                    VALUES ($1, $2, $3, $4, $5)
-                `, [organizationId, userId, shiftId, date, recurringGroupId]);
+                    INSERT INTO user_schedules (organization_id, user_id, shift_id, date, recurring_group_id, location_id)
+                    VALUES ($1, $2, $3, $4, $5, $6)
+                `, [organizationId, userId, shiftId, date, recurringGroupId, locId]);
             }
         }
 

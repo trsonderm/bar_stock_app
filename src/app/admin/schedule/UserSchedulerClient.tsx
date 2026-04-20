@@ -90,6 +90,19 @@ export default function UserSchedulerClient() {
     const [myLocations, setMyLocations] = useState<{ id: number, name: string }[]>([]);
     const [selectedLocationId, setSelectedLocationId] = useState<number | null>(null);
 
+    // Schedule settings (global vs per-location mode)
+    const [scheduleSettings, setScheduleSettings] = useState<{
+        globalMode: boolean;
+        locationHours: Record<number, { workdayStart: string; workdayEnd: string }>;
+        locations: { id: number; name: string }[];
+    }>({ globalMode: true, locationHours: {}, locations: [] });
+
+    useEffect(() => {
+        fetch('/api/admin/schedule/settings').then(r => r.json()).then(d => {
+            if (d && !d.error) setScheduleSettings(d);
+        });
+    }, []);
+
     useEffect(() => {
         fetch('/api/user/locations').then(r => r.json()).then(d => {
             const locs: { id: number; name: string }[] = d.locations || [];
@@ -106,8 +119,9 @@ export default function UserSchedulerClient() {
     }, []);
 
     useEffect(() => {
-        fetch('/api/admin/schedule/shifts').then(r => r.json()).then(d => setShifts(d.shifts || []));
-    }, [activeTab]);
+        const locParam = !scheduleSettings.globalMode && selectedLocationId ? `?locationId=${selectedLocationId}` : '';
+        fetch(`/api/admin/schedule/shifts${locParam}`).then(r => r.json()).then(d => setShifts(d.shifts || []));
+    }, [activeTab, scheduleSettings.globalMode, selectedLocationId]);
 
     // Re-fetch users scoped to the selected location whenever it changes
     useEffect(() => {
@@ -293,7 +307,8 @@ export default function UserSchedulerClient() {
                     userIds: [newUserId],
                     shiftId: draggedSchedule.shift_id,
                     dates: [targetDateStr],
-                    isRecurring: false
+                    isRecurring: false,
+                    ...(!scheduleSettings.globalMode && selectedLocationId ? { locationId: selectedLocationId } : {})
                 })
             });
         }
@@ -426,7 +441,9 @@ export default function UserSchedulerClient() {
             body: JSON.stringify({
                 userIds: selectedUsers,
                 shiftId: parseInt(selectedShift),
-                dates
+                dates,
+                isRecurring,
+                ...(!scheduleSettings.globalMode && selectedLocationId ? { locationId: selectedLocationId } : {})
             })
         });
 
@@ -555,15 +572,23 @@ export default function UserSchedulerClient() {
                     <div className="flex items-center gap-3 mb-2">
                         <h1 className="text-2xl font-bold text-white">Staff Scheduler</h1>
                         {myLocations.length > 1 && (
-                            <select
-                                value={selectedLocationId ?? ''}
-                                onChange={e => setSelectedLocationId(parseInt(e.target.value))}
-                                className="bg-gray-800 border border-gray-600 text-white text-sm rounded px-3 py-1.5 focus:outline-none focus:border-blue-500"
-                            >
-                                {myLocations.map(l => (
-                                    <option key={l.id} value={l.id}>{l.name}</option>
-                                ))}
-                            </select>
+                            <div className="flex items-center gap-2">
+                                {!scheduleSettings.globalMode && (
+                                    <span className="text-xs text-blue-400 font-semibold uppercase tracking-wide">Location:</span>
+                                )}
+                                <select
+                                    value={selectedLocationId ?? ''}
+                                    onChange={e => setSelectedLocationId(parseInt(e.target.value))}
+                                    className={`border text-white text-sm rounded px-3 py-1.5 focus:outline-none focus:border-blue-500 ${!scheduleSettings.globalMode ? 'bg-blue-900/40 border-blue-600 font-semibold' : 'bg-gray-800 border-gray-600'}`}
+                                >
+                                    {myLocations.map(l => (
+                                        <option key={l.id} value={l.id}>{l.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
+                        {!scheduleSettings.globalMode && (
+                            <span className="text-xs bg-blue-900/40 border border-blue-700 text-blue-300 rounded px-2 py-0.5">Per-Location Mode</span>
                         )}
                     </div>
                     <div className="flex gap-4 text-sm">
@@ -620,7 +645,12 @@ export default function UserSchedulerClient() {
             </div>
 
             {/* TAB: SHIFTS */}
-            {activeTab === 'shifts' && <ShiftManager />}
+            {activeTab === 'shifts' && (
+                <ShiftManager
+                    scheduleSettings={scheduleSettings}
+                    onSettingsChange={setScheduleSettings}
+                />
+            )}
 
             {/* TAB: MONTHLY */}
             {activeTab === 'monthly' && (

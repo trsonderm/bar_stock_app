@@ -565,3 +565,14 @@ CREATE TABLE IF NOT EXISTS report_schedules (
 CREATE INDEX IF NOT EXISTS report_schedules_org_idx      ON report_schedules(organization_id);
 CREATE INDEX IF NOT EXISTS report_schedules_next_run_idx ON report_schedules(next_run_at) WHERE active = TRUE;
 CREATE UNIQUE INDEX IF NOT EXISTS report_schedules_report_uniq ON report_schedules(report_id, organization_id);
+
+-- =========================================================
+-- 30. Schedule — per-location shifts and schedule entries
+-- =========================================================
+DO $$ BEGIN
+  ALTER TABLE shifts ADD COLUMN location_id INTEGER REFERENCES locations(id) ON DELETE CASCADE;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE user_schedules ADD COLUMN location_id INTEGER REFERENCES locations(id) ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;

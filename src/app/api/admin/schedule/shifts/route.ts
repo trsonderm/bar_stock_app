@@ -8,11 +8,26 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const { searchParams } = new URL(req.url);
+    const locationId = searchParams.get('locationId');
+
     try {
-        const shifts = await db.query(
-            'SELECT * FROM shifts WHERE organization_id = $1 ORDER BY start_time ASC',
-            [session.organizationId]
-        );
+        let shifts;
+        if (locationId) {
+            // Return global shifts (location_id IS NULL) + this location's shifts
+            shifts = await db.query(
+                `SELECT * FROM shifts
+                 WHERE organization_id = $1
+                   AND (location_id IS NULL OR location_id = $2)
+                 ORDER BY location_id NULLS FIRST, start_time ASC`,
+                [session.organizationId, parseInt(locationId)]
+            );
+        } else {
+            shifts = await db.query(
+                'SELECT * FROM shifts WHERE organization_id = $1 ORDER BY location_id NULLS FIRST, start_time ASC',
+                [session.organizationId]
+            );
+        }
         return NextResponse.json({ shifts });
     } catch (e) {
         console.error('Failed to fetch shifts:', e);
@@ -27,18 +42,20 @@ export async function POST(req: NextRequest) {
     }
 
     try {
-        const { label, start_time, end_time, color, assigned_user_ids } = await req.json();
+        const { label, start_time, end_time, color, assigned_user_ids, location_id } = await req.json();
 
         if (!label || !start_time || !end_time) {
             return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
         }
 
         const usersJson = assigned_user_ids ? JSON.stringify(assigned_user_ids) : '[]';
-        const shiftColor = color || '#3b82f6'; // Default blue
+        const shiftColor = color || '#3b82f6';
+        const locId = location_id ? parseInt(location_id) : null;
 
         const res = await db.one(
-            'INSERT INTO shifts (organization_id, label, start_time, end_time, color, assigned_user_ids) VALUES ($1, $2, $3, $4, $5, $6::jsonb) RETURNING id',
-            [session.organizationId, label, start_time, end_time, shiftColor, usersJson]
+            `INSERT INTO shifts (organization_id, label, start_time, end_time, color, assigned_user_ids, location_id)
+             VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7) RETURNING id`,
+            [session.organizationId, label, start_time, end_time, shiftColor, usersJson, locId]
         );
 
         return NextResponse.json({ success: true, id: res.id });
@@ -55,7 +72,7 @@ export async function PUT(req: NextRequest) {
     }
 
     try {
-        const { id, label, start_time, end_time, color, assigned_user_ids } = await req.json();
+        const { id, label, start_time, end_time, color, assigned_user_ids, location_id } = await req.json();
 
         if (!id || !label || !start_time || !end_time) {
             return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
@@ -63,10 +80,24 @@ export async function PUT(req: NextRequest) {
 
         const usersJson = assigned_user_ids ? JSON.stringify(assigned_user_ids) : '[]';
         const shiftColor = color || '#3b82f6';
+        const locId = location_id !== undefined ? (location_id ? parseInt(location_id) : null) : undefined;
+
+        const setClauses = [
+            'label = $1', 'start_time = $2', 'end_time = $3',
+            'color = $4', 'assigned_user_ids = $5::jsonb',
+        ];
+        const params: any[] = [label, start_time, end_time, shiftColor, usersJson];
+
+        if (locId !== undefined) {
+            setClauses.push(`location_id = $${params.length + 1}`);
+            params.push(locId);
+        }
+        params.push(id, session.organizationId);
 
         const result = await db.execute(
-            'UPDATE shifts SET label = $1, start_time = $2, end_time = $3, color = $4, assigned_user_ids = $5::jsonb WHERE id = $6 AND organization_id = $7',
-            [label, start_time, end_time, shiftColor, usersJson, id, session.organizationId]
+            `UPDATE shifts SET ${setClauses.join(', ')}
+             WHERE id = $${params.length - 1} AND organization_id = $${params.length}`,
+            params
         );
 
         if (result.rowCount === 0) {
