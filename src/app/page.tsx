@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowRight, BarChart3, ShieldCheck, Smartphone, Users, Clock, TrendingUp, Check, X } from 'lucide-react';
+import { ArrowRight, BarChart3, ShieldCheck, Smartphone, Users, TrendingUp, Check, X, Sparkles, DollarSign, Receipt, Brain, Activity, PieChart } from 'lucide-react';
 
 const FEATURES = [
     { label: 'Unlimited Items & Users', base: true, pro: true },
@@ -13,10 +13,13 @@ const FEATURES = [
     { label: 'Order Tracking & Receiving', base: true, pro: true },
     { label: 'Inventory Audit', base: true, pro: true },
     { label: 'Employee Scheduling', base: true, pro: true },
+    { label: 'Shift Close & Cash Reconciliation', base: true, pro: true },
     { label: 'Standard Reports', base: true, pro: true },
     { label: 'Bottle Level Tracking', base: true, pro: true },
     { label: 'Standard Support (48h)', base: true, pro: true },
     { label: 'AI Smart Ordering', base: false, pro: true },
+    { label: 'AI-Powered Inventory Insights', base: false, pro: true },
+    { label: 'Financial Dashboard & Analytics', base: false, pro: true },
     { label: 'Custom Report Builder', base: false, pro: true },
     { label: 'Report Scheduler & Auto-Delivery', base: false, pro: true },
     { label: 'Advanced Analytics & Profit Reports', base: false, pro: true },
@@ -136,6 +139,107 @@ export default function LandingPage() {
                                 <p className="mt-4 text-center text-sm text-gray-400 font-medium tracking-wide uppercase">Fast Mobile Barcode Scanning</p>
                             </div>
                         </div>
+                    </div>
+                </div>
+            </section>
+
+            {/* New Features Spotlight */}
+            <section className="py-20 bg-gradient-to-b from-gray-900 to-gray-900/50 relative overflow-hidden">
+                <div className="absolute inset-0 pointer-events-none">
+                    <div className="absolute top-0 left-1/4 w-96 h-96 bg-purple-700/10 rounded-full blur-3xl"></div>
+                    <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-amber-600/8 rounded-full blur-3xl"></div>
+                </div>
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+                    <div className="text-center mb-14">
+                        <span className="inline-flex items-center gap-2 py-1.5 px-4 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-400 text-sm font-semibold mb-5">
+                            <Sparkles className="w-4 h-4" /> New Pro Features
+                        </span>
+                        <h2 className="text-4xl font-extrabold text-white mb-4">Intelligence Built In</h2>
+                        <p className="text-gray-400 max-w-2xl mx-auto">Three powerful upgrades that transform how you understand and manage your bar&apos;s performance — automatically.</p>
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+                        {/* AI-Powered Insights */}
+                        <div className="relative group rounded-3xl overflow-hidden bg-gradient-to-br from-purple-900/40 to-gray-800 border border-purple-700/40 hover:border-purple-500/60 transition-all duration-300 p-8 flex flex-col">
+                            <div className="absolute top-0 right-0 w-48 h-48 bg-purple-600/10 rounded-full -translate-y-1/2 translate-x-1/2 blur-2xl pointer-events-none"></div>
+                            <div className="w-14 h-14 bg-purple-500/15 rounded-2xl flex items-center justify-center mb-6 group-hover:bg-purple-500/25 transition-colors border border-purple-600/20">
+                                <Brain className="text-purple-400 h-7 w-7" />
+                            </div>
+                            <div className="mb-3">
+                                <span className="text-xs bg-purple-900/50 text-purple-300 px-2 py-0.5 rounded-full font-semibold border border-purple-700/40">Pro</span>
+                            </div>
+                            <h3 className="text-2xl font-bold text-white mb-3">AI-Powered Insights</h3>
+                            <p className="text-gray-300 text-sm leading-relaxed flex-1">
+                                Your inventory, ranked by urgency. The AI surfaces what needs attention first — sorting by burn rate, days-until-empty, and usage patterns so your highest-velocity items are always at the top.
+                            </p>
+                            <ul className="mt-6 space-y-2 text-sm">
+                                <li className="flex items-start gap-2 text-gray-300"><span className="text-purple-400 mt-0.5">▸</span> CRITICAL / HIGH / HEALTHY priority tiers</li>
+                                <li className="flex items-start gap-2 text-gray-300"><span className="text-purple-400 mt-0.5">▸</span> Sorted by most-used items first</li>
+                                <li className="flex items-start gap-2 text-gray-300"><span className="text-purple-400 mt-0.5">▸</span> Burn rate & days remaining per item</li>
+                                <li className="flex items-start gap-2 text-gray-300"><span className="text-purple-400 mt-0.5">▸</span> One-click add to smart order</li>
+                            </ul>
+                        </div>
+
+                        {/* Shift Close & Cash Reconciliation */}
+                        <div className="relative group rounded-3xl overflow-hidden bg-gradient-to-br from-emerald-900/40 to-gray-800 border border-emerald-700/40 hover:border-emerald-500/60 transition-all duration-300 p-8 flex flex-col">
+                            <div className="absolute top-0 right-0 w-48 h-48 bg-emerald-600/10 rounded-full -translate-y-1/2 translate-x-1/2 blur-2xl pointer-events-none"></div>
+                            <div className="w-14 h-14 bg-emerald-500/15 rounded-2xl flex items-center justify-center mb-6 group-hover:bg-emerald-500/25 transition-colors border border-emerald-600/20">
+                                <Receipt className="text-emerald-400 h-7 w-7" />
+                            </div>
+                            <div className="mb-3">
+                                <span className="text-xs bg-gray-700 text-gray-300 px-2 py-0.5 rounded-full font-semibold border border-gray-600">Base + Pro</span>
+                            </div>
+                            <h3 className="text-2xl font-bold text-white mb-3">Shift Close & Cash Reconciliation</h3>
+                            <p className="text-gray-300 text-sm leading-relaxed flex-1">
+                                Every shift close is a complete financial snapshot. Bartenders submit their cash, tips, and payouts — the system automatically calculates over/short and flags discrepancies. Admins can create entries on behalf of any employee for any date.
+                            </p>
+                            <ul className="mt-6 space-y-2 text-sm">
+                                <li className="flex items-start gap-2 text-gray-300"><span className="text-emerald-400 mt-0.5">▸</span> Cash + credit card split tracking</li>
+                                <li className="flex items-start gap-2 text-gray-300"><span className="text-emerald-400 mt-0.5">▸</span> Auto over/short calculation</li>
+                                <li className="flex items-start gap-2 text-gray-300"><span className="text-emerald-400 mt-0.5">▸</span> Itemized payout types (tips, comps, etc.)</li>
+                                <li className="flex items-start gap-2 text-gray-300"><span className="text-emerald-400 mt-0.5">▸</span> Admin backdated entry creation</li>
+                            </ul>
+                        </div>
+
+                        {/* Financial Dashboard */}
+                        <div className="relative group rounded-3xl overflow-hidden bg-gradient-to-br from-amber-900/40 to-gray-800 border border-amber-700/40 hover:border-amber-500/60 transition-all duration-300 p-8 flex flex-col">
+                            <div className="absolute top-0 right-0 w-48 h-48 bg-amber-600/10 rounded-full -translate-y-1/2 translate-x-1/2 blur-2xl pointer-events-none"></div>
+                            <div className="w-14 h-14 bg-amber-500/15 rounded-2xl flex items-center justify-center mb-6 group-hover:bg-amber-500/25 transition-colors border border-amber-600/20">
+                                <PieChart className="text-amber-400 h-7 w-7" />
+                            </div>
+                            <div className="mb-3">
+                                <span className="text-xs bg-purple-900/50 text-purple-300 px-2 py-0.5 rounded-full font-semibold border border-purple-700/40">Pro</span>
+                            </div>
+                            <h3 className="text-2xl font-bold text-white mb-3">Financial Dashboard</h3>
+                            <p className="text-gray-300 text-sm leading-relaxed flex-1">
+                                A live command center for your bar&apos;s money. Drill into revenue trends, tip patterns, payout breakdowns, and cash accuracy — by day, week, or month. See your best performers and catch accuracy issues before they compound.
+                            </p>
+                            <ul className="mt-6 space-y-2 text-sm">
+                                <li className="flex items-start gap-2 text-gray-300"><span className="text-amber-400 mt-0.5">▸</span> Revenue area chart (cash vs. credit)</li>
+                                <li className="flex items-start gap-2 text-gray-300"><span className="text-amber-400 mt-0.5">▸</span> Over/short bar chart by day</li>
+                                <li className="flex items-start gap-2 text-gray-300"><span className="text-amber-400 mt-0.5">▸</span> Per-employee performance table</li>
+                                <li className="flex items-start gap-2 text-gray-300"><span className="text-amber-400 mt-0.5">▸</span> 7-day, monthly, and yearly views</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    {/* Stats Row */}
+                    <div className="mt-14 grid grid-cols-2 md:grid-cols-4 gap-6">
+                        {[
+                            { value: 'Real-Time', label: 'Inventory Tracking', icon: <Activity className="w-5 h-5 text-amber-400" /> },
+                            { value: 'Auto', label: 'Over/Short Calculation', icon: <DollarSign className="w-5 h-5 text-emerald-400" /> },
+                            { value: 'AI-Ranked', label: 'Reorder Suggestions', icon: <Brain className="w-5 h-5 text-purple-400" /> },
+                            { value: '3 Views', label: '7D / Monthly / Yearly', icon: <BarChart3 className="w-5 h-5 text-blue-400" /> },
+                        ].map(s => (
+                            <div key={s.label} className="bg-gray-800/60 border border-gray-700 rounded-2xl p-5 flex items-center gap-4">
+                                <div className="w-10 h-10 bg-gray-700 rounded-xl flex items-center justify-center flex-shrink-0">{s.icon}</div>
+                                <div>
+                                    <div className="text-white font-bold text-lg leading-tight">{s.value}</div>
+                                    <div className="text-gray-400 text-xs">{s.label}</div>
+                                </div>
+                            </div>
+                        ))}
                     </div>
                 </div>
             </section>
