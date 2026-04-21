@@ -1053,9 +1053,9 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                         {modalTab === 'inventory' && (<div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
 
                             {/* Cost + Inventory Qty */}
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-                                <div>
-                                    <label className={styles.statLabel} style={{ display: 'flex', alignItems: 'center' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', alignItems: 'end' }}>
+                                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                    <label className={styles.statLabel} style={{ display: 'flex', alignItems: 'center', minHeight: '2rem' }}>
                                         Unit Cost ($)
                                         <Tip text="Cost per individual unit. Used in inventory value reports and profit margin calculations." />
                                     </label>
@@ -1063,11 +1063,11 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                                         type="number" step="0.01" value={formData.unit_cost}
                                         onChange={e => setFormData({ ...formData, unit_cost: e.target.value })} />
                                 </div>
-                                <div>
-                                    <label className={styles.statLabel} style={{ display: 'flex', alignItems: 'center' }}>
-                                        Qty on Hand
+                                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                    <label className={styles.statLabel} style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', minHeight: '2rem', gap: '0.25rem' }}>
+                                        <span>Qty on Hand</span>
                                         {myLocations.length > 1 && selectedLocationId && (
-                                            <span style={{ color: '#60a5fa', fontWeight: 400, marginLeft: '4px', fontSize: '0.72rem' }}>
+                                            <span style={{ color: '#60a5fa', fontWeight: 400, fontSize: '0.72rem' }}>
                                                 — {myLocations.find(l => l.id === selectedLocationId)?.name}
                                             </span>
                                         )}

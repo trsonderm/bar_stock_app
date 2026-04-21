@@ -26,7 +26,15 @@ interface ShiftRow {
     bank_end: number;
 }
 
+interface MovementRow {
+    timestamp: string;
+    qty: number;
+    unit_cost: number;
+    movement_value: number;
+}
+
 interface Employee { id: number; name: string; }
+interface Location { id: number; name: string; }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const CASH_COLOR = '#22c55e';
@@ -36,6 +44,7 @@ const TIP_CC_COLOR = '#818cf8';
 const PAYOUT_COLOR = '#f59e0b';
 const OVER_COLOR = '#22c55e';
 const SHORT_COLOR = '#ef4444';
+const STOCK_COLOR = '#06b6d4';
 const MUTED = '#6b7280';
 
 const PERIOD_LABELS: Record<string, string> = {
@@ -137,8 +146,12 @@ const DarkTooltip = ({ active, payload, label }: any) => {
 export default function FinancesClient() {
     const [period, setPeriod] = useState<'week' | 'month' | 'year'>('month');
     const [selectedUserId, setSelectedUserId] = useState<string>('');
+    const [selectedLocationId, setSelectedLocationId] = useState<string>('');
     const [rows, setRows] = useState<ShiftRow[]>([]);
     const [employees, setEmployees] = useState<Employee[]>([]);
+    const [locations, setLocations] = useState<Location[]>([]);
+    const [stockValue, setStockValue] = useState<number>(0);
+    const [movementRows, setMovementRows] = useState<MovementRow[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
 
@@ -147,16 +160,20 @@ export default function FinancesClient() {
         setError('');
         const params = new URLSearchParams({ period });
         if (selectedUserId) params.set('userId', selectedUserId);
+        if (selectedLocationId) params.set('locationId', selectedLocationId);
         fetch(`/api/admin/finances?${params}`)
             .then(r => r.json())
             .then(data => {
                 if (data.error) { setError(data.error); return; }
                 setRows(data.rows || []);
                 setEmployees(data.users || []);
+                setLocations(data.locations || []);
+                setStockValue(data.stockValue ?? 0);
+                setMovementRows(data.movementRows || []);
             })
             .catch(() => setError('Failed to load data'))
             .finally(() => setLoading(false));
-    }, [period, selectedUserId]);
+    }, [period, selectedUserId, selectedLocationId]);
 
     // ── Aggregations ──────────────────────────────────────────────────────────
     const kpis = useMemo(() => {
@@ -173,7 +190,7 @@ export default function FinancesClient() {
         return { totalRevenue, totalTips, totalPayouts, totalOverShort, shiftCount: rows.length, accuracy };
     }, [rows]);
 
-    // Time-series data
+    // Time-series: revenue + over/short per date bucket
     const timeSeries = useMemo(() => {
         const map: Record<string, { label: string; cash: number; cc: number; cashTips: number; ccTips: number; payouts: number; overShort: number; count: number }> = {};
         rows.forEach(r => {
@@ -200,6 +217,34 @@ export default function FinancesClient() {
         });
         return Object.entries(map).sort(([a], [b]) => a.localeCompare(b)).map(([, v]) => v);
     }, [rows, period]);
+
+    // Stock movement time series — value of stock subtracted, bucketed by period
+    const movementSeries = useMemo(() => {
+        const map: Record<string, { label: string; stockMoved: number; qty: number }> = {};
+        movementRows.forEach(r => {
+            const d = new Date(r.timestamp);
+            let key: string;
+            if (period === 'year') {
+                key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+            } else {
+                key = d.toISOString().split('T')[0];
+            }
+            if (!map[key]) {
+                const label = period === 'year'
+                    ? new Date(d.getFullYear(), d.getMonth(), 1).toLocaleDateString('en-US', { month: 'short' })
+                    : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                map[key] = { label, stockMoved: 0, qty: 0 };
+            }
+            map[key].stockMoved += Number(r.movement_value) || 0;
+            map[key].qty += Number(r.qty) || 0;
+        });
+        return Object.entries(map).sort(([a], [b]) => a.localeCompare(b)).map(([, v]) => v);
+    }, [movementRows, period]);
+
+    const totalStockMoved = useMemo(() =>
+        movementRows.reduce((s, r) => s + (Number(r.movement_value) || 0), 0),
+        [movementRows]
+    );
 
     // Sales mix for pie
     const salesMix = useMemo(() => {
@@ -246,6 +291,7 @@ export default function FinancesClient() {
         return timeSeries.reduce((best, d) => (d.cash + d.cc > best.cash + best.cc ? d : best), timeSeries[0]);
     }, [timeSeries]);
 
+    const selectedLocationName = locations.find(l => String(l.id) === selectedLocationId)?.name || '';
     const noData = !loading && rows.length === 0;
 
     return (
@@ -271,6 +317,7 @@ export default function FinancesClient() {
                             {selectedUserId && employees.find(e => String(e.id) === selectedUserId)
                                 ? ` · ${employees.find(e => String(e.id) === selectedUserId)!.name}`
                                 : ' · All Staff'}
+                            {selectedLocationName ? ` · ${selectedLocationName}` : ' · All Locations'}
                         </p>
                     </div>
 
@@ -299,6 +346,21 @@ export default function FinancesClient() {
                             ))}
                         </div>
 
+                        {/* Location filter */}
+                        {locations.length > 1 && (
+                            <select
+                                value={selectedLocationId}
+                                onChange={e => setSelectedLocationId(e.target.value)}
+                                style={{
+                                    background: '#0f172a', color: 'white', border: '1px solid #1e293b',
+                                    borderRadius: '0.5rem', padding: '0.4rem 0.75rem', fontSize: '0.8rem', cursor: 'pointer',
+                                }}
+                            >
+                                <option value="">All Locations</option>
+                                {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                            </select>
+                        )}
+
                         {/* Employee filter */}
                         {employees.length > 0 && (
                             <select
@@ -319,7 +381,7 @@ export default function FinancesClient() {
 
             {loading && (
                 <div style={{ textAlign: 'center', padding: '4rem', color: '#6b7280' }}>
-                    <div style={{ fontSize: '2rem', marginBottom: '0.75rem', animation: 'spin 1s linear infinite' }}>⏳</div>
+                    <div style={{ fontSize: '2rem', marginBottom: '0.75rem' }}>⏳</div>
                     Loading financial data...
                 </div>
             )}
@@ -330,250 +392,296 @@ export default function FinancesClient() {
                 </div>
             )}
 
-            {noData && !error && (
-                <div style={{ textAlign: 'center', padding: '4rem', color: '#6b7280', background: '#111827', borderRadius: '0.75rem', border: '1px solid #1f2937' }}>
-                    <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>📊</div>
-                    <div style={{ fontSize: '1.1rem', marginBottom: '0.5rem', color: '#9ca3af' }}>No shift data for this period</div>
-                    <div style={{ fontSize: '0.875rem' }}>Try selecting a different time range or employee</div>
-                </div>
-            )}
-
-            {!loading && !error && rows.length > 0 && (
+            {!loading && !error && (
                 <>
-                    {/* ── KPI Cards ── */}
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
-                        <KpiCard label="Total Revenue" value={fmt(kpis.totalRevenue)} sub={`${kpis.shiftCount} shifts`} color="#6366f1" icon="💵" />
-                        <KpiCard label="Total Tips" value={fmt(kpis.totalTips)} sub={`avg ${fmt(kpis.shiftCount ? kpis.totalTips / kpis.shiftCount : 0)}/shift`} color="#10b981" icon="🤑" />
-                        <KpiCard label="Total Payouts" value={fmt(kpis.totalPayouts)} sub="DJ, events, etc." color="#f59e0b" icon="💸" />
+                    {/* ── Stock Value + Movement KPIs — always visible ── */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
                         <KpiCard
-                            label="Cash Accuracy"
-                            value={`${kpis.accuracy.toFixed(0)}%`}
-                            sub={`${fmtFull(kpis.totalOverShort)} net over/short`}
-                            color={kpis.accuracy >= 90 ? '#22c55e' : kpis.accuracy >= 70 ? '#f59e0b' : '#ef4444'}
-                            icon={kpis.accuracy >= 90 ? '✅' : kpis.accuracy >= 70 ? '⚠️' : '🚨'}
+                            label={`Stock Value on Hand${selectedLocationName ? ` · ${selectedLocationName}` : ''}`}
+                            value={fmt(stockValue)}
+                            sub="current inventory × unit cost"
+                            color={STOCK_COLOR}
+                            icon="📦"
                         />
-                        {bestDay && (
-                            <KpiCard
-                                label="Best Day"
-                                value={fmt(bestDay.cash + bestDay.cc)}
-                                sub={bestDay.label}
-                                color="#22c55e"
-                                icon="🏆"
-                            />
+                        <KpiCard
+                            label={`Stock Used · ${PERIOD_LABELS[period]}`}
+                            value={fmt(totalStockMoved)}
+                            sub={`${movementRows.reduce((s, r) => s + (Number(r.qty) || 0), 0).toFixed(0)} units subtracted`}
+                            color="#a855f7"
+                            icon="📉"
+                        />
+                        {rows.length > 0 && (
+                            <>
+                                <KpiCard label="Total Revenue" value={fmt(kpis.totalRevenue)} sub={`${kpis.shiftCount} shifts`} color="#6366f1" icon="💵" />
+                                <KpiCard label="Total Tips" value={fmt(kpis.totalTips)} sub={`avg ${fmt(kpis.shiftCount ? kpis.totalTips / kpis.shiftCount : 0)}/shift`} color="#10b981" icon="🤑" />
+                                <KpiCard label="Total Payouts" value={fmt(kpis.totalPayouts)} sub="DJ, events, etc." color="#f59e0b" icon="💸" />
+                                <KpiCard
+                                    label="Cash Accuracy"
+                                    value={`${kpis.accuracy.toFixed(0)}%`}
+                                    sub={`${fmtFull(kpis.totalOverShort)} net over/short`}
+                                    color={kpis.accuracy >= 90 ? '#22c55e' : kpis.accuracy >= 70 ? '#f59e0b' : '#ef4444'}
+                                    icon={kpis.accuracy >= 90 ? '✅' : kpis.accuracy >= 70 ? '⚠️' : '🚨'}
+                                />
+                                {bestDay && (
+                                    <KpiCard
+                                        label="Best Day"
+                                        value={fmt(bestDay.cash + bestDay.cc)}
+                                        sub={bestDay.label}
+                                        color="#22c55e"
+                                        icon="🏆"
+                                    />
+                                )}
+                            </>
                         )}
                     </div>
 
-                    {/* ── Charts Row 1 ── */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: '1rem', marginBottom: '1rem' }}>
-
-                        {/* Revenue Over Time */}
-                        <ChartCard title="📈 Revenue Over Time" height={260}>
-                            <ResponsiveContainer width="100%" height="100%">
-                                <AreaChart data={timeSeries} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
-                                    <defs>
-                                        <linearGradient id="gradCash" x1="0" y1="0" x2="0" y2="1">
-                                            <stop offset="5%" stopColor={CASH_COLOR} stopOpacity={0.3} />
-                                            <stop offset="95%" stopColor={CASH_COLOR} stopOpacity={0.02} />
-                                        </linearGradient>
-                                        <linearGradient id="gradCC" x1="0" y1="0" x2="0" y2="1">
-                                            <stop offset="5%" stopColor={CC_COLOR} stopOpacity={0.3} />
-                                            <stop offset="95%" stopColor={CC_COLOR} stopOpacity={0.02} />
-                                        </linearGradient>
-                                    </defs>
-                                    <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
-                                    <XAxis dataKey="label" tick={{ fill: MUTED, fontSize: 11 }} axisLine={false} tickLine={false} />
-                                    <YAxis tick={{ fill: MUTED, fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={v => `$${v >= 1000 ? (v / 1000).toFixed(0) + 'k' : v}`} />
-                                    <Tooltip content={<DarkTooltip />} />
-                                    <Legend wrapperStyle={{ fontSize: '0.75rem', color: '#9ca3af' }} />
-                                    <Area type="monotone" dataKey="cash" name="Cash Sales" stroke={CASH_COLOR} fill="url(#gradCash)" strokeWidth={2} dot={false} />
-                                    <Area type="monotone" dataKey="cc" name="CC Sales" stroke={CC_COLOR} fill="url(#gradCC)" strokeWidth={2} dot={false} />
-                                </AreaChart>
-                            </ResponsiveContainer>
-                        </ChartCard>
-
-                        {/* Sales Mix Pie */}
-                        <ChartCard title="💳 Sales Mix" height={260}>
-                            <ResponsiveContainer width="100%" height="100%">
-                                <PieChart>
-                                    <Pie
-                                        data={salesMix}
-                                        cx="50%"
-                                        cy="45%"
-                                        innerRadius={55}
-                                        outerRadius={85}
-                                        paddingAngle={3}
-                                        dataKey="value"
-                                        label={({ cx, cy, midAngle = 0, innerRadius = 0, outerRadius = 0, index }) => {
-                                            const RADIAN = Math.PI / 180;
-                                            const radius = Number(innerRadius) + (Number(outerRadius) - Number(innerRadius)) * 0.5;
-                                            const x = Number(cx) + radius * Math.cos(-midAngle * RADIAN);
-                                            const y = Number(cy) + radius * Math.sin(-midAngle * RADIAN);
-                                            const total = salesMix.reduce((s, d) => s + d.value, 0);
-                                            const pct = total > 0 ? ((salesMix[index]?.value || 0) / total * 100).toFixed(0) : '0';
-                                            return <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central" fontSize={11} fontWeight={700}>{pct}%</text>;
-                                        }}
-                                        labelLine={false}
-                                    >
-                                        <Cell fill={CASH_COLOR} />
-                                        <Cell fill={CC_COLOR} />
-                                    </Pie>
-                                    <Tooltip
-                                        content={({ active, payload }) => {
-                                            if (!active || !payload?.length) return null;
-                                            const d = payload[0].payload;
-                                            return (
-                                                <div style={{ background: '#1f2937', border: '1px solid #374151', borderRadius: '0.5rem', padding: '0.6rem 0.9rem', fontSize: '0.8rem' }}>
-                                                    <div style={{ color: '#9ca3af' }}>{d.name}</div>
-                                                    <div style={{ color: 'white', fontWeight: 700 }}>{fmtFull(d.value)}</div>
-                                                    <div style={{ color: '#6b7280' }}>{d.pct}%</div>
-                                                </div>
-                                            );
-                                        }}
-                                    />
-                                    <Legend
-                                        wrapperStyle={{ fontSize: '0.75rem', color: '#9ca3af' }}
-                                        formatter={(value, entry: any) => (
-                                            <span style={{ color: '#d1d5db' }}>{value}<br /><span style={{ color: '#6b7280' }}>{fmtFull(entry.payload?.value || 0)}</span></span>
-                                        )}
-                                    />
-                                </PieChart>
-                            </ResponsiveContainer>
-                        </ChartCard>
-                    </div>
-
-                    {/* ── Charts Row 2 ── */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
-
-                        {/* Tips Breakdown */}
-                        <ChartCard title="🤑 Tips Breakdown" height={220}>
-                            <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={timeSeries} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
-                                    <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
-                                    <XAxis dataKey="label" tick={{ fill: MUTED, fontSize: 10 }} axisLine={false} tickLine={false} />
-                                    <YAxis tick={{ fill: MUTED, fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={v => `$${v}`} />
-                                    <Tooltip content={<DarkTooltip />} />
-                                    <Legend wrapperStyle={{ fontSize: '0.75rem', color: '#9ca3af' }} />
-                                    <Bar dataKey="cashTips" name="Cash Tips" fill={TIP_CASH_COLOR} radius={[3, 3, 0, 0]} stackId="a" />
-                                    <Bar dataKey="ccTips" name="CC Tips" fill={TIP_CC_COLOR} radius={[3, 3, 0, 0]} stackId="a" />
-                                </BarChart>
-                            </ResponsiveContainer>
-                        </ChartCard>
-
-                        {/* Payouts by Type */}
-                        {payoutBreakdown.length > 0 ? (
-                            <ChartCard title="💸 Payouts by Type" height={220}>
+                    {/* ── Stock Movement Chart ── */}
+                    {movementSeries.length > 0 && (
+                        <div style={{ marginBottom: '1rem' }}>
+                            <ChartCard title={`📉 Stock Used (Cost Value) · ${PERIOD_LABELS[period]}`} height={240}>
                                 <ResponsiveContainer width="100%" height="100%">
-                                    <BarChart data={payoutBreakdown} layout="vertical" margin={{ top: 5, right: 20, left: 20, bottom: 5 }}>
-                                        <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" horizontal={false} />
-                                        <XAxis type="number" tick={{ fill: MUTED, fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={v => `$${v}`} />
-                                        <YAxis type="category" dataKey="name" tick={{ fill: '#d1d5db', fontSize: 11 }} axisLine={false} tickLine={false} width={80} />
+                                    <AreaChart data={movementSeries} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                                        <defs>
+                                            <linearGradient id="gradStock" x1="0" y1="0" x2="0" y2="1">
+                                                <stop offset="5%" stopColor={STOCK_COLOR} stopOpacity={0.35} />
+                                                <stop offset="95%" stopColor={STOCK_COLOR} stopOpacity={0.02} />
+                                            </linearGradient>
+                                        </defs>
+                                        <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
+                                        <XAxis dataKey="label" tick={{ fill: MUTED, fontSize: 11 }} axisLine={false} tickLine={false} />
+                                        <YAxis tick={{ fill: MUTED, fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={v => `$${v >= 1000 ? (v / 1000).toFixed(0) + 'k' : v}`} />
                                         <Tooltip content={<DarkTooltip />} />
-                                        <Bar dataKey="value" name="Amount" fill={PAYOUT_COLOR} radius={[0, 4, 4, 0]}>
-                                            {payoutBreakdown.map((_, i) => {
-                                                const colors = [PAYOUT_COLOR, '#fb923c', '#facc15', '#a78bfa'];
-                                                return <Cell key={i} fill={colors[i % colors.length]} />;
-                                            })}
+                                        <Legend wrapperStyle={{ fontSize: '0.75rem', color: '#9ca3af' }} />
+                                        <Area type="monotone" dataKey="stockMoved" name="Stock Cost Used" stroke={STOCK_COLOR} fill="url(#gradStock)" strokeWidth={2} dot={false} />
+                                    </AreaChart>
+                                </ResponsiveContainer>
+                            </ChartCard>
+                        </div>
+                    )}
+
+                    {noData && (
+                        <div style={{ textAlign: 'center', padding: '4rem', color: '#6b7280', background: '#111827', borderRadius: '0.75rem', border: '1px solid #1f2937', marginBottom: '1rem' }}>
+                            <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>📊</div>
+                            <div style={{ fontSize: '1.1rem', marginBottom: '0.5rem', color: '#9ca3af' }}>No shift data for this period</div>
+                            <div style={{ fontSize: '0.875rem' }}>Try selecting a different time range or employee</div>
+                        </div>
+                    )}
+
+                    {rows.length > 0 && (
+                        <>
+                            {/* ── Charts Row 1 ── */}
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: '1rem', marginBottom: '1rem' }}>
+
+                                {/* Revenue Over Time */}
+                                <ChartCard title="📈 Revenue Over Time" height={260}>
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <AreaChart data={timeSeries} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                                            <defs>
+                                                <linearGradient id="gradCash" x1="0" y1="0" x2="0" y2="1">
+                                                    <stop offset="5%" stopColor={CASH_COLOR} stopOpacity={0.3} />
+                                                    <stop offset="95%" stopColor={CASH_COLOR} stopOpacity={0.02} />
+                                                </linearGradient>
+                                                <linearGradient id="gradCC" x1="0" y1="0" x2="0" y2="1">
+                                                    <stop offset="5%" stopColor={CC_COLOR} stopOpacity={0.3} />
+                                                    <stop offset="95%" stopColor={CC_COLOR} stopOpacity={0.02} />
+                                                </linearGradient>
+                                            </defs>
+                                            <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
+                                            <XAxis dataKey="label" tick={{ fill: MUTED, fontSize: 11 }} axisLine={false} tickLine={false} />
+                                            <YAxis tick={{ fill: MUTED, fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={v => `$${v >= 1000 ? (v / 1000).toFixed(0) + 'k' : v}`} />
+                                            <Tooltip content={<DarkTooltip />} />
+                                            <Legend wrapperStyle={{ fontSize: '0.75rem', color: '#9ca3af' }} />
+                                            <Area type="monotone" dataKey="cash" name="Cash Sales" stroke={CASH_COLOR} fill="url(#gradCash)" strokeWidth={2} dot={false} />
+                                            <Area type="monotone" dataKey="cc" name="CC Sales" stroke={CC_COLOR} fill="url(#gradCC)" strokeWidth={2} dot={false} />
+                                        </AreaChart>
+                                    </ResponsiveContainer>
+                                </ChartCard>
+
+                                {/* Sales Mix Pie */}
+                                <ChartCard title="💳 Sales Mix" height={260}>
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <PieChart>
+                                            <Pie
+                                                data={salesMix}
+                                                cx="50%"
+                                                cy="45%"
+                                                innerRadius={55}
+                                                outerRadius={85}
+                                                paddingAngle={3}
+                                                dataKey="value"
+                                                label={({ cx, cy, midAngle = 0, innerRadius = 0, outerRadius = 0, index }) => {
+                                                    const RADIAN = Math.PI / 180;
+                                                    const radius = Number(innerRadius) + (Number(outerRadius) - Number(innerRadius)) * 0.5;
+                                                    const x = Number(cx) + radius * Math.cos(-midAngle * RADIAN);
+                                                    const y = Number(cy) + radius * Math.sin(-midAngle * RADIAN);
+                                                    const total = salesMix.reduce((s, d) => s + d.value, 0);
+                                                    const pct = total > 0 ? ((salesMix[index]?.value || 0) / total * 100).toFixed(0) : '0';
+                                                    return <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central" fontSize={11} fontWeight={700}>{pct}%</text>;
+                                                }}
+                                                labelLine={false}
+                                            >
+                                                <Cell fill={CASH_COLOR} />
+                                                <Cell fill={CC_COLOR} />
+                                            </Pie>
+                                            <Tooltip
+                                                content={({ active, payload }) => {
+                                                    if (!active || !payload?.length) return null;
+                                                    const d = payload[0].payload;
+                                                    return (
+                                                        <div style={{ background: '#1f2937', border: '1px solid #374151', borderRadius: '0.5rem', padding: '0.6rem 0.9rem', fontSize: '0.8rem' }}>
+                                                            <div style={{ color: '#9ca3af' }}>{d.name}</div>
+                                                            <div style={{ color: 'white', fontWeight: 700 }}>{fmtFull(d.value)}</div>
+                                                            <div style={{ color: '#6b7280' }}>{d.pct}%</div>
+                                                        </div>
+                                                    );
+                                                }}
+                                            />
+                                            <Legend
+                                                wrapperStyle={{ fontSize: '0.75rem', color: '#9ca3af' }}
+                                                formatter={(value, entry: any) => (
+                                                    <span style={{ color: '#d1d5db' }}>{value}<br /><span style={{ color: '#6b7280' }}>{fmtFull(entry.payload?.value || 0)}</span></span>
+                                                )}
+                                            />
+                                        </PieChart>
+                                    </ResponsiveContainer>
+                                </ChartCard>
+                            </div>
+
+                            {/* ── Charts Row 2 ── */}
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+
+                                {/* Tips Breakdown */}
+                                <ChartCard title="🤑 Tips Breakdown" height={220}>
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <BarChart data={timeSeries} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                                            <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
+                                            <XAxis dataKey="label" tick={{ fill: MUTED, fontSize: 10 }} axisLine={false} tickLine={false} />
+                                            <YAxis tick={{ fill: MUTED, fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={v => `$${v}`} />
+                                            <Tooltip content={<DarkTooltip />} />
+                                            <Legend wrapperStyle={{ fontSize: '0.75rem', color: '#9ca3af' }} />
+                                            <Bar dataKey="cashTips" name="Cash Tips" fill={TIP_CASH_COLOR} radius={[3, 3, 0, 0]} stackId="a" />
+                                            <Bar dataKey="ccTips" name="CC Tips" fill={TIP_CC_COLOR} radius={[3, 3, 0, 0]} stackId="a" />
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                </ChartCard>
+
+                                {/* Payouts by Type */}
+                                {payoutBreakdown.length > 0 ? (
+                                    <ChartCard title="💸 Payouts by Type" height={220}>
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <BarChart data={payoutBreakdown} layout="vertical" margin={{ top: 5, right: 20, left: 20, bottom: 5 }}>
+                                                <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" horizontal={false} />
+                                                <XAxis type="number" tick={{ fill: MUTED, fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={v => `$${v}`} />
+                                                <YAxis type="category" dataKey="name" tick={{ fill: '#d1d5db', fontSize: 11 }} axisLine={false} tickLine={false} width={80} />
+                                                <Tooltip content={<DarkTooltip />} />
+                                                <Bar dataKey="value" name="Amount" fill={PAYOUT_COLOR} radius={[0, 4, 4, 0]}>
+                                                    {payoutBreakdown.map((_, i) => {
+                                                        const colors = [PAYOUT_COLOR, '#fb923c', '#facc15', '#a78bfa'];
+                                                        return <Cell key={i} fill={colors[i % colors.length]} />;
+                                                    })}
+                                                </Bar>
+                                            </BarChart>
+                                        </ResponsiveContainer>
+                                    </ChartCard>
+                                ) : (
+                                    <div style={{ background: '#111827', border: '1px solid #1f2937', borderRadius: '0.75rem', padding: '1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#4b5563', fontSize: '0.875rem' }}>
+                                        No payouts recorded this period
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* ── Over/Short Chart ── */}
+                            <ChartCard title="⚖️ Cash Over / Short by Day" height={200}>
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <BarChart data={timeSeries} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                                        <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
+                                        <XAxis dataKey="label" tick={{ fill: MUTED, fontSize: 11 }} axisLine={false} tickLine={false} />
+                                        <YAxis tick={{ fill: MUTED, fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={v => `$${v}`} />
+                                        <Tooltip content={<DarkTooltip />} />
+                                        <ReferenceLine y={0} stroke="#374151" strokeDasharray="4 2" />
+                                        <Bar dataKey="overShort" name="Over/Short" radius={[3, 3, 0, 0]}>
+                                            {timeSeries.map((d, i) => (
+                                                <Cell key={i} fill={d.overShort >= 0 ? OVER_COLOR : SHORT_COLOR} fillOpacity={Math.abs(d.overShort) < 1 ? 0.3 : 0.85} />
+                                            ))}
                                         </Bar>
                                     </BarChart>
                                 </ResponsiveContainer>
                             </ChartCard>
-                        ) : (
-                            <div style={{ background: '#111827', border: '1px solid #1f2937', borderRadius: '0.75rem', padding: '1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#4b5563', fontSize: '0.875rem' }}>
-                                No payouts recorded this period
-                            </div>
-                        )}
-                    </div>
 
-                    {/* ── Over/Short Chart ── */}
-                    <ChartCard title="⚖️ Cash Over / Short by Day" height={200}>
-                        <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={timeSeries} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
-                                <XAxis dataKey="label" tick={{ fill: MUTED, fontSize: 11 }} axisLine={false} tickLine={false} />
-                                <YAxis tick={{ fill: MUTED, fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={v => `$${v}`} />
-                                <Tooltip content={<DarkTooltip />} />
-                                <ReferenceLine y={0} stroke="#374151" strokeDasharray="4 2" />
-                                <Bar dataKey="overShort" name="Over/Short" radius={[3, 3, 0, 0]}>
-                                    {timeSeries.map((d, i) => (
-                                        <Cell key={i} fill={d.overShort >= 0 ? OVER_COLOR : SHORT_COLOR} fillOpacity={Math.abs(d.overShort) < 1 ? 0.3 : 0.85} />
-                                    ))}
-                                </Bar>
-                            </BarChart>
-                        </ResponsiveContainer>
-                    </ChartCard>
-
-                    {/* ── Employee Breakdown Table ── */}
-                    {employeeStats.length > 0 && (
-                        <div style={{
-                            background: 'linear-gradient(135deg, #111827 0%, #0f1720 100%)',
-                            border: '1px solid #1f2937',
-                            borderRadius: '0.75rem',
-                            overflow: 'hidden',
-                            marginTop: '1rem',
-                        }}>
-                            <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid #1f2937', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#e5e7eb' }}>👤 Employee Performance</div>
-                                <div style={{ fontSize: '0.75rem', color: MUTED }}>{employeeStats.length} staff member{employeeStats.length !== 1 ? 's' : ''}</div>
-                            </div>
-                            <div style={{ overflowX: 'auto' }}>
-                                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                                    <thead>
-                                        <tr style={{ borderBottom: '1px solid #1f2937' }}>
-                                            {['Staff', 'Shifts', 'Total Revenue', 'Total Tips', 'Avg Revenue/Shift', 'Payouts', 'Over/Short', 'Cash Accuracy'].map(h => (
-                                                <th key={h} style={{ padding: '0.65rem 1rem', textAlign: 'left', fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', color: MUTED, letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>
-                                                    {h}
-                                                </th>
-                                            ))}
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {employeeStats.map((e, i) => {
-                                            const accuracy = e.shifts > 0 ? ((e.shifts - e.shortShifts) / e.shifts) * 100 : 100;
-                                            const isTopEarner = i === 0 && employeeStats.length > 1;
-                                            return (
-                                                <tr key={i} style={{ borderBottom: '1px solid #111827', background: isTopEarner ? 'rgba(34,197,94,0.04)' : 'transparent' }}>
-                                                    <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', color: 'white', fontWeight: 600, whiteSpace: 'nowrap' }}>
-                                                        {isTopEarner && <span style={{ marginRight: '0.4rem' }}>🏆</span>}
-                                                        {e.name}
-                                                    </td>
-                                                    <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', color: '#d1d5db', textAlign: 'center' }}>{e.shifts}</td>
-                                                    <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', color: CASH_COLOR, fontWeight: 600 }}>{fmtFull(e.revenue)}</td>
-                                                    <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', color: TIP_CASH_COLOR }}>{fmtFull(e.tips)}</td>
-                                                    <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', color: '#d1d5db' }}>{fmtFull(e.shifts ? e.revenue / e.shifts : 0)}</td>
-                                                    <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', color: PAYOUT_COLOR }}>{fmtFull(e.payouts)}</td>
-                                                    <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', color: e.totalOverShort >= 0 ? OVER_COLOR : SHORT_COLOR, fontWeight: 600 }}>
-                                                        {fmtFull(e.totalOverShort)}
-                                                    </td>
-                                                    <td style={{ padding: '0.75rem 1rem' }}>
-                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                                            <div style={{ flex: 1, height: 6, background: '#1f2937', borderRadius: 3, overflow: 'hidden', minWidth: 60 }}>
-                                                                <div style={{ width: `${accuracy}%`, height: '100%', background: accuracy >= 90 ? CASH_COLOR : accuracy >= 70 ? PAYOUT_COLOR : SHORT_COLOR, borderRadius: 3, transition: 'width 0.5s ease' }} />
-                                                            </div>
-                                                            <span style={{ fontSize: '0.75rem', color: accuracy >= 90 ? CASH_COLOR : accuracy >= 70 ? PAYOUT_COLOR : SHORT_COLOR, fontWeight: 600, minWidth: 36 }}>
-                                                                {accuracy.toFixed(0)}%
-                                                            </span>
-                                                        </div>
-                                                    </td>
+                            {/* ── Employee Breakdown Table ── */}
+                            {employeeStats.length > 0 && (
+                                <div style={{
+                                    background: 'linear-gradient(135deg, #111827 0%, #0f1720 100%)',
+                                    border: '1px solid #1f2937',
+                                    borderRadius: '0.75rem',
+                                    overflow: 'hidden',
+                                    marginTop: '1rem',
+                                }}>
+                                    <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid #1f2937', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                        <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#e5e7eb' }}>👤 Employee Performance</div>
+                                        <div style={{ fontSize: '0.75rem', color: MUTED }}>{employeeStats.length} staff member{employeeStats.length !== 1 ? 's' : ''}</div>
+                                    </div>
+                                    <div style={{ overflowX: 'auto' }}>
+                                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                            <thead>
+                                                <tr style={{ borderBottom: '1px solid #1f2937' }}>
+                                                    {['Staff', 'Shifts', 'Total Revenue', 'Total Tips', 'Avg Revenue/Shift', 'Payouts', 'Over/Short', 'Cash Accuracy'].map(h => (
+                                                        <th key={h} style={{ padding: '0.65rem 1rem', textAlign: 'left', fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', color: MUTED, letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>
+                                                            {h}
+                                                        </th>
+                                                    ))}
                                                 </tr>
-                                            );
-                                        })}
-                                    </tbody>
-                                    {/* Totals row */}
-                                    <tfoot>
-                                        <tr style={{ borderTop: '1px solid #374151', background: '#0f1720' }}>
-                                            <td style={{ padding: '0.75rem 1rem', fontSize: '0.8rem', fontWeight: 700, color: '#9ca3af' }}>Totals</td>
-                                            <td style={{ padding: '0.75rem 1rem', fontSize: '0.8rem', color: '#9ca3af', textAlign: 'center' }}>{kpis.shiftCount}</td>
-                                            <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', fontWeight: 700, color: CASH_COLOR }}>{fmtFull(kpis.totalRevenue)}</td>
-                                            <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', fontWeight: 700, color: TIP_CASH_COLOR }}>{fmtFull(kpis.totalTips)}</td>
-                                            <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', color: '#9ca3af' }}>{fmtFull(kpis.shiftCount ? kpis.totalRevenue / kpis.shiftCount : 0)}</td>
-                                            <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', fontWeight: 700, color: PAYOUT_COLOR }}>{fmtFull(kpis.totalPayouts)}</td>
-                                            <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', fontWeight: 700, color: kpis.totalOverShort >= 0 ? OVER_COLOR : SHORT_COLOR }}>{fmtFull(kpis.totalOverShort)}</td>
-                                            <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', fontWeight: 700, color: kpis.accuracy >= 90 ? CASH_COLOR : kpis.accuracy >= 70 ? PAYOUT_COLOR : SHORT_COLOR }}>{kpis.accuracy.toFixed(0)}%</td>
-                                        </tr>
-                                    </tfoot>
-                                </table>
-                            </div>
-                        </div>
+                                            </thead>
+                                            <tbody>
+                                                {employeeStats.map((e, i) => {
+                                                    const accuracy = e.shifts > 0 ? ((e.shifts - e.shortShifts) / e.shifts) * 100 : 100;
+                                                    const isTopEarner = i === 0 && employeeStats.length > 1;
+                                                    return (
+                                                        <tr key={i} style={{ borderBottom: '1px solid #111827', background: isTopEarner ? 'rgba(34,197,94,0.04)' : 'transparent' }}>
+                                                            <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', color: 'white', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                                                                {isTopEarner && <span style={{ marginRight: '0.4rem' }}>🏆</span>}
+                                                                {e.name}
+                                                            </td>
+                                                            <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', color: '#d1d5db', textAlign: 'center' }}>{e.shifts}</td>
+                                                            <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', color: CASH_COLOR, fontWeight: 600 }}>{fmtFull(e.revenue)}</td>
+                                                            <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', color: TIP_CASH_COLOR }}>{fmtFull(e.tips)}</td>
+                                                            <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', color: '#d1d5db' }}>{fmtFull(e.shifts ? e.revenue / e.shifts : 0)}</td>
+                                                            <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', color: PAYOUT_COLOR }}>{fmtFull(e.payouts)}</td>
+                                                            <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', color: e.totalOverShort >= 0 ? OVER_COLOR : SHORT_COLOR, fontWeight: 600 }}>
+                                                                {fmtFull(e.totalOverShort)}
+                                                            </td>
+                                                            <td style={{ padding: '0.75rem 1rem' }}>
+                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                                    <div style={{ flex: 1, height: 6, background: '#1f2937', borderRadius: 3, overflow: 'hidden', minWidth: 60 }}>
+                                                                        <div style={{ width: `${accuracy}%`, height: '100%', background: accuracy >= 90 ? CASH_COLOR : accuracy >= 70 ? PAYOUT_COLOR : SHORT_COLOR, borderRadius: 3, transition: 'width 0.5s ease' }} />
+                                                                    </div>
+                                                                    <span style={{ fontSize: '0.75rem', color: accuracy >= 90 ? CASH_COLOR : accuracy >= 70 ? PAYOUT_COLOR : SHORT_COLOR, fontWeight: 600, minWidth: 36 }}>
+                                                                        {accuracy.toFixed(0)}%
+                                                                    </span>
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                            {/* Totals row */}
+                                            <tfoot>
+                                                <tr style={{ borderTop: '1px solid #374151', background: '#0f1720' }}>
+                                                    <td style={{ padding: '0.75rem 1rem', fontSize: '0.8rem', fontWeight: 700, color: '#9ca3af' }}>Totals</td>
+                                                    <td style={{ padding: '0.75rem 1rem', fontSize: '0.8rem', color: '#9ca3af', textAlign: 'center' }}>{kpis.shiftCount}</td>
+                                                    <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', fontWeight: 700, color: CASH_COLOR }}>{fmtFull(kpis.totalRevenue)}</td>
+                                                    <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', fontWeight: 700, color: TIP_CASH_COLOR }}>{fmtFull(kpis.totalTips)}</td>
+                                                    <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', color: '#9ca3af' }}>{fmtFull(kpis.shiftCount ? kpis.totalRevenue / kpis.shiftCount : 0)}</td>
+                                                    <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', fontWeight: 700, color: PAYOUT_COLOR }}>{fmtFull(kpis.totalPayouts)}</td>
+                                                    <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', fontWeight: 700, color: kpis.totalOverShort >= 0 ? OVER_COLOR : SHORT_COLOR }}>{fmtFull(kpis.totalOverShort)}</td>
+                                                    <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', fontWeight: 700, color: kpis.accuracy >= 90 ? CASH_COLOR : kpis.accuracy >= 70 ? PAYOUT_COLOR : SHORT_COLOR }}>{kpis.accuracy.toFixed(0)}%</td>
+                                                </tr>
+                                            </tfoot>
+                                        </table>
+                                    </div>
+                                </div>
+                            )}
+                        </>
                     )}
                 </>
             )}
