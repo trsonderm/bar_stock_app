@@ -7,6 +7,10 @@ import DialogContent from '@mui/material/DialogContent';
 import DialogActions from '@mui/material/DialogActions';
 import Button from '@mui/material/Button';
 import CircularProgress from '@mui/material/CircularProgress';
+import IconButton from '@mui/material/IconButton';
+import Tooltip from '@mui/material/Tooltip';
+import FlashOnIcon from '@mui/icons-material/FlashOn';
+import FlashOffIcon from '@mui/icons-material/FlashOff';
 
 interface BarcodeScannerProps {
     open: boolean;
@@ -28,8 +32,11 @@ export default function BarcodeScanner({ open, onClose, onDetected, title = 'Sca
     const [detectedCode, setDetectedCode] = useState('');
     const [manualEntry, setManualEntry] = useState('');
     const [showManual, setShowManual] = useState(false);
+    const [torchOn, setTorchOn] = useState(false);
+    const [torchSupported, setTorchSupported] = useState(false);
     const quaggaRunning = useRef(false);
     const detectedRef = useRef('');
+    const streamTrackRef = useRef<MediaStreamTrack | null>(null);
 
     const stopQuagga = useCallback(() => {
         if (quaggaRunning.current && window.Quagga) {
@@ -38,7 +45,24 @@ export default function BarcodeScanner({ open, onClose, onDetected, title = 'Sca
             } catch { }
             quaggaRunning.current = false;
         }
+        // Turn off torch and release track ref on stop
+        if (streamTrackRef.current) {
+            try { (streamTrackRef.current as any).applyConstraints({ advanced: [{ torch: false }] }); } catch { }
+            streamTrackRef.current = null;
+        }
+        setTorchOn(false);
+        setTorchSupported(false);
     }, []);
+
+    const toggleTorch = useCallback(async () => {
+        const track = streamTrackRef.current;
+        if (!track) return;
+        const next = !torchOn;
+        try {
+            await (track as any).applyConstraints({ advanced: [{ torch: next }] });
+            setTorchOn(next);
+        } catch { /* device doesn't support torch */ }
+    }, [torchOn]);
 
     const startScanner = useCallback(async () => {
         setStatus('loading');
@@ -103,6 +127,18 @@ export default function BarcodeScanner({ open, onClose, onDetected, title = 'Sca
                 window.Quagga.start();
                 quaggaRunning.current = true;
                 setStatus('scanning');
+
+                // Detect torch (flash) support from the live video stream
+                setTimeout(() => {
+                    const video = videoRef.current?.querySelector('video');
+                    const stream = video?.srcObject as MediaStream | null;
+                    const track = stream?.getVideoTracks?.()?.[0] ?? null;
+                    if (track) {
+                        streamTrackRef.current = track;
+                        const caps = (track as any).getCapabilities?.() ?? {};
+                        if (caps.torch) setTorchSupported(true);
+                    }
+                }, 500);
             });
 
             // Detection handler — debounce: require 3 consistent reads
@@ -142,6 +178,8 @@ export default function BarcodeScanner({ open, onClose, onDetected, title = 'Sca
             detectedRef.current = '';
             setManualEntry('');
             setShowManual(false);
+            setTorchOn(false);
+            setTorchSupported(false);
         }
     }, [open]);
 
@@ -226,13 +264,30 @@ export default function BarcodeScanner({ open, onClose, onDetected, title = 'Sca
                                 Point camera at barcode. It will detect automatically.
                             </p>
                         )}
-                        <Button
-                            variant="outlined"
-                            onClick={handleCapture}
-                            style={{ borderColor: '#4b5563', color: '#d1d5db', marginTop: '0.25rem' }}
-                        >
-                            Capture Now
-                        </Button>
+                        <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center', alignItems: 'center', marginTop: '0.25rem' }}>
+                            <Button
+                                variant="outlined"
+                                onClick={handleCapture}
+                                style={{ borderColor: '#4b5563', color: '#d1d5db' }}
+                            >
+                                Capture Now
+                            </Button>
+                            {torchSupported && (
+                                <Tooltip title={torchOn ? 'Flash off' : 'Flash on'}>
+                                    <IconButton
+                                        onClick={toggleTorch}
+                                        style={{
+                                            background: torchOn ? '#fbbf24' : '#374151',
+                                            color: torchOn ? '#111827' : '#d1d5db',
+                                            borderRadius: '8px',
+                                            padding: '6px 10px',
+                                        }}
+                                    >
+                                        {torchOn ? <FlashOnIcon /> : <FlashOffIcon />}
+                                    </IconButton>
+                                </Tooltip>
+                            )}
+                        </div>
                     </div>
                 )}
 
