@@ -47,6 +47,7 @@ interface Item {
     order_size?: number[] | string;
     order_unit_size?: number;
     order_unit_label?: string;
+    aliases?: string[];
 }
 
 interface ActivityLog {
@@ -570,7 +571,9 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
     const filteredItems = items.filter(item => {
         const matchesType = filterType === 'All' || item.type === filterType;
         const matchesSecondary = !secondaryFilter || item.secondary_type === secondaryFilter;
-        const matchesSearch = !search || item.name.toLowerCase().includes(search.toLowerCase());
+        const q = search.toLowerCase();
+        const matchesSearch = !search || item.name.toLowerCase().includes(q)
+            || (Array.isArray(item.aliases) && item.aliases.some(a => a.toLowerCase().includes(q)));
         return matchesType && matchesSecondary && matchesSearch;
     });
 

@@ -64,6 +64,7 @@ export async function GET(req: NextRequest) {
         COALESCE(i.low_stock_threshold_type, 'fixed') as low_stock_threshold_type,
         i.low_stock_threshold_factor,
         COALESCE(i.barcodes, '[]'::jsonb) as barcodes,
+        COALESCE(i.aliases, '[]'::jsonb) as aliases,
         COALESCE(i.stock_options, '[]') as stock_options,
         COALESCE(i.include_in_audit, true) as include_in_audit,
         COALESCE(i.include_in_low_stock_alerts, true) as include_in_low_stock_alerts,
@@ -113,6 +114,7 @@ export async function GET(req: NextRequest) {
                 'fixed' as low_stock_threshold_type,
                 NULL::numeric as low_stock_threshold_factor,
                 '[]'::jsonb as barcodes,
+                '[]'::jsonb as aliases,
                 COALESCE(i.stock_options, '[]') as stock_options,
                 COALESCE(i.include_in_audit, true) as include_in_audit,
                 true as include_in_low_stock_alerts,
@@ -168,7 +170,7 @@ export async function POST(req: NextRequest) {
         }
 
         const body = await req.json();
-        const { name, type, secondary_type, supplier, supplier_id, low_stock_threshold, low_stock_threshold_type: lstType, low_stock_threshold_factor: lstFactor, order_size, stock_options, include_in_audit, quantity, unit_cost, assignedLocations, add_to_all_locations, barcodes } = body;
+        const { name, type, secondary_type, supplier, supplier_id, low_stock_threshold, low_stock_threshold_type: lstType, low_stock_threshold_factor: lstFactor, order_size, stock_options, include_in_audit, quantity, unit_cost, assignedLocations, add_to_all_locations, barcodes, aliases } = body;
 
         if (!name || !type) return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
 
@@ -180,8 +182,8 @@ export async function POST(req: NextRequest) {
 
         // Insert and Return ID
         const res = await db.one(
-            'INSERT INTO items (name, type, secondary_type, supplier, organization_id, low_stock_threshold, low_stock_threshold_type, low_stock_threshold_factor, order_size, stock_options, include_in_audit, unit_cost, barcodes) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING id',
-            [name, type, secondary_type || null, supplier || null, organizationId, low_stock_threshold !== undefined ? low_stock_threshold : 5, lstType || 'fixed', lstFactor != null ? parseFloat(lstFactor) : null, JSON.stringify(Array.isArray(order_size) ? order_size : [order_size || 1]), stock_options ? JSON.stringify(stock_options) : null, include_in_audit !== undefined ? include_in_audit : true, unit_cost || 0, JSON.stringify(Array.isArray(barcodes) ? barcodes : [])]
+            'INSERT INTO items (name, type, secondary_type, supplier, organization_id, low_stock_threshold, low_stock_threshold_type, low_stock_threshold_factor, order_size, stock_options, include_in_audit, unit_cost, barcodes, aliases) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING id',
+            [name, type, secondary_type || null, supplier || null, organizationId, low_stock_threshold !== undefined ? low_stock_threshold : 5, lstType || 'fixed', lstFactor != null ? parseFloat(lstFactor) : null, JSON.stringify(Array.isArray(order_size) ? order_size : [order_size || 1]), stock_options ? JSON.stringify(stock_options) : null, include_in_audit !== undefined ? include_in_audit : true, unit_cost || 0, JSON.stringify(Array.isArray(barcodes) ? barcodes : []), JSON.stringify(Array.isArray(aliases) ? aliases : [])]
         );
         const itemId = res.id;
 
@@ -270,7 +272,7 @@ export async function PUT(req: NextRequest) {
 
         if (!canEdit && !canStock) return NextResponse.json({ error: 'Permission denied' }, { status: 403 });
 
-        const { id, unit_cost, sale_price, name, type, quantity, secondary_type, supplier, supplier_id, low_stock_threshold, low_stock_threshold_type, low_stock_threshold_factor, order_size, stock_options, include_in_audit, include_in_low_stock_alerts, exclude_from_smart_order, assignedLocations, stock_unit_label, stock_unit_size, order_unit_label, order_unit_size, use_category_qty_defaults, location_supplier_id, location_sale_price, locationId: bodyLocationId, barcodes, abv, bottle_size } = await req.json();
+        const { id, unit_cost, sale_price, name, type, quantity, secondary_type, supplier, supplier_id, low_stock_threshold, low_stock_threshold_type, low_stock_threshold_factor, order_size, stock_options, include_in_audit, include_in_low_stock_alerts, exclude_from_smart_order, assignedLocations, stock_unit_label, stock_unit_size, order_unit_label, order_unit_size, use_category_qty_defaults, location_supplier_id, location_sale_price, locationId: bodyLocationId, barcodes, aliases, abv, bottle_size } = await req.json();
 
         if (!id) return NextResponse.json({ error: 'Missing ID' }, { status: 400 });
 
@@ -356,6 +358,10 @@ export async function PUT(req: NextRequest) {
                 updates.push(`barcodes = $${pIdx++} `);
                 params.push(JSON.stringify(Array.isArray(barcodes) ? barcodes : []));
             }
+            if (aliases !== undefined) {
+                updates.push(`aliases = $${pIdx++} `);
+                params.push(JSON.stringify(Array.isArray(aliases) ? aliases : []));
+            }
             if (abv !== undefined) {
                 updates.push(`abv = $${pIdx++} `);
                 params.push(abv !== null ? parseFloat(abv) : null);
@@ -392,6 +398,7 @@ export async function PUT(req: NextRequest) {
                     if (include_in_audit !== undefined) { safeUpdates.push(`include_in_audit = $${sIdx++}`); safeParams.push(include_in_audit); }
                     if (unit_cost !== undefined) { safeUpdates.push(`unit_cost = $${sIdx++}`); safeParams.push(unit_cost); }
                     if (barcodes !== undefined) { safeUpdates.push(`barcodes = $${sIdx++}`); safeParams.push(JSON.stringify(Array.isArray(barcodes) ? barcodes : [])); }
+                    if (aliases !== undefined) { safeUpdates.push(`aliases = $${sIdx++}`); safeParams.push(JSON.stringify(Array.isArray(aliases) ? aliases : [])); }
                     if (safeUpdates.length > 0) {
                         safeParams.push(id);
                         safeParams.push(organizationId);

@@ -569,6 +569,13 @@ CREATE UNIQUE INDEX IF NOT EXISTS report_schedules_report_uniq ON report_schedul
 -- =========================================================
 -- 30. Schedule — per-location shifts and schedule entries
 -- =========================================================
+
+-- =========================================================
+-- 31. Items — product aliases (alternative names for search)
+-- =========================================================
+DO $$ BEGIN
+  ALTER TABLE items ADD COLUMN aliases JSONB DEFAULT '[]'::jsonb;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
 DO $$ BEGIN
   ALTER TABLE shifts ADD COLUMN location_id INTEGER REFERENCES locations(id) ON DELETE CASCADE;
 EXCEPTION WHEN duplicate_column THEN NULL; END $$;

@@ -36,6 +36,7 @@ interface Item {
     order_unit_size?: number;
     use_category_qty_defaults?: boolean;
     barcodes?: string[];
+    aliases?: string[];
 }
 
 interface Category {
@@ -86,6 +87,7 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
         subtraction_presets: [1] as number[],
         custom_preset_input: '',
         barcodes: [] as string[],
+        aliases: [] as string[],
     });
 
     // Temp input for stock options
@@ -227,6 +229,7 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
             subtraction_presets: [1],
             custom_preset_input: '',
             barcodes: [],
+            aliases: [],
         });
         setTempOptionInput('');
         setTempOrderLabel('Pack');
@@ -386,6 +389,7 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
             subtraction_presets: Array.isArray(item.stock_options) && item.stock_options.length > 0 ? item.stock_options : [1],
             custom_preset_input: '',
             barcodes: Array.isArray(item.barcodes) ? item.barcodes : [],
+            aliases: Array.isArray(item.aliases) ? item.aliases : [],
         });
 
         setModalTab('basic');
@@ -451,6 +455,7 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                 order_unit_label: formData.use_category_qty_defaults ? undefined : formData.order_unit_label,
                 order_unit_size: formData.use_category_qty_defaults ? undefined : parseInt(formData.order_unit_size || '1'),
                 barcodes: formData.barcodes,
+                aliases: formData.aliases,
             };
 
             const url = '/api/inventory' + (overrideOrgId ? `?orgId=${overrideOrgId}` : '');
@@ -949,6 +954,51 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                                     </select>
                                 </div>
                             )}
+
+                            {/* Aliases */}
+                            <div>
+                                <label className={styles.statLabel} style={{ display: 'flex', alignItems: 'center' }}>
+                                    Aliases
+                                    <Tip text="Alternative names for this product. Staff can search by any alias and it will appear as the same item in stock view." />
+                                </label>
+                                {formData.aliases.length > 0 ? (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginBottom: '0.5rem' }}>
+                                        {formData.aliases.map((alias, idx) => (
+                                            <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#374151', padding: '6px 10px', borderRadius: '6px', fontSize: '0.88rem', color: '#f3f4f6' }}>
+                                                <span>{alias}</span>
+                                                <button type="button" onClick={() => setFormData(prev => ({ ...prev, aliases: prev.aliases.filter((_, i) => i !== idx) }))}
+                                                    style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '1.1rem', lineHeight: 1, padding: '0 4px' }}>×</button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div style={{ fontSize: '0.83rem', color: '#6b7280', marginBottom: '0.4rem' }}>No aliases added yet.</div>
+                                )}
+                                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                    <input type="text" placeholder="e.g. Jack, JD, Jack Daniels" className={styles.input}
+                                        style={{ flex: 1, minHeight: '44px' }}
+                                        onKeyDown={e => {
+                                            if (e.key === 'Enter' && e.currentTarget.value.trim()) {
+                                                e.preventDefault();
+                                                const alias = e.currentTarget.value.trim();
+                                                setFormData(prev => ({ ...prev, aliases: prev.aliases.includes(alias) ? prev.aliases : [...prev.aliases, alias] }));
+                                                e.currentTarget.value = '';
+                                            }
+                                        }} />
+                                    <button type="button"
+                                        onClick={e => {
+                                            const input = e.currentTarget.previousElementSibling as HTMLInputElement;
+                                            if (input?.value.trim()) {
+                                                const alias = input.value.trim();
+                                                setFormData(prev => ({ ...prev, aliases: prev.aliases.includes(alias) ? prev.aliases : [...prev.aliases, alias] }));
+                                                input.value = '';
+                                            }
+                                        }}
+                                        style={{ background: '#2563eb', color: 'white', border: 'none', borderRadius: '8px', padding: '0 1rem', cursor: 'pointer', fontWeight: 'bold', minHeight: '44px', whiteSpace: 'nowrap' }}>
+                                        + Add
+                                    </button>
+                                </div>
+                            </div>
 
                             {/* Barcodes */}
                             <div>
