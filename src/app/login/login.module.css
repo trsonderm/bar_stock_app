@@ -1,32 +1,57 @@
-/* Existing styles plus new additions */
 .container {
     min-height: 100vh;
+    min-height: 100dvh; /* dynamic viewport height — accounts for mobile browser chrome */
     display: flex;
-    align-items: center;
+    align-items: flex-start; /* don't clip card on short viewports */
     justify-content: center;
     background-color: #111827;
     color: #fff;
+    overflow-y: auto;
+    padding: env(safe-area-inset-top, 1.5rem) env(safe-area-inset-right, 1rem) env(safe-area-inset-bottom, 1.5rem) env(safe-area-inset-left, 1rem);
+}
+
+/* On tall-enough viewports, vertically center the card */
+@media (min-height: 600px) {
+    .container {
+        align-items: center;
+    }
 }
 
 .card {
     background-color: #1f2937;
-    padding: 2rem;
+    padding: 1.5rem 1.25rem;
     border-radius: 1rem;
     box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
     width: 100%;
-    max-width: 340px;
+    max-width: 360px;
+    /* push card away from edges on small screens */
+    margin: 1rem auto;
+}
+
+@media (min-width: 480px) {
+    .card {
+        padding: 2rem;
+        margin: 1.5rem auto;
+    }
 }
 
 .title {
     text-align: center;
-    font-size: 1.5rem;
+    font-size: 1.4rem;
     font-weight: bold;
-    margin-bottom: 2rem;
+    margin-bottom: 1.5rem;
     color: #fff;
 }
 
+@media (min-width: 480px) {
+    .title {
+        font-size: 1.5rem;
+        margin-bottom: 2rem;
+    }
+}
+
 .display {
-    margin-bottom: 2rem;
+    margin-bottom: 1.5rem;
 }
 
 .pinParams {
@@ -42,7 +67,7 @@
     text-align: center;
     font-size: 0.875rem;
     margin-top: 0.5rem;
-    height: 1.25rem;
+    min-height: 1.25rem;
 }
 
 .success {
@@ -55,8 +80,15 @@
 .keypad {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 1rem;
-    margin-bottom: 2rem;
+    gap: 0.65rem;
+    margin-bottom: 1.25rem;
+}
+
+@media (min-width: 480px) {
+    .keypad {
+        gap: 1rem;
+        margin-bottom: 2rem;
+    }
 }
 
 .key {
@@ -66,13 +98,22 @@
     border: none;
     background-color: #374151;
     color: #fff;
-    font-size: 1.5rem;
+    font-size: 1.25rem;
     font-weight: 500;
     cursor: pointer;
     transition: background-color 0.2s;
     display: flex;
     align-items: center;
     justify-content: center;
+    /* prevent tap highlight flicker on iOS */
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+}
+
+@media (min-width: 480px) {
+    .key {
+        font-size: 1.5rem;
+    }
 }
 
 .key:hover {
@@ -84,7 +125,7 @@
 }
 
 .keyClr {
-    font-size: 1rem;
+    font-size: 0.9rem;
     color: #ef4444;
 }
 
@@ -96,12 +137,21 @@
     background-color: #2563eb;
     color: white;
     font-weight: 600;
+    font-size: 1rem;
     cursor: pointer;
     transition: background-color 0.2s;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    /* minimum touch target */
+    min-height: 48px;
 }
 
 .submitBtn:hover {
     background-color: #1d4ed8;
+}
+
+.submitBtn:active {
+    background-color: #1e40af;
 }
 
 .submitBtn:disabled {
@@ -124,12 +174,18 @@
     color: #fff;
 }
 
-/* New Styles for Email/Pass Mode */
 .formStack {
     display: flex;
     flex-direction: column;
-    gap: 1rem;
-    margin-bottom: 2rem;
+    gap: 0.875rem;
+    margin-bottom: 1.5rem;
+}
+
+@media (min-width: 480px) {
+    .formStack {
+        gap: 1rem;
+        margin-bottom: 2rem;
+    }
 }
 
 .input {
@@ -139,13 +195,14 @@
     border: 1px solid #4b5563;
     border-radius: 0.5rem;
     color: white;
-    font-size: 1rem;
+    font-size: 1rem; /* 16px — prevents iOS zoom-on-focus */
+    min-height: 48px; /* accessible touch target */
 }
 
 .input:focus {
     outline: none;
     border-color: #60a5fa;
-    ring: 2px solid #60a5fa;
+    box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.3);
 }
 
 .switchBtn {
@@ -154,7 +211,11 @@
     color: #94a3b8;
     cursor: pointer;
     text-decoration: underline;
-    font-size: 0.9rem;
+    font-size: 0.875rem;
+    padding: 0.5rem;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    min-height: 44px;
 }
 
 .switchBtn:hover {
