@@ -576,6 +576,52 @@ CREATE UNIQUE INDEX IF NOT EXISTS report_schedules_report_uniq ON report_schedul
 DO $$ BEGIN
   ALTER TABLE items ADD COLUMN aliases JSONB DEFAULT '[]'::jsonb;
 EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
+-- =========================================================
+-- 32. Sub-categories — relational table replacing categories.sub_categories JSONB
+-- =========================================================
+CREATE TABLE IF NOT EXISTS sub_categories (
+    id               SERIAL PRIMARY KEY,
+    category_id      INTEGER NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
+    organization_id  INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    name             TEXT NOT NULL,
+    display_order    INTEGER NOT NULL DEFAULT 0,
+    UNIQUE(category_id, name)
+);
+
+CREATE INDEX IF NOT EXISTS sub_categories_category_idx ON sub_categories(category_id);
+CREATE INDEX IF NOT EXISTS sub_categories_org_idx      ON sub_categories(organization_id);
+
+-- Migrate existing JSONB data into the new table
+DO $$
+DECLARE
+    cat      RECORD;
+    sub_name TEXT;
+    ord      INTEGER;
+BEGIN
+    FOR cat IN
+        SELECT id, organization_id, sub_categories
+        FROM categories
+        WHERE sub_categories IS NOT NULL
+          AND jsonb_typeof(sub_categories) = 'array'
+          AND jsonb_array_length(sub_categories) > 0
+    LOOP
+        ord := 0;
+        FOR sub_name IN
+            SELECT jsonb_array_elements_text(cat.sub_categories)
+        LOOP
+            INSERT INTO sub_categories (category_id, organization_id, name, display_order)
+            VALUES (cat.id, cat.organization_id, sub_name, ord)
+            ON CONFLICT (category_id, name) DO NOTHING;
+            ord := ord + 1;
+        END LOOP;
+    END LOOP;
+END $$;
+
+-- Drop the now-redundant JSONB column
+DO $$ BEGIN
+  ALTER TABLE categories DROP COLUMN sub_categories;
+EXCEPTION WHEN undefined_column THEN NULL; END $$;
 DO $$ BEGIN
   ALTER TABLE shifts ADD COLUMN location_id INTEGER REFERENCES locations(id) ON DELETE CASCADE;
 EXCEPTION WHEN duplicate_column THEN NULL; END $$;

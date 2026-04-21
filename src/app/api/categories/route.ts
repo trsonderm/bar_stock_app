@@ -7,16 +7,25 @@ export async function GET(req: NextRequest) {
         const session = await getSession();
         if (!session || !session.organizationId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-        // Fetch categories for THIS organization only
-        const allCategories = await db.query(
-            'SELECT * FROM categories WHERE organization_id = $1 ORDER BY name ASC',
+        const categories = await db.query(
+            `SELECT c.*,
+                COALESCE(
+                    json_agg(sc.name ORDER BY sc.display_order, sc.name)
+                    FILTER (WHERE sc.name IS NOT NULL),
+                    '[]'
+                ) AS sub_categories
+             FROM categories c
+             LEFT JOIN sub_categories sc ON sc.category_id = c.id
+             WHERE c.organization_id = $1
+             GROUP BY c.id
+             ORDER BY c.name ASC`,
             [session.organizationId]
         );
 
-        const parsed = allCategories.map(c => ({
+        const parsed = categories.map((c: any) => ({
             ...c,
             stock_options: c.stock_options || [1],
-            sub_categories: c.sub_categories || []
+            sub_categories: Array.isArray(c.sub_categories) ? c.sub_categories : [],
         }));
 
         return NextResponse.json({ categories: parsed });
