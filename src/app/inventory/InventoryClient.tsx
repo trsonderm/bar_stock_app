@@ -586,64 +586,6 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
             <TopNav user={user}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                     <NotificationBell />
-                    {canAddItem && (
-                        <Button
-                            variant="contained"
-                            color="primary"
-                            startIcon={<AddIcon />}
-                            onClick={() => setShowModal(true)}
-                            size="small"
-                        >
-                            Add Item
-                        </Button>
-                    )}
-                    {canAddStock && (
-                        <Button
-                            variant="contained"
-                            color="success"
-                            onClick={openPendingOrders}
-                            size="small"
-                        >
-                            Check In Order
-                        </Button>
-                    )}
-                    {canAddStock && (
-                        <Button
-                            variant="contained"
-                            size="small"
-                            sx={{ background: '#0891b2', '&:hover': { background: '#0e7490' } }}
-                            onClick={() => { setScanMode('add'); setScanResult(null); setScanError(''); }}
-                        >
-                            Scan to Add
-                        </Button>
-                    )}
-                    {canSubtractStock && (
-                        <Button
-                            variant="contained"
-                            size="small"
-                            sx={{ background: '#7c3aed', '&:hover': { background: '#6d28d9' } }}
-                            onClick={() => { setScanMode('subtract'); setScanResult(null); setScanError(''); }}
-                        >
-                            Scan to Subtract
-                        </Button>
-                    )}
-                    {canSubtractStock && (
-                        <Button
-                            variant="outlined"
-                            color="warning"
-                            onClick={() => router.push('/inventory/close-shift')}
-                            size="small"
-                        >
-                            Close Shift
-                        </Button>
-                    )}
-                    <Button
-                        variant="outlined"
-                        onClick={() => { fetchActivity(); setShowActivityModal(true); }}
-                        size="small"
-                    >
-                        Activity
-                    </Button>
                     {Object.keys(pendingChanges).length > 0 && (
                         <Button
                             variant="contained"
@@ -651,7 +593,7 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
                             onClick={() => setShowSubmitModal(true)}
                             sx={{ background: '#f59e0b', color: '#000', fontWeight: 700, '&:hover': { background: '#d97706' } }}
                         >
-                            Submit Changes ({Object.keys(pendingChanges).length})
+                            Submit ({Object.keys(pendingChanges).length})
                         </Button>
                     )}
                     <Button variant="text" color="error" onClick={handleLogout} size="small">
@@ -659,6 +601,86 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
                     </Button>
                 </Box>
             </TopNav>
+
+            {/* Sticky action bar — scrolls horizontally on narrow screens */}
+            <Box sx={{
+                position: 'sticky',
+                top: 64,
+                zIndex: 1100,
+                bgcolor: 'background.paper',
+                borderBottom: '1px solid',
+                borderColor: 'divider',
+                px: { xs: 1.5, sm: 2 },
+                py: 1,
+                display: 'flex',
+                gap: 1,
+                overflowX: 'auto',
+                '&::-webkit-scrollbar': { height: 4 },
+                '&::-webkit-scrollbar-thumb': { bgcolor: 'divider', borderRadius: 2 },
+            }}>
+                {canAddItem && (
+                    <Button
+                        variant="contained"
+                        color="primary"
+                        startIcon={<AddIcon />}
+                        onClick={() => setShowModal(true)}
+                        size="small"
+                        sx={{ flexShrink: 0 }}
+                    >
+                        Add Item
+                    </Button>
+                )}
+                {canAddStock && (
+                    <Button
+                        variant="contained"
+                        color="success"
+                        onClick={openPendingOrders}
+                        size="small"
+                        sx={{ flexShrink: 0 }}
+                    >
+                        Check In Order
+                    </Button>
+                )}
+                {canAddStock && (
+                    <Button
+                        variant="contained"
+                        size="small"
+                        sx={{ background: '#0891b2', '&:hover': { background: '#0e7490' }, flexShrink: 0 }}
+                        onClick={() => { setScanMode('add'); setScanResult(null); setScanError(''); }}
+                    >
+                        Scan to Add
+                    </Button>
+                )}
+                {canSubtractStock && (
+                    <Button
+                        variant="contained"
+                        size="small"
+                        sx={{ background: '#7c3aed', '&:hover': { background: '#6d28d9' }, flexShrink: 0 }}
+                        onClick={() => { setScanMode('subtract'); setScanResult(null); setScanError(''); }}
+                    >
+                        Scan to Subtract
+                    </Button>
+                )}
+                {canSubtractStock && (
+                    <Button
+                        variant="outlined"
+                        color="warning"
+                        onClick={() => router.push('/inventory/close-shift')}
+                        size="small"
+                        sx={{ flexShrink: 0 }}
+                    >
+                        Close Shift
+                    </Button>
+                )}
+                <Button
+                    variant="outlined"
+                    onClick={() => { fetchActivity(); setShowActivityModal(true); }}
+                    size="small"
+                    sx={{ flexShrink: 0 }}
+                >
+                    Activity
+                </Button>
+            </Box>
 
             <Container maxWidth="xl" sx={{ pb: 6 }}>
 

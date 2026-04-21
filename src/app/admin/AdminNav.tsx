@@ -419,7 +419,7 @@ export default function AdminNav({ user, children }: { user: NavUser, children: 
                 </Drawer>
             </Box>
 
-            <Box component="main" sx={{ flexGrow: 1, p: 3, width: { sm: `calc(100% - ${drawerWidth}px)` }, mt: 8 }}>
+            <Box component="main" sx={{ flexGrow: 1, p: { xs: 1.5, sm: 3 }, width: { sm: `calc(100% - ${drawerWidth}px)` }, mt: 8, minWidth: 0 }}>
                 {children}
             </Box>
         </Box>

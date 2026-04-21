@@ -13,7 +13,7 @@ export default function TopNav({ user, children }: { user?: any; children?: Reac
   // or we can render common navigation links.
 
   return (
-    <AppBar position="static" color="transparent" elevation={0} sx={{ borderBottom: '1px solid', borderColor: 'divider', mb: 3 }}>
+    <AppBar position="sticky" color="default" elevation={0} sx={{ top: 0, borderBottom: '1px solid', borderColor: 'divider', bgcolor: 'background.paper', zIndex: 1100 }}>
       <Container maxWidth="xl">
         <Toolbar disableGutters>
           <Typography
