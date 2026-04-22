@@ -307,6 +307,7 @@ export default function AdminNav({ user, children }: { user: NavUser, children: 
                         <DrawerItem text="Help" icon={<HelpIcon fontSize="small" />} href="/admin/help" isSub />
                         <DrawerItem text="Suppliers" icon={<LocalShippingIcon fontSize="small" />} href="/admin/suppliers" isSub />
                         <DrawerItem text="Locations" icon={<LocationOnIcon fontSize="small" />} href="/admin/settings/locations" isSub />
+                        <DrawerItem text="Shift Calculator" icon={<ReceiptLongIcon fontSize="small" />} href="/admin/settings/shift-calculator" isSub />
                     </List>
                 </Collapse>
 

@@ -629,3 +629,10 @@ EXCEPTION WHEN duplicate_column THEN NULL; END $$;
 DO $$ BEGIN
   ALTER TABLE user_schedules ADD COLUMN location_id INTEGER REFERENCES locations(id) ON DELETE SET NULL;
 EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
+-- =========================================================
+-- 33. Shift closes — custom calculator data storage
+-- =========================================================
+DO $$ BEGIN
+  ALTER TABLE shift_closes ADD COLUMN custom_data JSONB DEFAULT '{}'::jsonb;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
