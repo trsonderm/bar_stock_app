@@ -9,11 +9,21 @@ interface PayoutType {
     name: string;
 }
 
+type PercentBase = 'cashSales' | 'cashTips' | 'ccSales' | 'ccTips';
+
 interface PayoutRow {
     typeId: number;
     typeName: string;
-    amount: string;
+    amount: string;        // used when mode === 'fixed'
+    mode: 'fixed' | 'percent';
+    percentOf: PercentBase;
+    percentValue: string;  // e.g. "18"
 }
+
+const emptyPayout = (): PayoutRow => ({
+    typeId: 0, typeName: '', amount: '',
+    mode: 'fixed', percentOf: 'cashTips', percentValue: '',
+});
 
 interface FormState {
     bankStart: string;
@@ -485,7 +495,7 @@ export default function CloseShiftClient({ user }: CloseShiftClientProps) {
         notes: '',
         ccTipsCashPayout: false,
     });
-    const [payouts, setPayouts] = useState<PayoutRow[]>([{ typeId: 0, typeName: '', amount: '' }]);
+    const [payouts, setPayouts] = useState<PayoutRow[]>([emptyPayout()]);
     const [submitting, setSubmitting] = useState(false);
     const [submitted, setSubmitted] = useState(false);
     const [submitResult, setSubmitResult] = useState<any>(null);
@@ -534,8 +544,23 @@ export default function CloseShiftClient({ user }: CloseShiftClientProps) {
 
     const n = (s: string | number) => parseFloat(String(s)) || 0;
 
+    const resolvePayoutAmount = useCallback((p: PayoutRow): number => {
+        if (p.mode === 'percent') {
+            const baseMap: Record<PercentBase, string> = {
+                cashSales: form.cashSales,
+                cashTips: form.cashTips,
+                ccSales: form.ccSales,
+                ccTips: form.ccTips,
+            };
+            const base = n(baseMap[p.percentOf] ?? '0');
+            const pct = parseFloat(p.percentValue) || 0;
+            return Math.round((pct / 100) * base * 100) / 100;
+        }
+        return n(p.amount);
+    }, [form]);
+
     const computed = useMemo(() => {
-        const totalPayouts = payouts.reduce((sum, p) => sum + n(p.amount), 0);
+        const totalPayouts = payouts.reduce((sum, p) => sum + resolvePayoutAmount(p), 0);
         const ccTipsCashAmount = form.ccTipsCashPayout ? n(form.ccTips) : 0;
         const expectedCashInDrawer = n(form.bankStart) + n(form.cashSales) + n(form.cashTips) - totalPayouts - ccTipsCashAmount;
         const bagAmount = n(form.bankEnd) - totalPayouts - ccTipsCashAmount;
@@ -543,7 +568,7 @@ export default function CloseShiftClient({ user }: CloseShiftClientProps) {
         const totalCashIn = n(form.cashSales) + n(form.cashTips);
         const totalCCRevenue = n(form.ccSales) + n(form.ccTips);
         return { totalPayouts, ccTipsCashAmount, bagAmount, overShort, totalCashIn, totalCCRevenue };
-    }, [form, payouts]);
+    }, [form, payouts, resolvePayoutAmount]);
 
     const setField = (key: keyof FormState, value: string | boolean) => {
         setForm(prev => ({ ...prev, [key]: value }));
@@ -558,7 +583,7 @@ export default function CloseShiftClient({ user }: CloseShiftClientProps) {
     };
 
     const addPayout = () => {
-        setPayouts(prev => [...prev, { typeId: 0, typeName: '', amount: '' }]);
+        setPayouts(prev => [...prev, emptyPayout()]);
     };
 
     const removePayout = (idx: number) => {
@@ -599,8 +624,13 @@ export default function CloseShiftClient({ user }: CloseShiftClientProps) {
                     ccSales: n(form.ccSales),
                     ccTips: n(form.ccTips),
                     payouts: payouts
-                        .filter(p => p.amount && n(p.amount) > 0)
-                        .map(p => ({ typeId: p.typeId, typeName: p.typeName, amount: n(p.amount) })),
+                        .filter(p => resolvePayoutAmount(p) > 0)
+                        .map(p => ({
+                            typeId: p.typeId,
+                            typeName: p.typeName,
+                            amount: resolvePayoutAmount(p),
+                            ...(p.mode === 'percent' ? { mode: 'percent', percentOf: p.percentOf, percentValue: parseFloat(p.percentValue) || 0 } : {}),
+                        })),
                     ccTipsCashPayout: form.ccTipsCashPayout,
                     notes: form.notes || undefined,
                 }),
@@ -832,49 +862,123 @@ export default function CloseShiftClient({ user }: CloseShiftClientProps) {
                         Cash paid out from drawer during the shift
                     </p>
 
-                    {payouts.map((payout, idx) => (
-                        <div key={idx} style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-end', marginBottom: '0.75rem' }}>
-                            <div style={{ flex: 2 }}>
-                                {idx === 0 && <label style={labelStyle}>Type</label>}
-                                <select
-                                    value={payout.typeId}
-                                    onChange={e => {
-                                        const id = parseInt(e.target.value);
-                                        const pt = payoutTypes.find(p => p.id === id);
-                                        updatePayout(idx, 'typeId', id);
-                                        updatePayout(idx, 'typeName', pt?.name || '');
-                                    }}
-                                    style={inputStyle}
-                                >
-                                    <option value={0}>— Select Type —</option>
-                                    {payoutTypes.map(pt => (
-                                        <option key={pt.id} value={pt.id}>{pt.name}</option>
-                                    ))}
-                                </select>
-                            </div>
-                            <div style={{ flex: 1 }}>
-                                {idx === 0 && <label style={labelStyle}>Amount</label>}
-                                <div style={{ position: 'relative' }}>
-                                    <span style={{ position: 'absolute', left: '0.6rem', top: '50%', transform: 'translateY(-50%)', color: '#6b7280', pointerEvents: 'none' }}>$</span>
-                                    <input
-                                        type="text"
-                                        inputMode="decimal"
-                                        value={payout.amount}
-                                        onChange={e => updatePayout(idx, 'amount', e.target.value)}
-                                        placeholder="0.00"
-                                        style={{ ...inputStyle, paddingLeft: '1.5rem' }}
-                                    />
+                    {payouts.map((payout, idx) => {
+                        const resolved = resolvePayoutAmount(payout);
+                        return (
+                            <div key={idx} style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: '0.5rem', padding: '0.75rem', marginBottom: '0.75rem' }}>
+                                {/* Row 1: type + mode toggle + amount/remove */}
+                                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-end' }}>
+                                    {/* Type */}
+                                    <div style={{ flex: 2, minWidth: 0 }}>
+                                        {idx === 0 && <label style={labelStyle}>Type</label>}
+                                        <select
+                                            value={payout.typeId}
+                                            onChange={e => {
+                                                const id = parseInt(e.target.value);
+                                                const pt = payoutTypes.find(p => p.id === id);
+                                                updatePayout(idx, 'typeId', id);
+                                                updatePayout(idx, 'typeName', pt?.name || '');
+                                            }}
+                                            style={inputStyle}
+                                        >
+                                            <option value={0}>— Select Type —</option>
+                                            {payoutTypes.map(pt => (
+                                                <option key={pt.id} value={pt.id}>{pt.name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    {/* Mode toggle */}
+                                    <div style={{ flexShrink: 0 }}>
+                                        {idx === 0 && <label style={labelStyle}>Mode</label>}
+                                        <div style={{ display: 'flex', borderRadius: '0.375rem', overflow: 'hidden', border: '1px solid #374151' }}>
+                                            <button
+                                                onClick={() => updatePayout(idx, 'mode', 'fixed')}
+                                                style={{ padding: '0.55rem 0.75rem', background: payout.mode === 'fixed' ? '#2563eb' : '#1f2937', color: 'white', border: 'none', cursor: 'pointer', fontSize: '0.8rem', fontWeight: payout.mode === 'fixed' ? 700 : 400 }}
+                                            >
+                                                $ Fixed
+                                            </button>
+                                            <button
+                                                onClick={() => updatePayout(idx, 'mode', 'percent')}
+                                                style={{ padding: '0.55rem 0.75rem', background: payout.mode === 'percent' ? '#7c3aed' : '#1f2937', color: 'white', border: 'none', cursor: 'pointer', fontSize: '0.8rem', fontWeight: payout.mode === 'percent' ? 700 : 400 }}
+                                            >
+                                                % Tip
+                                            </button>
+                                        </div>
+                                    </div>
+                                    {/* Amount display */}
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                        {idx === 0 && <label style={labelStyle}>Amount</label>}
+                                        {payout.mode === 'fixed' ? (
+                                            <div style={{ position: 'relative' }}>
+                                                <span style={{ position: 'absolute', left: '0.6rem', top: '50%', transform: 'translateY(-50%)', color: '#6b7280', pointerEvents: 'none' }}>$</span>
+                                                <input
+                                                    type="text"
+                                                    inputMode="decimal"
+                                                    value={payout.amount}
+                                                    onChange={e => updatePayout(idx, 'amount', e.target.value)}
+                                                    placeholder="0.00"
+                                                    style={{ ...inputStyle, paddingLeft: '1.5rem' }}
+                                                />
+                                            </div>
+                                        ) : (
+                                            <div style={{
+                                                background: '#1e1b4b',
+                                                border: '1px solid #4c1d95',
+                                                borderRadius: '0.375rem',
+                                                padding: '0.55rem 0.75rem',
+                                                color: resolved > 0 ? '#c4b5fd' : '#6b7280',
+                                                fontWeight: 700,
+                                                fontSize: '1rem',
+                                                minHeight: '2.5rem',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                            }}>
+                                                {resolved > 0 ? fmt(resolved) : '$—'}
+                                            </div>
+                                        )}
+                                    </div>
+                                    {/* Remove */}
+                                    <button
+                                        onClick={() => removePayout(idx)}
+                                        style={{ padding: '0.55rem 0.7rem', background: '#7f1d1d', color: '#fca5a5', border: 'none', borderRadius: '0.375rem', cursor: 'pointer', fontSize: '1rem', flexShrink: 0 }}
+                                        title="Remove"
+                                    >
+                                        🗑
+                                    </button>
                                 </div>
+                                {/* Row 2 (percent mode): % input + base field selector */}
+                                {payout.mode === 'percent' && (
+                                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginTop: '0.5rem', flexWrap: 'wrap' }}>
+                                        <div style={{ position: 'relative', width: '80px', flexShrink: 0 }}>
+                                            <input
+                                                type="text"
+                                                inputMode="decimal"
+                                                value={payout.percentValue}
+                                                onChange={e => updatePayout(idx, 'percentValue', e.target.value)}
+                                                placeholder="18"
+                                                style={{ ...inputStyle, paddingRight: '1.5rem' }}
+                                            />
+                                            <span style={{ position: 'absolute', right: '0.6rem', top: '50%', transform: 'translateY(-50%)', color: '#a78bfa', pointerEvents: 'none', fontWeight: 700 }}>%</span>
+                                        </div>
+                                        <span style={{ color: '#6b7280', fontSize: '0.875rem', flexShrink: 0 }}>of</span>
+                                        <select
+                                            value={payout.percentOf}
+                                            onChange={e => updatePayout(idx, 'percentOf', e.target.value as PercentBase)}
+                                            style={{ ...inputStyle, flex: 1, minWidth: '130px' }}
+                                        >
+                                            <option value="cashSales">Cash Sales</option>
+                                            <option value="cashTips">Cash Tips</option>
+                                            <option value="ccSales">CC Sales</option>
+                                            <option value="ccTips">CC Tips</option>
+                                        </select>
+                                        {resolved > 0 && (
+                                            <span style={{ color: '#a78bfa', fontWeight: 700, fontSize: '0.9rem', flexShrink: 0 }}>= {fmt(resolved)}</span>
+                                        )}
+                                    </div>
+                                )}
                             </div>
-                            <button
-                                onClick={() => removePayout(idx)}
-                                style={{ padding: '0.6rem 0.7rem', background: '#7f1d1d', color: '#fca5a5', border: 'none', borderRadius: '0.375rem', cursor: 'pointer', fontSize: '1rem', flexShrink: 0 }}
-                                title="Remove"
-                            >
-                                🗑
-                            </button>
-                        </div>
-                    ))}
+                        );
+                    })}
 
                     <button
                         onClick={addPayout}
