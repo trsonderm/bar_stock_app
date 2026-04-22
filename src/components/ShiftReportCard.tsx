@@ -18,6 +18,7 @@ export interface ShiftClose {
     bag_amount: number | string;
     over_short: number | string;
     notes?: string;
+    custom_data?: any;
 }
 
 interface ShiftReportCardProps {
@@ -95,6 +96,68 @@ export default function ShiftReportCard({ shift, orgName = 'TopShelf', isPrint =
 
     const rowLabel: React.CSSProperties = { color: '#6b7280' };
 
+    // Template-based rendering helpers
+    const templateRunAt = (blocks: any[], values: Record<string, number>, upTo: number): number => {
+        let total = 0;
+        for (let i = 0; i <= upTo; i++) {
+            const b = blocks[i];
+            if (!b || b.type === 'result' || b.type === 'divider') continue;
+            const v = parseFloat(String(values[b.id] ?? 0)) || 0;
+            if (b.operation === 'add') total += v;
+            else if (b.operation === 'subtract') total -= v;
+        }
+        return total;
+    };
+
+    const renderTemplateBlocks = (tmpl: { id: string; name: string; blocks: any[]; values: Record<string, number> }) => {
+        const vals = tmpl.values || {};
+        return tmpl.blocks.map((b: any, i: number) => {
+            if (b.type === 'divider') {
+                return <div key={b.id} style={{ borderTop: '1px solid #e5e7eb', margin: '0.5rem 0' }} />;
+            }
+            if (b.type === 'result') {
+                const running = templateRunAt(tmpl.blocks, vals, i);
+                return (
+                    <div key={b.id} style={{ background: '#f9fafb', border: '2px solid #d1d5db', borderRadius: '0.5rem', padding: '0.75rem 1rem', margin: '0.75rem 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontWeight: 700, fontSize: '1rem', color: '#374151' }}>{b.icon} {b.label}</span>
+                        <span style={{ fontWeight: 800, fontSize: '1.15rem', color: running >= 0 ? '#059669' : '#dc2626' }}>{fmt(running)}</span>
+                    </div>
+                );
+            }
+            if (b.type === 'payout') {
+                return (
+                    <div key={b.id}>
+                        {payouts.length > 0 ? payouts.map((p, pi) => (
+                            <div key={pi} style={row}>
+                                <span style={{ ...rowLabel, paddingLeft: '0.5rem' }}>{p.typeName}</span>
+                                <span style={{ color: '#ef4444' }}>-{fmt(p.amount)}</span>
+                            </div>
+                        )) : (
+                            <div style={row}><span style={rowLabel}>{b.icon} {b.label}</span><span>$0.00</span></div>
+                        )}
+                        {payouts.length > 1 && (
+                            <div style={{ ...row, borderTop: '1px solid #e5e7eb', paddingTop: '0.3rem', marginTop: '0.1rem', fontWeight: 600 }}>
+                                <span style={rowLabel}>Total {b.label}</span>
+                                <span style={{ color: '#ef4444' }}>-{fmt(totalPayouts)}</span>
+                            </div>
+                        )}
+                    </div>
+                );
+            }
+            const v = parseFloat(String(vals[b.id] ?? 0)) || 0;
+            return (
+                <div key={b.id} style={row}>
+                    <span style={rowLabel}>{b.icon} {b.label}</span>
+                    <span style={{ fontWeight: b.operation !== 'display_only' ? 600 : 400, color: b.operation === 'subtract' ? '#ef4444' : '#374151' }}>
+                        {b.operation === 'subtract' ? `-${fmt(v)}` : fmt(v)}
+                    </span>
+                </div>
+            );
+        });
+    };
+
+    const hasTemplateData = Array.isArray(shift.custom_data?.templates) && shift.custom_data.templates.length > 0;
+
     return (
         <div style={cardStyle}>
             {/* Header */}
@@ -132,7 +195,26 @@ export default function ShiftReportCard({ shift, orgName = 'TopShelf', isPrint =
                 </div>
             </div>
 
-            {/* Body */}
+            {/* Body — template-based or standard */}
+            {hasTemplateData ? (
+                <div style={{ padding: '1.5rem 2rem' }}>
+                    {shift.custom_data.templates.map((tmpl: any, ti: number) => (
+                        <div key={tmpl.id || ti}>
+                            {ti > 0 && <div style={{ borderTop: '2px solid #e5e7eb', margin: '1.5rem 0' }} />}
+                            {tmpl.name && (
+                                <div style={{ ...sectionTitle, marginTop: ti > 0 ? 0 : undefined }}>{tmpl.name}</div>
+                            )}
+                            {renderTemplateBlocks(tmpl)}
+                        </div>
+                    ))}
+                    {overShort !== 0 && (
+                        <div style={{ marginTop: '1.25rem', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '0.5rem', padding: '0.75rem 1rem', display: 'flex', justifyContent: 'space-between' }}>
+                            <span style={{ fontWeight: 700, color: '#374151' }}>OVER/SHORT</span>
+                            <span style={{ fontWeight: 800, color: overShortColor }}>{fmt(overShort)}</span>
+                        </div>
+                    )}
+                </div>
+            ) : (
             <div style={{ padding: '1.5rem 2rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
                 {/* Left Column */}
                 <div>
@@ -206,6 +288,7 @@ export default function ShiftReportCard({ shift, orgName = 'TopShelf', isPrint =
                     </div>
                 </div>
             </div>
+            )}
 
             {/* Notes */}
             {shift.notes && (

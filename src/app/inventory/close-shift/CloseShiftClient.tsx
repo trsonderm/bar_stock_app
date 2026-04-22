@@ -507,8 +507,8 @@ export default function CloseShiftClient({ user }: CloseShiftClientProps) {
     const [locationId, setLocationId] = useState<number | null>(null);
     const [locations, setLocations] = useState<any[]>([]);
 
-    // Custom calculator template
-    const [calcTemplate, setCalcTemplate] = useState<{ blocks: any[] } | null>(null);
+    // Custom calculator templates (supports 1 or 2 named reports)
+    const [calcTemplates, setCalcTemplates] = useState<{ id: string; name: string; blocks: any[] }[]>([]);
     const [templateValues, setTemplateValues] = useState<Record<string, string>>({});
 
     const videoRef = useRef<HTMLVideoElement>(null);
@@ -518,7 +518,14 @@ export default function CloseShiftClient({ user }: CloseShiftClientProps) {
         fetch('/api/admin/shift-calculator')
             .then(r => r.json())
             .then(d => {
-                if (d.template?.blocks?.length) setCalcTemplate(d.template);
+                if (d.template?.templates?.length) {
+                    // New two-report format
+                    const active = (d.template.templates as any[]).filter((t: any) => t.blocks?.length);
+                    if (active.length) setCalcTemplates(active);
+                } else if (d.template?.blocks?.length) {
+                    // Legacy single-template format
+                    setCalcTemplates([{ id: 'a', name: 'Report', blocks: d.template.blocks }]);
+                }
             })
             .catch(() => {});
 
@@ -684,17 +691,26 @@ export default function CloseShiftClient({ user }: CloseShiftClientProps) {
     }, [templateValues, payouts, resolvePayoutAmount]);
 
     const handleTemplateSubmit = async () => {
-        const blocks: any[] = calcTemplate?.blocks || [];
-        // Map known block types to standard API fields
-        const get = (type: string) => {
+        const firstBlocks: any[] = calcTemplates[0]?.blocks || [];
+        const get = (type: string, blocks: any[] = firstBlocks) => {
             const b = blocks.find((bl: any) => bl.type === type);
             return b ? n(templateValues[b.id] || '0') : 0;
         };
-        const finalTotal = templateRunningAt(blocks, blocks.length - 1);
-        // Collect custom field values
-        const customData: Record<string, any> = { templateBlocks: blocks };
-        blocks.filter((b: any) => b.type === 'custom').forEach((b: any) => {
-            customData[b.label] = n(templateValues[b.id] || '0');
+        const totalPayoutsAmount = payouts.reduce((s, p) => s + resolvePayoutAmount(p), 0);
+        const finalTotal = templateRunningAt(firstBlocks, firstBlocks.length - 1);
+
+        const buildTemplateData = (tmpl: { id: string; name: string; blocks: any[] }) => ({
+            id: tmpl.id,
+            name: tmpl.name,
+            blocks: tmpl.blocks,
+            values: Object.fromEntries(
+                tmpl.blocks
+                    .filter((b: any) => b.type !== 'result' && b.type !== 'divider')
+                    .map((b: any) => {
+                        if (b.type === 'payout') return [b.id, totalPayoutsAmount];
+                        return [b.id, n(templateValues[b.id] || '0')];
+                    })
+            ),
         });
 
         setSubmitting(true);
@@ -718,14 +734,13 @@ export default function CloseShiftClient({ user }: CloseShiftClientProps) {
                             amount: resolvePayoutAmount(p),
                             ...(p.mode === 'percent' ? { mode: 'percent', percentOf: p.percentOf, percentValue: parseFloat(p.percentValue) || 0 } : {}),
                         })),
-                    ccTipsCashPayout: blocks.some((b: any) => b.type === 'cc_tips_cash') && n(templateValues[blocks.find((b: any) => b.type === 'cc_tips_cash')?.id || ''] || '0') > 0,
+                    ccTipsCashPayout: firstBlocks.some((b: any) => b.type === 'cc_tips_cash') && n(templateValues[firstBlocks.find((b: any) => b.type === 'cc_tips_cash')?.id || ''] || '0') > 0,
                     notes: form.notes || undefined,
-                    custom_data: customData,
+                    custom_data: { templates: calcTemplates.map(buildTemplateData) },
                 }),
             });
             const data = await res.json();
             if (res.ok) {
-                // Store finalTotal so the success screen can show it
                 setSubmitResult({ ...data, templateFinalTotal: finalTotal });
                 setSubmitted(true);
             } else {
@@ -793,9 +808,9 @@ export default function CloseShiftClient({ user }: CloseShiftClientProps) {
     }
 
     // ── Custom template calculator ─────────────────────────────────────────────
-    if (calcTemplate?.blocks?.length) {
-        const blocks: any[] = calcTemplate.blocks;
-        const finalTotal = templateRunningAt(blocks, blocks.length - 1);
+    if (calcTemplates.length > 0) {
+        const firstBlocks: any[] = calcTemplates[0]?.blocks || [];
+        const finalTotal = templateRunningAt(firstBlocks, firstBlocks.length - 1);
         const hasData = Object.values(templateValues).some(v => v !== '') || payouts.some(p => resolvePayoutAmount(p) > 0);
 
         return (
@@ -830,129 +845,144 @@ export default function CloseShiftClient({ user }: CloseShiftClientProps) {
                         </div>
                     )}
 
-                    {/* Calculator blocks */}
-                    {blocks.map((block: any, idx: number) => {
-                        const runningHere = templateRunningAt(blocks, idx);
-                        const isCalc = block.operation !== 'display_only' && block.type !== 'result' && block.type !== 'divider';
-
-                        if (block.type === 'divider') {
-                            return <div key={block.id} style={{ borderTop: '1px solid #1f2937', margin: '1rem 0' }} />;
-                        }
-
-                        if (block.type === 'result') {
-                            return (
-                                <div key={block.id} style={{ background: '#1c1a02', border: `2px solid ${block.color}66`, borderRadius: '1rem', padding: '1.25rem 1.5rem', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                                        <span style={{ fontSize: '1.75rem' }}>{block.icon}</span>
-                                        <div>
-                                            <div style={{ color: '#f9fafb', fontWeight: 700, fontSize: '1.05rem' }}>{block.label}</div>
-                                            <div style={{ color: '#6b7280', fontSize: '0.75rem' }}>Running total</div>
-                                        </div>
-                                    </div>
-                                    <div style={{ color: runningHere >= 0 ? '#fbbf24' : '#ef4444', fontWeight: 800, fontSize: '1.75rem' }}>{fmt(runningHere)}</div>
-                                </div>
-                            );
-                        }
-
-                        if (block.type === 'payout') {
-                            const payoutTotal = payouts.reduce((s, p) => s + resolvePayoutAmount(p), 0);
-                            return (
-                                <div key={block.id} style={{ background: '#111827', borderLeft: `4px solid ${block.color}`, borderRadius: '0 0.75rem 0.75rem 0', padding: '1rem 1.25rem', marginBottom: '0.75rem' }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
-                                        <span style={{ fontSize: '1.25rem' }}>{block.icon}</span>
-                                        <span style={{ color: '#f9fafb', fontWeight: 700, fontSize: '0.95rem' }}>{block.label}</span>
-                                        <span style={{ background: '#7f1d1d', color: '#fca5a5', border: '1px solid #dc2626', borderRadius: '0.25rem', padding: '0.15rem 0.4rem', fontSize: '0.65rem', fontWeight: 700 }}>− SUB</span>
-                                    </div>
-                                    {payouts.map((payout, pidx) => {
-                                        const resolved = resolvePayoutAmount(payout);
-                                        return (
-                                            <div key={pidx} style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: '0.5rem', padding: '0.75rem', marginBottom: '0.5rem' }}>
-                                                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-end' }}>
-                                                    <div style={{ flex: 2, minWidth: 0 }}>
-                                                        {pidx === 0 && <label style={labelStyle}>Type</label>}
-                                                        <select value={payout.typeId} onChange={e => { const id = parseInt(e.target.value); const pt = payoutTypes.find(p => p.id === id); updatePayout(pidx, 'typeId', id); updatePayout(pidx, 'typeName', pt?.name || ''); }} style={inputStyle}>
-                                                            <option value={0}>— Select Type —</option>
-                                                            {payoutTypes.map(pt => <option key={pt.id} value={pt.id}>{pt.name}</option>)}
-                                                        </select>
-                                                    </div>
-                                                    <div style={{ flexShrink: 0 }}>
-                                                        {pidx === 0 && <label style={labelStyle}>Mode</label>}
-                                                        <div style={{ display: 'flex', borderRadius: '0.375rem', overflow: 'hidden', border: '1px solid #374151' }}>
-                                                            <button onClick={() => updatePayout(pidx, 'mode', 'fixed')} style={{ padding: '0.55rem 0.6rem', background: payout.mode === 'fixed' ? '#2563eb' : '#1f2937', color: 'white', border: 'none', cursor: 'pointer', fontSize: '0.75rem', fontWeight: payout.mode === 'fixed' ? 700 : 400 }}>$ Fixed</button>
-                                                            <button onClick={() => updatePayout(pidx, 'mode', 'percent')} style={{ padding: '0.55rem 0.6rem', background: payout.mode === 'percent' ? '#7c3aed' : '#1f2937', color: 'white', border: 'none', cursor: 'pointer', fontSize: '0.75rem', fontWeight: payout.mode === 'percent' ? 700 : 400 }}>% Tip</button>
-                                                        </div>
-                                                    </div>
-                                                    <div style={{ flex: 1, minWidth: 0 }}>
-                                                        {pidx === 0 && <label style={labelStyle}>Amount</label>}
-                                                        {payout.mode === 'fixed' ? (
-                                                            <div style={{ position: 'relative' }}>
-                                                                <span style={{ position: 'absolute', left: '0.6rem', top: '50%', transform: 'translateY(-50%)', color: '#6b7280', pointerEvents: 'none' }}>$</span>
-                                                                <input type="text" inputMode="decimal" value={payout.amount} onChange={e => updatePayout(pidx, 'amount', e.target.value)} placeholder="0.00" style={{ ...inputStyle, paddingLeft: '1.5rem' }} />
-                                                            </div>
-                                                        ) : (
-                                                            <div style={{ background: '#1e1b4b', border: '1px solid #4c1d95', borderRadius: '0.375rem', padding: '0.55rem 0.75rem', color: resolved > 0 ? '#c4b5fd' : '#6b7280', fontWeight: 700, fontSize: '1rem', minHeight: '2.5rem', display: 'flex', alignItems: 'center' }}>{resolved > 0 ? fmt(resolved) : '$—'}</div>
-                                                        )}
-                                                    </div>
-                                                    <button onClick={() => removePayout(pidx)} style={{ padding: '0.55rem 0.7rem', background: '#7f1d1d', color: '#fca5a5', border: 'none', borderRadius: '0.375rem', cursor: 'pointer', fontSize: '1rem', flexShrink: 0 }}>🗑</button>
-                                                </div>
-                                                {payout.mode === 'percent' && (
-                                                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginTop: '0.5rem', flexWrap: 'wrap' }}>
-                                                        <div style={{ position: 'relative', width: '80px', flexShrink: 0 }}>
-                                                            <input type="text" inputMode="decimal" value={payout.percentValue} onChange={e => updatePayout(pidx, 'percentValue', e.target.value)} placeholder="18" style={{ ...inputStyle, paddingRight: '1.5rem' }} />
-                                                            <span style={{ position: 'absolute', right: '0.6rem', top: '50%', transform: 'translateY(-50%)', color: '#a78bfa', pointerEvents: 'none', fontWeight: 700 }}>%</span>
-                                                        </div>
-                                                        <span style={{ color: '#6b7280', fontSize: '0.875rem', flexShrink: 0 }}>of</span>
-                                                        <select value={payout.percentOf} onChange={e => updatePayout(pidx, 'percentOf', e.target.value as PercentBase)} style={{ ...inputStyle, flex: 1, minWidth: '130px' }}>
-                                                            <option value="cashSales">Cash Sales</option>
-                                                            <option value="cashTips">Cash Tips</option>
-                                                            <option value="ccSales">CC Sales</option>
-                                                            <option value="ccTips">CC Tips</option>
-                                                        </select>
-                                                        {resolved > 0 && <span style={{ color: '#a78bfa', fontWeight: 700, fontSize: '0.9rem', flexShrink: 0 }}>= {fmt(resolved)}</span>}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        );
-                                    })}
-                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '0.5rem' }}>
-                                        <button onClick={addPayout} style={{ padding: '0.4rem 0.875rem', background: '#1f2937', color: '#60a5fa', border: '1px solid #374151', borderRadius: '0.375rem', cursor: 'pointer', fontSize: '0.825rem' }}>+ Add Payout</button>
-                                        {payoutTotal > 0 && <span style={{ color: '#9ca3af', fontSize: '0.875rem' }}>Total: <strong style={{ color: '#f9fafb' }}>{fmt(payoutTotal)}</strong></span>}
-                                    </div>
-                                </div>
-                            );
-                        }
-
-                        // Standard input block
+                    {/* Calculator blocks — one section per template */}
+                    {calcTemplates.map((tmpl, tmplIdx) => {
+                        const blocks: any[] = tmpl.blocks;
                         return (
-                            <div key={block.id} style={{ background: '#111827', borderLeft: `4px solid ${block.color}`, borderRadius: '0 0.75rem 0.75rem 0', padding: '1rem 1.25rem', marginBottom: '0.75rem' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.6rem' }}>
-                                    <span style={{ fontSize: '1.25rem' }}>{block.icon}</span>
-                                    <span style={{ color: '#f9fafb', fontWeight: 700, fontSize: '0.95rem' }}>{block.label}</span>
-                                    {isCalc && (
-                                        <span style={{ background: block.operation === 'add' ? '#14532d' : '#7f1d1d', color: block.operation === 'add' ? '#86efac' : '#fca5a5', border: `1px solid ${block.operation === 'add' ? '#16a34a' : '#dc2626'}`, borderRadius: '0.25rem', padding: '0.15rem 0.4rem', fontSize: '0.65rem', fontWeight: 700 }}>
-                                            {block.operation === 'add' ? '+ ADD' : '− SUB'}
-                                        </span>
-                                    )}
-                                    {!isCalc && (
-                                        <span style={{ background: '#1e3a5f', color: '#93c5fd', border: '1px solid #2563eb', borderRadius: '0.25rem', padding: '0.15rem 0.4rem', fontSize: '0.65rem', fontWeight: 700 }}>ℹ INFO</span>
-                                    )}
-                                </div>
-                                <div style={{ position: 'relative', maxWidth: '280px' }}>
-                                    <span style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: '#6b7280', pointerEvents: 'none', fontWeight: 600 }}>$</span>
-                                    <input
-                                        type="text"
-                                        inputMode="decimal"
-                                        value={templateValues[block.id] || ''}
-                                        onChange={e => setTemplateValues(prev => ({ ...prev, [block.id]: e.target.value }))}
-                                        placeholder="0.00"
-                                        style={{ ...inputStyle, paddingLeft: '1.75rem', fontSize: '1.1rem', fontWeight: 600, maxWidth: '280px' }}
-                                    />
-                                </div>
-                                {isCalc && n(templateValues[block.id] || '0') > 0 && (
-                                    <div style={{ marginTop: '0.4rem', color: '#6b7280', fontSize: '0.78rem' }}>
-                                        Running total: <span style={{ color: runningHere >= 0 ? '#4ade80' : '#f87171', fontWeight: 600 }}>{fmt(runningHere)}</span>
+                            <div key={tmpl.id}>
+                                {tmplIdx > 0 && (
+                                    <div style={{ borderTop: '2px solid #1f2937', margin: '1.5rem 0 1rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                        <span style={{ color: '#6b7280', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', flexShrink: 0 }}>{tmpl.name}</span>
                                     </div>
                                 )}
+                                {calcTemplates.length > 1 && tmplIdx === 0 && (
+                                    <div style={{ color: '#6b7280', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>{tmpl.name}</div>
+                                )}
+                                {blocks.map((block: any, idx: number) => {
+                                    const runningHere = templateRunningAt(blocks, idx);
+                                    const isCalc = block.operation !== 'display_only' && block.type !== 'result' && block.type !== 'divider';
+
+                                    if (block.type === 'divider') {
+                                        return <div key={block.id} style={{ borderTop: '1px solid #1f2937', margin: '1rem 0' }} />;
+                                    }
+
+                                    if (block.type === 'result') {
+                                        return (
+                                            <div key={block.id} style={{ background: '#1c1a02', border: `2px solid ${block.color}66`, borderRadius: '1rem', padding: '1.25rem 1.5rem', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                                    <span style={{ fontSize: '1.75rem' }}>{block.icon}</span>
+                                                    <div>
+                                                        <div style={{ color: '#f9fafb', fontWeight: 700, fontSize: '1.05rem' }}>{block.label}</div>
+                                                        <div style={{ color: '#6b7280', fontSize: '0.75rem' }}>Running total</div>
+                                                    </div>
+                                                </div>
+                                                <div style={{ color: runningHere >= 0 ? '#fbbf24' : '#ef4444', fontWeight: 800, fontSize: '1.75rem' }}>{fmt(runningHere)}</div>
+                                            </div>
+                                        );
+                                    }
+
+                                    if (block.type === 'payout') {
+                                        const payoutTotal = payouts.reduce((s, p) => s + resolvePayoutAmount(p), 0);
+                                        return (
+                                            <div key={block.id} style={{ background: '#111827', borderLeft: `4px solid ${block.color}`, borderRadius: '0 0.75rem 0.75rem 0', padding: '1rem 1.25rem', marginBottom: '0.75rem' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                                                    <span style={{ fontSize: '1.25rem' }}>{block.icon}</span>
+                                                    <span style={{ color: '#f9fafb', fontWeight: 700, fontSize: '0.95rem' }}>{block.label}</span>
+                                                    <span style={{ background: '#7f1d1d', color: '#fca5a5', border: '1px solid #dc2626', borderRadius: '0.25rem', padding: '0.15rem 0.4rem', fontSize: '0.65rem', fontWeight: 700 }}>− SUB</span>
+                                                </div>
+                                                {payouts.map((payout, pidx) => {
+                                                    const resolved = resolvePayoutAmount(payout);
+                                                    return (
+                                                        <div key={pidx} style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: '0.5rem', padding: '0.75rem', marginBottom: '0.5rem' }}>
+                                                            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-end' }}>
+                                                                <div style={{ flex: 2, minWidth: 0 }}>
+                                                                    {pidx === 0 && <label style={labelStyle}>Type</label>}
+                                                                    <select value={payout.typeId} onChange={e => { const id = parseInt(e.target.value); const pt = payoutTypes.find(p => p.id === id); updatePayout(pidx, 'typeId', id); updatePayout(pidx, 'typeName', pt?.name || ''); }} style={inputStyle}>
+                                                                        <option value={0}>— Select Type —</option>
+                                                                        {payoutTypes.map(pt => <option key={pt.id} value={pt.id}>{pt.name}</option>)}
+                                                                    </select>
+                                                                </div>
+                                                                <div style={{ flexShrink: 0 }}>
+                                                                    {pidx === 0 && <label style={labelStyle}>Mode</label>}
+                                                                    <div style={{ display: 'flex', borderRadius: '0.375rem', overflow: 'hidden', border: '1px solid #374151' }}>
+                                                                        <button onClick={() => updatePayout(pidx, 'mode', 'fixed')} style={{ padding: '0.55rem 0.6rem', background: payout.mode === 'fixed' ? '#2563eb' : '#1f2937', color: 'white', border: 'none', cursor: 'pointer', fontSize: '0.75rem', fontWeight: payout.mode === 'fixed' ? 700 : 400 }}>$ Fixed</button>
+                                                                        <button onClick={() => updatePayout(pidx, 'mode', 'percent')} style={{ padding: '0.55rem 0.6rem', background: payout.mode === 'percent' ? '#7c3aed' : '#1f2937', color: 'white', border: 'none', cursor: 'pointer', fontSize: '0.75rem', fontWeight: payout.mode === 'percent' ? 700 : 400 }}>% Tip</button>
+                                                                    </div>
+                                                                </div>
+                                                                <div style={{ flex: 1, minWidth: 0 }}>
+                                                                    {pidx === 0 && <label style={labelStyle}>Amount</label>}
+                                                                    {payout.mode === 'fixed' ? (
+                                                                        <div style={{ position: 'relative' }}>
+                                                                            <span style={{ position: 'absolute', left: '0.6rem', top: '50%', transform: 'translateY(-50%)', color: '#6b7280', pointerEvents: 'none' }}>$</span>
+                                                                            <input type="text" inputMode="decimal" value={payout.amount} onChange={e => updatePayout(pidx, 'amount', e.target.value)} placeholder="0.00" style={{ ...inputStyle, paddingLeft: '1.5rem' }} />
+                                                                        </div>
+                                                                    ) : (
+                                                                        <div style={{ background: '#1e1b4b', border: '1px solid #4c1d95', borderRadius: '0.375rem', padding: '0.55rem 0.75rem', color: resolved > 0 ? '#c4b5fd' : '#6b7280', fontWeight: 700, fontSize: '1rem', minHeight: '2.5rem', display: 'flex', alignItems: 'center' }}>{resolved > 0 ? fmt(resolved) : '$—'}</div>
+                                                                    )}
+                                                                </div>
+                                                                <button onClick={() => removePayout(pidx)} style={{ padding: '0.55rem 0.7rem', background: '#7f1d1d', color: '#fca5a5', border: 'none', borderRadius: '0.375rem', cursor: 'pointer', fontSize: '1rem', flexShrink: 0 }}>🗑</button>
+                                                            </div>
+                                                            {payout.mode === 'percent' && (
+                                                                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginTop: '0.5rem', flexWrap: 'wrap' }}>
+                                                                    <div style={{ position: 'relative', width: '80px', flexShrink: 0 }}>
+                                                                        <input type="text" inputMode="decimal" value={payout.percentValue} onChange={e => updatePayout(pidx, 'percentValue', e.target.value)} placeholder="18" style={{ ...inputStyle, paddingRight: '1.5rem' }} />
+                                                                        <span style={{ position: 'absolute', right: '0.6rem', top: '50%', transform: 'translateY(-50%)', color: '#a78bfa', pointerEvents: 'none', fontWeight: 700 }}>%</span>
+                                                                    </div>
+                                                                    <span style={{ color: '#6b7280', fontSize: '0.875rem', flexShrink: 0 }}>of</span>
+                                                                    <select value={payout.percentOf} onChange={e => updatePayout(pidx, 'percentOf', e.target.value as PercentBase)} style={{ ...inputStyle, flex: 1, minWidth: '130px' }}>
+                                                                        <option value="cashSales">Cash Sales</option>
+                                                                        <option value="cashTips">Cash Tips</option>
+                                                                        <option value="ccSales">CC Sales</option>
+                                                                        <option value="ccTips">CC Tips</option>
+                                                                    </select>
+                                                                    {resolved > 0 && <span style={{ color: '#a78bfa', fontWeight: 700, fontSize: '0.9rem', flexShrink: 0 }}>= {fmt(resolved)}</span>}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })}
+                                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '0.5rem' }}>
+                                                    <button onClick={addPayout} style={{ padding: '0.4rem 0.875rem', background: '#1f2937', color: '#60a5fa', border: '1px solid #374151', borderRadius: '0.375rem', cursor: 'pointer', fontSize: '0.825rem' }}>+ Add Payout</button>
+                                                    {payoutTotal > 0 && <span style={{ color: '#9ca3af', fontSize: '0.875rem' }}>Total: <strong style={{ color: '#f9fafb' }}>{fmt(payoutTotal)}</strong></span>}
+                                                </div>
+                                            </div>
+                                        );
+                                    }
+
+                                    // Standard input block
+                                    return (
+                                        <div key={block.id} style={{ background: '#111827', borderLeft: `4px solid ${block.color}`, borderRadius: '0 0.75rem 0.75rem 0', padding: '1rem 1.25rem', marginBottom: '0.75rem' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.6rem' }}>
+                                                <span style={{ fontSize: '1.25rem' }}>{block.icon}</span>
+                                                <span style={{ color: '#f9fafb', fontWeight: 700, fontSize: '0.95rem' }}>{block.label}</span>
+                                                {isCalc && (
+                                                    <span style={{ background: block.operation === 'add' ? '#14532d' : '#7f1d1d', color: block.operation === 'add' ? '#86efac' : '#fca5a5', border: `1px solid ${block.operation === 'add' ? '#16a34a' : '#dc2626'}`, borderRadius: '0.25rem', padding: '0.15rem 0.4rem', fontSize: '0.65rem', fontWeight: 700 }}>
+                                                        {block.operation === 'add' ? '+ ADD' : '− SUB'}
+                                                    </span>
+                                                )}
+                                                {!isCalc && (
+                                                    <span style={{ background: '#1e3a5f', color: '#93c5fd', border: '1px solid #2563eb', borderRadius: '0.25rem', padding: '0.15rem 0.4rem', fontSize: '0.65rem', fontWeight: 700 }}>ℹ INFO</span>
+                                                )}
+                                            </div>
+                                            <div style={{ position: 'relative', maxWidth: '280px' }}>
+                                                <span style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: '#6b7280', pointerEvents: 'none', fontWeight: 600 }}>$</span>
+                                                <input
+                                                    type="text"
+                                                    inputMode="decimal"
+                                                    value={templateValues[block.id] || ''}
+                                                    onChange={e => setTemplateValues(prev => ({ ...prev, [block.id]: e.target.value }))}
+                                                    placeholder="0.00"
+                                                    style={{ ...inputStyle, paddingLeft: '1.75rem', fontSize: '1.1rem', fontWeight: 600, maxWidth: '280px' }}
+                                                />
+                                            </div>
+                                            {isCalc && n(templateValues[block.id] || '0') > 0 && (
+                                                <div style={{ marginTop: '0.4rem', color: '#6b7280', fontSize: '0.78rem' }}>
+                                                    Running total: <span style={{ color: runningHere >= 0 ? '#4ade80' : '#f87171', fontWeight: 600 }}>{fmt(runningHere)}</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
                             </div>
                         );
                     })}
@@ -982,9 +1012,18 @@ export default function CloseShiftClient({ user }: CloseShiftClientProps) {
                                     <div style={{ color: '#f87171', fontSize: '0.95rem', fontWeight: 600 }}>−{fmt(payouts.reduce((s, p) => s + resolvePayoutAmount(p), 0))}</div>
                                 </div>
                             )}
+                            {calcTemplates.length > 1 && calcTemplates.map(tmpl => {
+                                const total = templateRunningAt(tmpl.blocks, tmpl.blocks.length - 1);
+                                return (
+                                    <div key={tmpl.id}>
+                                        <div style={{ color: '#6b7280', fontSize: '0.7rem', textTransform: 'uppercase' }}>{tmpl.name}</div>
+                                        <div style={{ color: total >= 0 ? '#fbbf24' : '#ef4444', fontSize: '0.95rem', fontWeight: 700 }}>{fmt(total)}</div>
+                                    </div>
+                                );
+                            })}
                         </div>
                         <div style={{ textAlign: 'right' }}>
-                            <div style={{ color: '#6b7280', fontSize: '0.7rem', textTransform: 'uppercase' }}>Total</div>
+                            <div style={{ color: '#6b7280', fontSize: '0.7rem', textTransform: 'uppercase' }}>{calcTemplates.length > 1 ? calcTemplates[0].name : 'Total'}</div>
                             <div style={{ color: finalTotal >= 0 ? '#fbbf24' : '#ef4444', fontSize: '1.5rem', fontWeight: 800 }}>{fmt(finalTotal)}</div>
                         </div>
                     </div>
