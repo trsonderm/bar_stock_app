@@ -341,7 +341,9 @@ export default function UserSchedulerClient() {
             start = formatLocalDate(new Date(year, month, 1));
             end = formatLocalDate(new Date(year, month + 1, 0));
         } else {
-            start = formatLocalDate(startDate);
+            const s = new Date(startDate);
+            s.setDate(s.getDate() - 1);
+            start = formatLocalDate(s);
             end = formatLocalDate(new Date(startDate.getTime() + (days - 1) * 24 * 60 * 60 * 1000));
         }
 
@@ -747,6 +749,15 @@ export default function UserSchedulerClient() {
                                             // Shifts starting today
                                             const todaysSchedules = schedules.filter(s => s.user_id === user.id && s.date.split('T')[0] === dateStr);
 
+                                            // Overnight spillovers from previous day
+                                            const prevDateStr = formatLocalDate(new Date(d.getFullYear(), d.getMonth(), d.getDate() - 1));
+                                            const spilloverSchedules = schedules.filter(s => {
+                                                if (s.user_id !== user.id || s.date.split('T')[0] !== prevDateStr) return false;
+                                                const start = parseInt(s.start_time.replace(':', ''));
+                                                const end = parseInt(s.end_time.replace(':', ''));
+                                                return start > end;
+                                            });
+
                                             return (
                                                 <td
                                                     key={dateStr}
@@ -755,6 +766,22 @@ export default function UserSchedulerClient() {
                                                     onDrop={(e) => handleDrop(e, dateStr, user.id)}
                                                 >
                                                     <div className="relative w-full h-full">
+                                                        {/* Overnight spillovers — visual only, no text */}
+                                                        {spilloverSchedules.map(schedule => {
+                                                            const shiftDef = shifts.find(s => s.id === schedule.shift_id);
+                                                            const color = shiftDef?.color || '#3b82f6';
+                                                            const [endH, endM] = schedule.end_time.split(':').map(Number);
+                                                            const widthPct = ((endH * 60 + endM) / (24 * 60)) * 100;
+                                                            return (
+                                                                <div
+                                                                    key={`spill-${schedule.id}`}
+                                                                    className="absolute top-0 h-1/3 rounded-r opacity-50 cursor-pointer"
+                                                                    style={{ left: 0, width: `${widthPct}%`, backgroundColor: color, zIndex: 5 }}
+                                                                    onClick={() => handleEdit(schedule)}
+                                                                />
+                                                            );
+                                                        })}
+
                                                         {/* Render Today's Shifts */}
                                                         {todaysSchedules.map(schedule => {
                                                             const shiftDef = shifts.find(s => s.id === schedule.shift_id);
