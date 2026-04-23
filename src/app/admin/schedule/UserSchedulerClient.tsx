@@ -341,11 +341,7 @@ export default function UserSchedulerClient() {
             start = formatLocalDate(new Date(year, month, 1));
             end = formatLocalDate(new Date(year, month + 1, 0));
         } else {
-            // Fetch 1 extra day BEFORE start to catch spillover overnight shifts
-            const s = new Date(startDate);
-            s.setDate(s.getDate() - 1);
-            start = formatLocalDate(s);
-
+            start = formatLocalDate(startDate);
             end = formatLocalDate(new Date(startDate.getTime() + (days - 1) * 24 * 60 * 60 * 1000));
         }
 
@@ -748,23 +744,8 @@ export default function UserSchedulerClient() {
                                         {weekDays.map(d => {
                                             const dateStr = formatLocalDate(d);
 
-                                            // Previous Day for spillover
-                                            const prevDate = new Date(d);
-                                            prevDate.setDate(d.getDate() - 1);
-                                            const prevDateStr = formatLocalDate(prevDate);
-
                                             // Shifts starting today
                                             const todaysSchedules = schedules.filter(s => s.user_id === user.id && s.date.split('T')[0] === dateStr);
-
-                                            // Shifts from yesterday that might spill over
-                                            const yesterdaysSchedules = schedules.filter(s => s.user_id === user.id && s.date.split('T')[0] === prevDateStr);
-                                            const spilloverSchedules = yesterdaysSchedules.filter(s => {
-                                                // Check if end_time is smaller than start_time (implies overnight)
-                                                // Simple check: start > end means cross midnight
-                                                const start = parseInt(s.start_time.replace(':', ''));
-                                                const end = parseInt(s.end_time.replace(':', ''));
-                                                return start > end;
-                                            });
 
                                             return (
                                                 <td
@@ -774,31 +755,6 @@ export default function UserSchedulerClient() {
                                                     onDrop={(e) => handleDrop(e, dateStr, user.id)}
                                                 >
                                                     <div className="relative w-full h-full">
-                                                        {/* Render Spillovers (Start of day) */}
-                                                        {spilloverSchedules.map(schedule => {
-                                                            const shiftDef = shifts.find(s => s.id === schedule.shift_id);
-                                                            const color = shiftDef?.color || '#3b82f6';
-                                                            const endH = parseInt(schedule.end_time.split(':')[0]);
-                                                            const endM = parseInt(schedule.end_time.split(':')[1]);
-                                                            const widthPct = ((endH * 60 + endM) / (24 * 60)) * 100;
-
-                                                            return (
-                                                                <div
-                                                                    key={`spill-${schedule.id}`}
-                                                                    className="absolute top-0 h-1/3 rounded-r px-1 text-[10px] flex items-center opacity-70 mb-1"
-                                                                    style={{
-                                                                        left: 0,
-                                                                        width: `${widthPct}%`,
-                                                                        backgroundColor: color,
-                                                                        color: 'white',
-                                                                        zIndex: 5
-                                                                    }}
-                                                                >
-                                                                    {schedule.shift_name}
-                                                                </div>
-                                                            );
-                                                        })}
-
                                                         {/* Render Today's Shifts */}
                                                         {todaysSchedules.map(schedule => {
                                                             const shiftDef = shifts.find(s => s.id === schedule.shift_id);
