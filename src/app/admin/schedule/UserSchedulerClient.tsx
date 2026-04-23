@@ -794,7 +794,7 @@ export default function UserSchedulerClient() {
                                                                         zIndex: 5
                                                                     }}
                                                                 >
-                                                                    Warning: {schedule.shift_name} (End {schedule.end_time})
+                                                                    {schedule.shift_name}
                                                                 </div>
                                                             );
                                                         })}
@@ -1239,30 +1239,19 @@ export default function UserSchedulerClient() {
             {editModalOpen && editingSchedule && (
                 <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
                     <div className="bg-gray-800 rounded-lg max-w-sm w-full max-h-[90vh] overflow-y-auto p-6 shadow-xl border border-gray-700">
-                        <div className="flex justify-between items-center mb-6">
+                        <div className="flex justify-between items-center mb-4">
                             <h2 className="text-xl font-bold text-white">Edit Shift</h2>
                             <button onClick={() => setEditModalOpen(false)} className="text-gray-400 hover:text-white"><X size={20} /></button>
                         </div>
 
-                        <div className="space-y-4">
-                            <div className="p-3 bg-gray-900 rounded border border-gray-700 flex justify-between items-center">
-                                <div>
-                                    <div className="text-white font-bold">{editingSchedule.shift_name}</div>
-                                    <div className="text-sm text-gray-400">
-                                        {new Date(editingSchedule.date).toLocaleDateString()}
-                                        <br />
-                                        {editingSchedule.start_time} - {editingSchedule.end_time}
-                                    </div>
-                                </div>
-                                <button
-                                    onClick={() => handleDelete(editingSchedule.id, editingSchedule)}
-                                    className="p-2 bg-red-900/40 text-red-500 hover:bg-red-900 hover:text-red-300 rounded transition-colors"
-                                    title="Delete Shift"
-                                >
-                                    <Trash2 size={20} />
-                                </button>
+                        <div className="p-3 bg-gray-900 rounded border border-gray-700 mb-5">
+                            <div className="text-white font-bold">{editingSchedule.shift_name}</div>
+                            <div className="text-sm text-gray-400">
+                                {new Date(editingSchedule.date).toLocaleDateString()} &bull; {editingSchedule.start_time}–{editingSchedule.end_time}
                             </div>
+                        </div>
 
+                        <div className="space-y-4">
                             <div>
                                 <label className="block text-gray-400 text-sm mb-2">Assigned Employee</label>
                                 <select
@@ -1290,8 +1279,8 @@ export default function UserSchedulerClient() {
                             </div>
 
                             {editingSchedule.recurring_group_id ? (
-                                <div className="mt-4 p-3 border border-blue-900/50 bg-blue-900/20 rounded">
-                                    <h4 className="text-sm font-bold text-blue-400 mb-2">Repeating Shift</h4>
+                                <div className="p-3 border border-blue-900/50 bg-blue-900/20 rounded">
+                                    <h4 className="text-sm font-bold text-blue-400 mb-2">Apply changes to:</h4>
                                     <label className="flex items-center gap-2 cursor-pointer mb-2">
                                         <input
                                             type="radio"
@@ -1300,7 +1289,7 @@ export default function UserSchedulerClient() {
                                             onChange={() => setModifyStrategy('instance')}
                                             className="accent-blue-500"
                                         />
-                                        <span className="text-white text-sm">Modify only this occurrence</span>
+                                        <span className="text-white text-sm">This occurrence only</span>
                                     </label>
                                     <label className="flex items-center gap-2 cursor-pointer mb-2">
                                         <input
@@ -1310,7 +1299,7 @@ export default function UserSchedulerClient() {
                                             onChange={() => setModifyStrategy('following')}
                                             className="accent-blue-500"
                                         />
-                                        <span className="text-white text-sm">Modify this and all following</span>
+                                        <span className="text-white text-sm">This and all following</span>
                                     </label>
                                     <label className="flex items-center gap-2 cursor-pointer">
                                         <input
@@ -1320,11 +1309,11 @@ export default function UserSchedulerClient() {
                                             onChange={() => setModifyStrategy('all')}
                                             className="accent-blue-500"
                                         />
-                                        <span className="text-white text-sm">Modify ALL occurrences in series</span>
+                                        <span className="text-white text-sm">All occurrences in series</span>
                                     </label>
                                 </div>
                             ) : (
-                                <div className="mt-4 p-3 border border-gray-700 bg-gray-900 rounded">
+                                <div className="p-3 border border-gray-700 bg-gray-900 rounded">
                                     <label className="flex items-center gap-2 cursor-pointer mb-2">
                                         <input
                                             type="checkbox"
@@ -1373,22 +1362,29 @@ export default function UserSchedulerClient() {
                                     )}
                                 </div>
                             )}
-
                         </div>
 
-                        <div className="flex justify-end gap-3 mt-8">
+                        <div className="flex justify-between items-center mt-8">
                             <button
-                                onClick={() => setEditModalOpen(false)}
-                                className="px-4 py-2 text-gray-300 hover:text-white"
+                                onClick={() => handleDelete(editingSchedule.id, editingSchedule)}
+                                className="text-red-500 hover:text-red-400 text-sm flex items-center gap-1"
                             >
-                                Cancel
+                                <Trash2 size={14} /> Delete shift
                             </button>
-                            <button
-                                onClick={handleUpdateSchedule}
-                                className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded font-bold"
-                            >
-                                Save Changes
-                            </button>
+                            <div className="flex gap-3">
+                                <button
+                                    onClick={() => setEditModalOpen(false)}
+                                    className="px-4 py-2 text-gray-300 hover:text-white"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={handleUpdateSchedule}
+                                    className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded font-bold"
+                                >
+                                    Save Changes
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
