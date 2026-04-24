@@ -1,11 +1,12 @@
 import { db } from './db';
-import { sendEmail } from './mail';
+import { sendEmail, enqueuePendingEmail } from './mail';
 import { exec } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 
 class Scheduler {
     private interval: NodeJS.Timeout | null = null;
+    private lastRunMinute = -1;
     private tasks: { name: string; cron: string; run: () => Promise<void> }[] = [];
 
     constructor() {
@@ -22,12 +23,15 @@ class Scheduler {
         if (this.interval) return;
         console.log('Scheduler Started');
 
+        // Poll every 5 seconds; only run tasks once per minute regardless of server start time
         this.interval = setInterval(() => {
             const now = new Date();
-            if (now.getSeconds() < 2) {
+            const minuteKey = now.getHours() * 60 + now.getMinutes();
+            if (minuteKey !== this.lastRunMinute) {
+                this.lastRunMinute = minuteKey;
                 this.checkTasks(now);
             }
-        }, 1000 * 60);
+        }, 5000);
     }
 
     stop() {
@@ -212,16 +216,15 @@ class Scheduler {
 </body>
 </html>`;
 
-        await sendEmail('reporting', {
+        const emailOpts = {
             to: recipients,
             subject: `[TopShelf] ${schedule.report_name} — ${schedule.frequency.charAt(0).toUpperCase() + schedule.frequency.slice(1)} Report`,
             html,
             text: `TopShelf Scheduled Report: ${schedule.report_name}\nGenerated: ${new Date().toLocaleString()}\n\nView your full report at: ${appUrl}/admin/reports`,
-        }, {
-            emailType: 'scheduled_report',
-            organizationId: schedule.organization_id,
-            scheduled: true,
-        });
+        };
+        const emailCtx = { emailType: 'scheduled_report' as const, organizationId: schedule.organization_id, scheduled: true };
+        const pendingId = await enqueuePendingEmail('reporting', emailOpts, emailCtx);
+        await sendEmail('reporting', emailOpts, emailCtx, pendingId ?? undefined);
 
         console.log(`[Scheduler] Sent scheduled report "${schedule.report_name}" to ${recipients.join(', ')}`);
     }
@@ -387,16 +390,15 @@ class Scheduler {
 </body>
 </html>`;
 
-                await sendEmail('reporting', {
+                const lsOpts = {
                     to: recipients,
                     subject: title,
                     html,
                     text: `${title}\n\n${lowItems.map((i: any) => `${i.name}: ${i.quantity} (threshold: ${i.low_stock_threshold ?? threshold})`).join('\n')}\n\nView inventory: ${appUrl}/inventory`,
-                }, {
-                    emailType: 'low_stock_alert',
-                    organizationId: s.organization_id,
-                    scheduled: true,
-                });
+                };
+                const lsCtx = { emailType: 'low_stock_alert' as const, organizationId: s.organization_id, scheduled: true };
+                const lsPendingId = await enqueuePendingEmail('reporting', lsOpts, lsCtx);
+                await sendEmail('reporting', lsOpts, lsCtx, lsPendingId ?? undefined);
 
                 console.log(`[Scheduler] Sent low stock alert for org ${s.organization_id} to ${recipients.join(', ')}`);
             }

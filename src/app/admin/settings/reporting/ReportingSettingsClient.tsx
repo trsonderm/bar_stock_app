@@ -26,6 +26,10 @@ export default function ReportingSettingsClient() {
         shift_report_schedule: { frequency: 'per_shift', time: '00:00' } as any,
         shift_report_enabled: 'false',
         shift_report_title: 'Shift Close Report',
+
+        audit_alert_enabled: 'false',
+        audit_alert_emails: { to: [], cc: [], bcc: [] } as any,
+        audit_alert_actions: 'both',
     });
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -78,6 +82,9 @@ export default function ReportingSettingsClient() {
                     shift_report_schedule: parseShiftSchedule(s.shift_report_schedule),
                     shift_report_enabled: s.shift_report_enabled || 'false',
                     shift_report_title: s.shift_report_title || 'Shift Close Report',
+                    audit_alert_enabled: s.audit_alert_enabled || 'false',
+                    audit_alert_emails: parseEmails(s.audit_alert_emails),
+                    audit_alert_actions: s.audit_alert_actions || 'both',
                 }));
             }
             if (subData) {
@@ -508,6 +515,51 @@ export default function ReportingSettingsClient() {
                             </div>
                         </div>
                     )}
+
+                    {/* ── Stock Activity / Audit Alerts ── */}
+                    <div style={{ borderTop: '1px solid #374151', paddingTop: '1.5rem', marginTop: '1.5rem' }}>
+                        <div className={styles.cardTitle} style={{ marginBottom: '0.75rem' }}>Stock Activity Alerts</div>
+                        <p style={{ color: '#9ca3af', fontSize: '0.875rem', marginBottom: '1rem' }}>
+                            Send an email notification every time stock is added or removed. Useful for auditing inventory changes in real time.
+                        </p>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', color: '#d1d5db', fontSize: '0.9rem' }}>
+                                <input
+                                    type="checkbox"
+                                    checked={settings.audit_alert_enabled === 'true'}
+                                    onChange={e => setSettings(prev => ({ ...prev, audit_alert_enabled: e.target.checked ? 'true' : 'false' }))}
+                                    style={{ width: 16, height: 16, accentColor: '#3b82f6' }}
+                                />
+                                Enable stock activity alerts
+                            </label>
+                        </div>
+
+                        {settings.audit_alert_enabled === 'true' && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', paddingLeft: '0.5rem' }}>
+                                <div>
+                                    <label className={styles.statLabel}>Trigger on</label>
+                                    <select
+                                        value={settings.audit_alert_actions}
+                                        onChange={e => setSettings(prev => ({ ...prev, audit_alert_actions: e.target.value }))}
+                                        style={{ background: '#1f2937', color: '#d1d5db', border: '1px solid #374151', borderRadius: 6, padding: '6px 10px', fontSize: '0.875rem', marginTop: '0.25rem' }}
+                                    >
+                                        <option value="both">Additions &amp; Subtractions</option>
+                                        <option value="add">Additions only</option>
+                                        <option value="subtract">Subtractions only</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className={styles.statLabel}>Alert Recipients</label>
+                                    <RecipientSelector
+                                        users={allUsers}
+                                        value={settings.audit_alert_emails}
+                                        onChange={val => setSettings(prev => ({ ...prev, audit_alert_emails: val }))}
+                                    />
+                                </div>
+                            </div>
+                        )}
+                    </div>
 
                     <div style={{ marginTop: '1rem', display: 'flex', gap: '1rem' }}>
                         <button

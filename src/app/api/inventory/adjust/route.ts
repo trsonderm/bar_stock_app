@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { pool } from '@/lib/db';
+import { pool, db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
+import { sendEmail, enqueuePendingEmail } from '@/lib/mail';
 
 export async function POST(req: NextRequest) {
     try {
@@ -119,6 +120,81 @@ export async function POST(req: NextRequest) {
             }
 
             await client.query('COMMIT');
+
+            // Fire audit alert email if configured (non-fatal)
+            try {
+                const auditSettings = await db.query(`
+                    SELECT key, value FROM settings
+                    WHERE organization_id = $1
+                      AND key IN ('audit_alert_enabled','audit_alert_emails','audit_alert_actions')
+                `, [organizationId]);
+                const sm: Record<string, string> = {};
+                auditSettings.forEach((r: any) => sm[r.key] = r.value);
+
+                if (sm.audit_alert_enabled === 'true') {
+                    const triggerOn = sm.audit_alert_actions || 'both';
+                    const shouldTrigger =
+                        triggerOn === 'both' ||
+                        (triggerOn === 'add' && action === 'ADD_STOCK') ||
+                        (triggerOn === 'subtract' && action === 'SUBTRACT_STOCK');
+
+                    if (shouldTrigger) {
+                        let recipients: string[] = [];
+                        try {
+                            const parsed = sm.audit_alert_emails ? JSON.parse(sm.audit_alert_emails) : null;
+                            if (parsed?.to) recipients = parsed.to;
+                            else if (sm.audit_alert_emails) recipients = sm.audit_alert_emails.split(',').map((e: string) => e.trim()).filter(Boolean);
+                        } catch { }
+
+                        if (recipients.length > 0) {
+                            const org = await db.one('SELECT name FROM organizations WHERE id = $1', [organizationId]);
+                            const orgName = org?.name || 'TopShelf';
+                            const actionLabel = action === 'ADD_STOCK' ? 'Stock Added' : 'Stock Removed';
+                            const qtyLabel = action === 'ADD_STOCK' ? `+${Math.abs(change)}` : `-${Math.abs(change)}`;
+                            const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.topshelfinventory.com';
+                            const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;padding:32px 16px">
+    <tr><td align="center">
+      <table width="520" cellpadding="0" cellspacing="0" style="background:white;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08)">
+        <tr>
+          <td style="background:linear-gradient(135deg,#1e293b 0%,#0f172a 100%);padding:24px 36px">
+            <div style="color:#fbbf24;font-weight:700;font-size:13px;margin-bottom:4px">${orgName}</div>
+            <div style="color:white;font-weight:700;font-size:18px">${actionLabel} — Audit Alert</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:28px 36px">
+            <table width="100%" cellpadding="0" cellspacing="0">
+              <tr><td style="padding:6px 0;color:#6b7280;font-size:14px">Item</td><td style="padding:6px 0;font-weight:600;font-size:14px;text-align:right">${item.name}</td></tr>
+              <tr><td style="padding:6px 0;color:#6b7280;font-size:14px">Change</td><td style="padding:6px 0;font-weight:700;font-size:14px;text-align:right;color:${action === 'ADD_STOCK' ? '#10b981' : '#ef4444'}">${qtyLabel}</td></tr>
+              <tr><td style="padding:6px 0;color:#6b7280;font-size:14px">New Quantity</td><td style="padding:6px 0;font-weight:600;font-size:14px;text-align:right">${newQuantity}</td></tr>
+              <tr><td style="padding:6px 0;color:#6b7280;font-size:14px">Staff</td><td style="padding:6px 0;font-size:14px;text-align:right">${session.firstName || ''} ${session.lastName || ''}</td></tr>
+              <tr><td style="padding:6px 0;color:#6b7280;font-size:14px">Time</td><td style="padding:6px 0;font-size:13px;text-align:right;color:#9ca3af">${new Date().toLocaleString()}</td></tr>
+            </table>
+            <p style="margin:24px 0 0;text-align:center">
+              <a href="${appUrl}/inventory" style="background:#1d4ed8;color:white;text-decoration:none;padding:10px 24px;border-radius:8px;font-size:13px;font-weight:600;display:inline-block">View Inventory</a>
+            </p>
+          </td>
+        </tr>
+        <tr><td style="background:#f8fafc;padding:14px 36px;border-top:1px solid #e2e8f0;text-align:center">
+          <p style="margin:0;color:#9ca3af;font-size:11px">TopShelf Inventory &bull; <a href="${appUrl}/admin/settings/reporting" style="color:#9ca3af">Manage Alerts</a></p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`;
+                            const opts = { to: recipients, subject: `[${orgName}] ${actionLabel}: ${item.name} (${qtyLabel})`, html, text: `${actionLabel}\nItem: ${item.name}\nChange: ${qtyLabel}\nNew Qty: ${newQuantity}\nStaff: ${session.firstName || ''} ${session.lastName || ''}` };
+                            const ctx = { emailType: 'manual' as const, organizationId, orgName };
+                            const pid = await enqueuePendingEmail('reporting', opts, ctx);
+                            await sendEmail('reporting', opts, ctx, pid ?? undefined);
+                        }
+                    }
+                }
+            } catch (alertErr) {
+                console.error('[adjust] Audit alert email error:', alertErr);
+            }
+
             return NextResponse.json({ success: true });
 
         } catch (err) {

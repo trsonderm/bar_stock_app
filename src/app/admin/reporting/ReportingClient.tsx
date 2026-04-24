@@ -42,7 +42,21 @@ export default function ReportingClient() {
         { id: 'bottle_levels', name: 'Bottle Levels', icon: <BarChart2 size={18} /> },
         { id: 'usage_trends', name: 'Usage Trends', icon: <BarChart2 size={18} /> },
         { id: 'employee_usage', name: 'Employee Usage', icon: <UserCheck size={18} /> },
+        { id: 'audit_activity', name: 'Audit Log', icon: <FileText size={18} /> },
+        { id: 'order_checkins', name: 'Order Check-ins', icon: <Activity size={18} /> },
     ];
+
+    // Audit Activity State
+    const [auditData, setAuditData] = useState<{ rows: any[]; total: number }>({ rows: [], total: 0 });
+    const [auditLoading, setAuditLoading] = useState(false);
+    const [auditView, setAuditView] = useState<'log' | 'by_date' | 'by_employee'>('log');
+    const [auditAction, setAuditAction] = useState<'both' | 'add' | 'subtract'>('both');
+    const [auditPage, setAuditPage] = useState(1);
+
+    // Order Check-ins State
+    const [orderCheckinsData, setOrderCheckinsData] = useState<any[]>([]);
+    const [orderCheckinsLoading, setOrderCheckinsLoading] = useState(false);
+    const [orderCheckinsGroupBy, setOrderCheckinsGroupBy] = useState<'date' | 'user'>('date');
 
     // --- Sub-View States ---
     // Builder
@@ -102,6 +116,26 @@ export default function ReportingClient() {
     const [empUsageLoading, setEmpUsageLoading] = useState(false);
     const [empFilters, setEmpFilters] = useState({ shiftId: '', userIds: [] as number[] });
 
+    const fetchAuditActivity = async () => {
+        setAuditLoading(true);
+        try {
+            const params = new URLSearchParams({ view: auditView, start: dateRange.start, end: dateRange.end, action: auditAction, page: String(auditPage) });
+            const res = await fetch(`/api/admin/reports/audit-activity?${params}`);
+            const d = await res.json();
+            setAuditData({ rows: d.rows || [], total: d.total || d.rows?.length || 0 });
+        } catch (e) { console.error(e); } finally { setAuditLoading(false); }
+    };
+
+    const fetchOrderCheckins = async () => {
+        setOrderCheckinsLoading(true);
+        try {
+            const params = new URLSearchParams({ view: 'order_checkins', start: dateRange.start, end: dateRange.end, groupBy: orderCheckinsGroupBy });
+            const res = await fetch(`/api/admin/reports/audit-activity?${params}`);
+            const d = await res.json();
+            setOrderCheckinsData(d.rows || []);
+        } catch (e) { console.error(e); } finally { setOrderCheckinsLoading(false); }
+    };
+
     // --- Report Config State ---
     const [configExpanded, setConfigExpanded] = useState(false);
     const [reportConfig, setReportConfig] = useState({
@@ -134,7 +168,17 @@ export default function ReportingClient() {
         if (selectedReportId === 'daily_report') fetchDailyReport();
         if (selectedReportId === 'usage_trends') fetchUsageData();
         if (selectedReportId === 'employee_usage') fetchEmployeeUsage();
+        if (selectedReportId === 'audit_activity') fetchAuditActivity();
+        if (selectedReportId === 'order_checkins') fetchOrderCheckins();
     }, [selectedReportId, dateRange, blFilters, empFilters, selectedCategory, reportConfig.locationId]); // Dependencies for refetching
+
+    useEffect(() => {
+        if (selectedReportId === 'audit_activity') fetchAuditActivity();
+    }, [auditView, auditAction, auditPage]);
+
+    useEffect(() => {
+        if (selectedReportId === 'order_checkins') fetchOrderCheckins();
+    }, [orderCheckinsGroupBy]);
 
     const fetchSettings = () => {
         fetch('/api/admin/settings').then(r => r.json()).then(d => {
@@ -349,6 +393,8 @@ export default function ReportingClient() {
         if (selectedReportId === 'employee_usage') fetchEmployeeUsage();
         if (selectedReportId === 'bottle_levels') fetchBottleData();
         if (selectedReportId === 'low_stock') fetchLowStock();
+        if (selectedReportId === 'audit_activity') fetchAuditActivity();
+        if (selectedReportId === 'order_checkins') fetchOrderCheckins();
     };
 
     const handlePrint = () => {
@@ -1457,6 +1503,207 @@ export default function ReportingClient() {
                         ))}
                     </div>
                 )}
+                {/* --- AUDIT LOG --- */}
+                {selectedReportId === 'audit_activity' && (
+                    <div>
+                        {/* Filters */}
+                        <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                            {/* Sub-view tabs */}
+                            {(['log', 'by_date', 'by_employee'] as const).map(v => (
+                                <button key={v} onClick={() => { setAuditView(v); setAuditPage(1); }}
+                                    style={{ padding: '5px 14px', borderRadius: 6, border: '1px solid', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600,
+                                        borderColor: auditView === v ? '#3b82f6' : '#374151',
+                                        background: auditView === v ? '#1d4ed8' : 'transparent',
+                                        color: auditView === v ? 'white' : '#9ca3af' }}>
+                                    {v === 'log' ? 'Full Log' : v === 'by_date' ? 'By Date' : 'By Employee'}
+                                </button>
+                            ))}
+                            <select value={auditAction} onChange={e => { setAuditAction(e.target.value as any); setAuditPage(1); }}
+                                style={{ background: '#1f2937', color: '#d1d5db', border: '1px solid #374151', borderRadius: 6, padding: '5px 10px', fontSize: '0.82rem' }}>
+                                <option value="both">Additions &amp; Subtractions</option>
+                                <option value="add">Additions Only</option>
+                                <option value="subtract">Subtractions Only</option>
+                            </select>
+                        </div>
+
+                        {auditLoading && <p style={{ color: '#9ca3af' }}>Loading…</p>}
+
+                        {/* Full Log */}
+                        {!auditLoading && auditView === 'log' && (
+                            <div className={styles.card} style={{ padding: 0, overflow: 'hidden' }}>
+                                <div style={{ overflowX: 'auto' }}>
+                                    <table className={styles.table} style={{ width: '100%' }}>
+                                        <thead>
+                                            <tr>
+                                                <th>Time</th>
+                                                <th>Action</th>
+                                                <th>Item</th>
+                                                <th>Qty Change</th>
+                                                <th>Qty After</th>
+                                                <th>Staff</th>
+                                                <th>Location</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {auditData.rows.length === 0 && (
+                                                <tr><td colSpan={7} style={{ textAlign: 'center', color: '#6b7280', padding: '1.5rem' }}>No activity found for this period.</td></tr>
+                                            )}
+                                            {auditData.rows.map((r, i) => (
+                                                <tr key={i}>
+                                                    <td style={{ whiteSpace: 'nowrap', color: '#9ca3af', fontSize: '0.8rem' }}>
+                                                        {new Date(r.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}{' '}
+                                                        <span style={{ color: '#6b7280' }}>{new Date(r.timestamp).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>
+                                                    </td>
+                                                    <td>
+                                                        <span style={{ background: r.action === 'ADD_STOCK' ? '#064e3b' : '#7f1d1d', color: r.action === 'ADD_STOCK' ? '#6ee7b7' : '#fca5a5', borderRadius: 10, padding: '2px 8px', fontSize: '0.75rem', fontWeight: 700 }}>
+                                                            {r.action === 'ADD_STOCK' ? '+ ADD' : '− SUB'}
+                                                        </span>
+                                                    </td>
+                                                    <td style={{ fontWeight: 500 }}>{r.item_name || '—'}</td>
+                                                    <td style={{ color: r.action === 'ADD_STOCK' ? '#10b981' : '#ef4444', fontWeight: 700 }}>
+                                                        {r.action === 'ADD_STOCK' ? '+' : '−'}{parseFloat(r.quantity || '0')}
+                                                    </td>
+                                                    <td style={{ color: '#d1d5db' }}>{r.quantity_after ?? '—'}</td>
+                                                    <td>{r.user_name || '—'}</td>
+                                                    <td style={{ color: '#9ca3af', fontSize: '0.82rem' }}>{r.location_name || '—'}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                {/* Pagination */}
+                                {auditData.total > 100 && (
+                                    <div style={{ display: 'flex', justifyContent: 'center', gap: 8, padding: '0.75rem', borderTop: '1px solid #1f2937' }}>
+                                        <button disabled={auditPage <= 1} onClick={() => setAuditPage(p => p - 1)}
+                                            style={{ background: '#1f2937', color: auditPage <= 1 ? '#4b5563' : '#d1d5db', border: '1px solid #374151', borderRadius: 6, padding: '4px 12px', cursor: auditPage <= 1 ? 'default' : 'pointer' }}>← Prev</button>
+                                        <span style={{ color: '#9ca3af', fontSize: '0.85rem', alignSelf: 'center' }}>Page {auditPage} · {auditData.total} records</span>
+                                        <button disabled={auditPage * 100 >= auditData.total} onClick={() => setAuditPage(p => p + 1)}
+                                            style={{ background: '#1f2937', color: auditPage * 100 >= auditData.total ? '#4b5563' : '#d1d5db', border: '1px solid #374151', borderRadius: 6, padding: '4px 12px', cursor: auditPage * 100 >= auditData.total ? 'default' : 'pointer' }}>Next →</button>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* By Date */}
+                        {!auditLoading && auditView === 'by_date' && (
+                            <div className={styles.card} style={{ padding: 0, overflow: 'hidden' }}>
+                                <table className={styles.table} style={{ width: '100%' }}>
+                                    <thead>
+                                        <tr><th>Date</th><th>Action</th><th>Transactions</th><th>Total Qty</th></tr>
+                                    </thead>
+                                    <tbody>
+                                        {auditData.rows.length === 0 && (
+                                            <tr><td colSpan={4} style={{ textAlign: 'center', color: '#6b7280', padding: '1.5rem' }}>No activity found.</td></tr>
+                                        )}
+                                        {auditData.rows.map((r, i) => (
+                                            <tr key={i}>
+                                                <td style={{ whiteSpace: 'nowrap' }}>{new Date(r.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</td>
+                                                <td>
+                                                    <span style={{ background: r.action === 'ADD_STOCK' ? '#064e3b' : '#7f1d1d', color: r.action === 'ADD_STOCK' ? '#6ee7b7' : '#fca5a5', borderRadius: 10, padding: '2px 8px', fontSize: '0.75rem', fontWeight: 700 }}>
+                                                        {r.action === 'ADD_STOCK' ? 'Addition' : 'Subtraction'}
+                                                    </span>
+                                                </td>
+                                                <td>{r.transactions}</td>
+                                                <td style={{ color: r.action === 'ADD_STOCK' ? '#10b981' : '#ef4444', fontWeight: 700 }}>
+                                                    {r.action === 'ADD_STOCK' ? '+' : '−'}{parseFloat(r.total_qty || '0').toFixed(1)}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+
+                        {/* By Employee */}
+                        {!auditLoading && auditView === 'by_employee' && (
+                            <div className={styles.card} style={{ padding: 0, overflow: 'hidden' }}>
+                                <table className={styles.table} style={{ width: '100%' }}>
+                                    <thead>
+                                        <tr><th>Employee</th><th>Action</th><th>Transactions</th><th>Total Qty</th><th>Unique Items</th><th>Last Active</th></tr>
+                                    </thead>
+                                    <tbody>
+                                        {auditData.rows.length === 0 && (
+                                            <tr><td colSpan={6} style={{ textAlign: 'center', color: '#6b7280', padding: '1.5rem' }}>No activity found.</td></tr>
+                                        )}
+                                        {auditData.rows.map((r, i) => (
+                                            <tr key={i}>
+                                                <td style={{ fontWeight: 600 }}>{r.user_name || 'Unknown'}</td>
+                                                <td>
+                                                    <span style={{ background: r.action === 'ADD_STOCK' ? '#064e3b' : '#7f1d1d', color: r.action === 'ADD_STOCK' ? '#6ee7b7' : '#fca5a5', borderRadius: 10, padding: '2px 8px', fontSize: '0.75rem', fontWeight: 700 }}>
+                                                        {r.action === 'ADD_STOCK' ? 'Addition' : 'Subtraction'}
+                                                    </span>
+                                                </td>
+                                                <td>{r.transactions}</td>
+                                                <td style={{ color: r.action === 'ADD_STOCK' ? '#10b981' : '#ef4444', fontWeight: 700 }}>
+                                                    {r.action === 'ADD_STOCK' ? '+' : '−'}{parseFloat(r.total_qty || '0').toFixed(1)}
+                                                </td>
+                                                <td>{r.unique_items}</td>
+                                                <td style={{ color: '#9ca3af', fontSize: '0.8rem' }}>{r.last_at ? new Date(r.last_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—'}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* --- ORDER CHECK-INS --- */}
+                {selectedReportId === 'order_checkins' && (
+                    <div>
+                        <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem', alignItems: 'center' }}>
+                            {(['date', 'user'] as const).map(g => (
+                                <button key={g} onClick={() => setOrderCheckinsGroupBy(g)}
+                                    style={{ padding: '5px 14px', borderRadius: 6, border: '1px solid', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600,
+                                        borderColor: orderCheckinsGroupBy === g ? '#3b82f6' : '#374151',
+                                        background: orderCheckinsGroupBy === g ? '#1d4ed8' : 'transparent',
+                                        color: orderCheckinsGroupBy === g ? 'white' : '#9ca3af' }}>
+                                    Group by {g === 'date' ? 'Date' : 'Employee'}
+                                </button>
+                            ))}
+                        </div>
+
+                        {orderCheckinsLoading && <p style={{ color: '#9ca3af' }}>Loading…</p>}
+
+                        {!orderCheckinsLoading && (
+                            <div className={styles.card} style={{ padding: 0, overflow: 'hidden' }}>
+                                <table className={styles.table} style={{ width: '100%' }}>
+                                    <thead>
+                                        {orderCheckinsGroupBy === 'date' ? (
+                                            <tr><th>Date</th><th>Check-ins</th><th>Orders</th><th>Total Qty Received</th><th>Employees</th></tr>
+                                        ) : (
+                                            <tr><th>Employee</th><th>Check-ins</th><th>Orders</th><th>Total Qty Received</th><th>Last Active</th></tr>
+                                        )}
+                                    </thead>
+                                    <tbody>
+                                        {orderCheckinsData.length === 0 && (
+                                            <tr><td colSpan={5} style={{ textAlign: 'center', color: '#6b7280', padding: '1.5rem' }}>No order check-ins found for this period.</td></tr>
+                                        )}
+                                        {orderCheckinsGroupBy === 'date' && orderCheckinsData.map((r, i) => (
+                                            <tr key={i}>
+                                                <td style={{ whiteSpace: 'nowrap' }}>{new Date(r.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</td>
+                                                <td style={{ fontWeight: 600 }}>{r.checkin_count}</td>
+                                                <td>{r.unique_orders}</td>
+                                                <td style={{ color: '#10b981', fontWeight: 700 }}>+{parseFloat(r.total_qty_received || '0').toFixed(1)}</td>
+                                                <td>{r.unique_users}</td>
+                                            </tr>
+                                        ))}
+                                        {orderCheckinsGroupBy === 'user' && orderCheckinsData.map((r, i) => (
+                                            <tr key={i}>
+                                                <td style={{ fontWeight: 600 }}>{r.user_name || 'Unknown'}</td>
+                                                <td style={{ fontWeight: 600 }}>{r.checkin_count}</td>
+                                                <td>{r.unique_orders}</td>
+                                                <td style={{ color: '#10b981', fontWeight: 700 }}>+{parseFloat(r.total_qty_received || '0').toFixed(1)}</td>
+                                                <td style={{ color: '#9ca3af', fontSize: '0.8rem' }}>{r.last_at ? new Date(r.last_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—'}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </div>
+                )}
+
                 {/* Mock Preview Overlay - Only for other reports if needed, or remove completely if Daily Report handles it internally */}
                 {/* <MockPreviewOverlay /> */}
 

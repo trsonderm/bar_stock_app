@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
-import { sendEmail } from '@/lib/mail';
+import { sendEmail, enqueuePendingEmail } from '@/lib/mail';
 import { buildShiftReportHtml } from '@/lib/shift-report-email';
 
 export async function GET(req: NextRequest) {
@@ -171,12 +171,15 @@ export async function POST(req: NextRequest) {
                         const subject = settingsMap.shift_report_title || 'Shift Close Report';
                         const dateStr = new Date((result as any).closed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
                         const html = buildShiftReportHtml(fullShift, orgName);
-                        await sendEmail('reporting', {
+                        const shiftOpts = {
                             to: recipients,
                             subject: `${subject} — ${fullShift.user_name || 'Staff'} — ${dateStr}`,
                             html,
                             text: `Shift Close Report\nDate: ${dateStr}\nStaff: ${fullShift.user_name || 'N/A'}\nBag Amount: ${bagAmount}\nOver/Short: ${overShort}`,
-                        }, { emailType: 'shift_report', organizationId, orgName });
+                        };
+                        const shiftCtx = { emailType: 'shift_report' as const, organizationId, orgName, scheduled: false };
+                        const pendingId = await enqueuePendingEmail('reporting', shiftOpts, shiftCtx);
+                        await sendEmail('reporting', shiftOpts, shiftCtx, pendingId ?? undefined);
                     }
                 }
             }

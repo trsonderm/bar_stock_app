@@ -46,33 +46,72 @@ export async function getSmtpConfig(tier: MailTier) {
     };
 }
 
-export async function sendEmail(
+export async function enqueuePendingEmail(
     tier: MailTier,
     options: { to: string | string[]; subject: string; text?: string; html?: string },
     context?: EmailContext
+): Promise<number | null> {
+    const toArr = Array.isArray(options.to) ? options.to : [options.to];
+    try {
+        const row = await db.one(
+            `INSERT INTO email_log
+                (organization_id, org_name, email_type, tier, subject, recipients, html_body, text_body, status, scheduled)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'pending',$9)
+             RETURNING id`,
+            [
+                context?.organizationId ?? null,
+                context?.orgName ?? null,
+                context?.emailType ?? 'other',
+                tier,
+                options.subject ?? null,
+                JSON.stringify({ to: toArr }),
+                options.html ?? null,
+                options.text ?? null,
+                context?.scheduled ?? false,
+            ]
+        );
+        return row?.id ?? null;
+    } catch (e) {
+        console.error('[mail] Failed to enqueue pending email:', e);
+        return null;
+    }
+}
+
+export async function sendEmail(
+    tier: MailTier,
+    options: { to: string | string[]; subject: string; text?: string; html?: string },
+    context?: EmailContext,
+    pendingLogId?: number
 ): Promise<boolean> {
     const toArr = Array.isArray(options.to) ? options.to : [options.to];
 
     const logAttempt = async (status: 'sent' | 'failed' | 'skipped', errorMessage?: string) => {
         try {
-            await db.execute(
-                `INSERT INTO email_log
-                    (organization_id, org_name, email_type, tier, subject, recipients, html_body, text_body, status, error_message, scheduled)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-                [
-                    context?.organizationId ?? null,
-                    context?.orgName ?? null,
-                    context?.emailType ?? 'other',
-                    tier,
-                    options.subject ?? null,
-                    JSON.stringify({ to: toArr }),
-                    options.html ?? null,
-                    options.text ?? null,
-                    status,
-                    errorMessage ?? null,
-                    context?.scheduled ?? false,
-                ]
-            );
+            if (pendingLogId) {
+                await db.execute(
+                    `UPDATE email_log SET status=$1, error_message=$2, sent_at=NOW() WHERE id=$3`,
+                    [status, errorMessage ?? null, pendingLogId]
+                );
+            } else {
+                await db.execute(
+                    `INSERT INTO email_log
+                        (organization_id, org_name, email_type, tier, subject, recipients, html_body, text_body, status, error_message, scheduled)
+                     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+                    [
+                        context?.organizationId ?? null,
+                        context?.orgName ?? null,
+                        context?.emailType ?? 'other',
+                        tier,
+                        options.subject ?? null,
+                        JSON.stringify({ to: toArr }),
+                        options.html ?? null,
+                        options.text ?? null,
+                        status,
+                        errorMessage ?? null,
+                        context?.scheduled ?? false,
+                    ]
+                );
+            }
         } catch (e) {
             console.error('[mail] Failed to write email_log:', e);
         }

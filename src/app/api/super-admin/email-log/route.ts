@@ -34,7 +34,8 @@ export async function GET(req: NextRequest) {
                 since = new Date(now.getTime() - 90 * 86400000).toISOString();
             }
 
-            const conditions: string[] = [`el.sent_at >= $1`];
+            // Always include pending items regardless of period, or filter by sent_at for others
+            const conditions: string[] = [`(el.status = 'pending' OR el.sent_at >= $1)`];
             const params: any[] = [since];
             let pIdx = 2;
 
@@ -56,7 +57,7 @@ export async function GET(req: NextRequest) {
                     FROM email_log el
                     LEFT JOIN organizations o ON el.organization_id = o.id
                     WHERE ${where}
-                    ORDER BY el.sent_at DESC
+                    ORDER BY (el.status = 'pending') DESC, el.sent_at DESC
                     LIMIT $${pIdx} OFFSET $${pIdx + 1}
                 `, [...params, limit, offset]),
                 db.one(`SELECT COUNT(*) AS total FROM email_log el WHERE ${where}`, params),

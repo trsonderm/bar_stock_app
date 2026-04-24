@@ -12,7 +12,7 @@ interface HistoryRow {
     tier: string;
     subject: string | null;
     recipients: { to: string[] } | null;
-    status: 'sent' | 'failed' | 'skipped';
+    status: 'pending' | 'sent' | 'failed' | 'skipped';
     error_message: string | null;
     scheduled: boolean;
     sent_at: string;
@@ -61,6 +61,7 @@ const TYPE_COLORS: Record<string, string> = {
 };
 
 const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
+    pending: { bg: '#1e3a5f', text: '#93c5fd' },
     sent:    { bg: '#064e3b', text: '#6ee7b7' },
     failed:  { bg: '#7f1d1d', text: '#fca5a5' },
     skipped: { bg: '#1c1917', text: '#a8a29e' },
@@ -145,6 +146,15 @@ export default function MailQueueClient() {
     useEffect(() => {
         if (mainTab === 'history') loadHistory();
     }, [mainTab, loadHistory]);
+
+    // Auto-refresh history every 15 seconds when there are pending items
+    useEffect(() => {
+        if (mainTab !== 'history') return;
+        const hasPending = history.some(r => r.status === 'pending');
+        if (!hasPending) return;
+        const t = setInterval(loadHistory, 15000);
+        return () => clearInterval(t);
+    }, [mainTab, history, loadHistory]);
 
     const openDetail = async (id: number) => {
         setDetailLoading(true);
@@ -266,6 +276,7 @@ export default function MailQueueClient() {
                         <select value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setHistPage(1); }}
                             style={{ background: '#1f2937', color: '#d1d5db', border: '1px solid #374151', borderRadius: 6, padding: '5px 10px', fontSize: '0.82rem' }}>
                             <option value="">All Statuses</option>
+                            <option value="pending">Pending</option>
                             <option value="sent">Sent</option>
                             <option value="failed">Failed</option>
                             <option value="skipped">Skipped</option>

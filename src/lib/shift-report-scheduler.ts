@@ -1,5 +1,5 @@
 import { db } from './db';
-import { sendEmail } from './mail';
+import { sendEmail, enqueuePendingEmail } from './mail';
 import { buildShiftReportHtml } from './shift-report-email';
 
 export async function runShiftReportSchedule(): Promise<void> {
@@ -153,12 +153,15 @@ async function sendAllShiftsEmail(
 </body>
 </html>`;
 
-    await sendEmail('reporting', {
+    const srOpts = {
         to: recipients,
         subject: `${subjectPrefix} — ${frequency.charAt(0).toUpperCase() + frequency.slice(1)} Digest — ${periodLabel}`,
         html,
         text: `${subjectPrefix}\nPeriod: ${periodLabel}\nShifts: ${shifts.length}\n\nView at: ${appUrl}/admin/shift-reports`,
-    }, { emailType: 'shift_report', organizationId, orgName, scheduled: true });
+    };
+    const srCtx = { emailType: 'shift_report' as const, organizationId, orgName, scheduled: true };
+    const srPendingId = await enqueuePendingEmail('reporting', srOpts, srCtx);
+    await sendEmail('reporting', srOpts, srCtx, srPendingId ?? undefined);
 }
 
 async function sendSummaryEmail(
@@ -253,10 +256,13 @@ async function sendSummaryEmail(
 </body>
 </html>`;
 
-    await sendEmail('reporting', {
+    const sumOpts = {
         to: recipients,
         subject: `${subjectPrefix} — ${frequency.charAt(0).toUpperCase() + frequency.slice(1)} Summary — ${periodLabel}`,
         html,
         text: `${subjectPrefix} Summary\nPeriod: ${periodLabel}\nShifts: ${summary.total_shifts}\nTotal Bag: ${fmt(summary.total_bag_amount)}\nOver/Short: ${fmt(summary.total_over_short)}\n\nView at: ${appUrl}/admin/shift-reports`,
-    }, { emailType: 'shift_report', organizationId, orgName, scheduled: true });
+    };
+    const sumCtx = { emailType: 'shift_report' as const, organizationId, orgName, scheduled: true };
+    const sumPendingId = await enqueuePendingEmail('reporting', sumOpts, sumCtx);
+    await sendEmail('reporting', sumOpts, sumCtx, sumPendingId ?? undefined);
 }
