@@ -24,8 +24,12 @@ interface BillingConfig {
     billing_provider: string; stripe_mode: string;
     stripe_secret_key: string; stripe_publishable_key: string;
     stripe_webhook_secret: string;
-    stripe_pro_monthly_price_id: string; stripe_pro_yearly_price_id: string;
-    pro_monthly_price: string; pro_yearly_price: string;
+    stripe_basic_monthly_price_id: string;      stripe_basic_yearly_price_id: string;
+    stripe_pro_monthly_price_id: string;        stripe_pro_yearly_price_id: string;
+    stripe_enterprise_monthly_price_id: string; stripe_enterprise_yearly_price_id: string;
+    basic_monthly_price: string;    basic_yearly_price: string;
+    pro_monthly_price: string;      pro_yearly_price: string;
+    enterprise_monthly_price: string; enterprise_yearly_price: string;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -78,9 +82,13 @@ export default function BillingDashboardClient() {
     // Settings state
     const [cfg, setCfg] = useState<BillingConfig>({
         billing_provider: 'stripe', stripe_mode: 'test',
-        stripe_secret_key: '', stripe_publishable_key: '',
-        stripe_webhook_secret: '', stripe_pro_monthly_price_id: '',
-        stripe_pro_yearly_price_id: '', pro_monthly_price: '49', pro_yearly_price: '490',
+        stripe_secret_key: '', stripe_publishable_key: '', stripe_webhook_secret: '',
+        stripe_basic_monthly_price_id: '',      stripe_basic_yearly_price_id: '',
+        stripe_pro_monthly_price_id: '',        stripe_pro_yearly_price_id: '',
+        stripe_enterprise_monthly_price_id: '', stripe_enterprise_yearly_price_id: '',
+        basic_monthly_price: '19',    basic_yearly_price: '190',
+        pro_monthly_price: '49',      pro_yearly_price: '490',
+        enterprise_monthly_price: '',  enterprise_yearly_price: '',
     });
     const [cfgLoading, setCfgLoading] = useState(false);
     const [cfgSaving, setCfgSaving] = useState(false);
@@ -444,7 +452,7 @@ export default function BillingDashboardClient() {
                                         <select defaultValue={o.subscription_plan}
                                             onChange={e => updateOrgPlan(o.id, e.target.value, o.billing_status)}
                                             style={{ background: '#1e293b', color: '#e2e8f0', border: '1px solid #334155', borderRadius: 6, padding: '3px 8px', fontSize: '0.8rem', cursor: 'pointer' }}>
-                                            {['free_trial','free','pro','monthly','yearly'].map(p => <option key={p} value={p}>{p}</option>)}
+                                            {['free_trial','basic','pro','enterprise'].map(p => <option key={p} value={p}>{p}</option>)}
                                         </select>
                                     </td>
                                     <td style={{ padding: '10px 16px' }}>
@@ -494,17 +502,28 @@ export default function BillingDashboardClient() {
 
                     {/* Pricing */}
                     <div style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 12, padding: '1.5rem' }}>
-                        <div style={{ color: 'white', fontWeight: 700, marginBottom: '1rem' }}>Pricing</div>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-                            <div>
-                                <label style={{ color: '#64748b', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Monthly Price ($)</label>
-                                <input type="number" value={cfg.pro_monthly_price} onChange={e => setCfg(p => ({ ...p, pro_monthly_price: e.target.value }))} style={inputStyle} />
+                        <div style={{ color: 'white', fontWeight: 700, marginBottom: '1rem' }}>Plan Pricing</div>
+                        {[
+                            { tier: 'Basic',      mKey: 'basic_monthly_price',      yKey: 'basic_yearly_price',      color: '#60a5fa' },
+                            { tier: 'Pro',        mKey: 'pro_monthly_price',        yKey: 'pro_yearly_price',        color: '#a78bfa' },
+                            { tier: 'Enterprise', mKey: 'enterprise_monthly_price', yKey: 'enterprise_yearly_price', color: '#34d399' },
+                        ].map(({ tier, mKey, yKey, color }) => (
+                            <div key={tier} style={{ marginBottom: '1rem' }}>
+                                <div style={{ color, fontSize: '0.78rem', fontWeight: 700, marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{tier}</div>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                                    <div>
+                                        <label style={{ color: '#64748b', fontSize: '0.75rem', display: 'block', marginBottom: 3 }}>Monthly Price ($)</label>
+                                        <input type="number" value={(cfg as any)[mKey]} placeholder={tier === 'Enterprise' ? 'Custom' : ''}
+                                            onChange={e => setCfg(p => ({ ...p, [mKey]: e.target.value }))} style={inputStyle} />
+                                    </div>
+                                    <div>
+                                        <label style={{ color: '#64748b', fontSize: '0.75rem', display: 'block', marginBottom: 3 }}>Yearly Price ($)</label>
+                                        <input type="number" value={(cfg as any)[yKey]} placeholder={tier === 'Enterprise' ? 'Custom' : ''}
+                                            onChange={e => setCfg(p => ({ ...p, [yKey]: e.target.value }))} style={inputStyle} />
+                                    </div>
+                                </div>
                             </div>
-                            <div>
-                                <label style={{ color: '#64748b', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>Yearly Price ($)</label>
-                                <input type="number" value={cfg.pro_yearly_price} onChange={e => setCfg(p => ({ ...p, pro_yearly_price: e.target.value }))} style={inputStyle} />
-                            </div>
-                        </div>
+                        ))}
                     </div>
 
                     {/* Stripe Config */}
@@ -531,17 +550,30 @@ export default function BillingDashboardClient() {
                             </p>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                                 {[
-                                    ['stripe_secret_key', cfg.stripe_mode === 'test' ? 'Secret Key (sk_test_…)' : 'Secret Key (sk_live_…)', 'password'],
+                                    ['stripe_secret_key',      cfg.stripe_mode === 'test' ? 'Secret Key (sk_test_…)' : 'Secret Key (sk_live_…)', 'password'],
                                     ['stripe_publishable_key', cfg.stripe_mode === 'test' ? 'Publishable Key (pk_test_…)' : 'Publishable Key (pk_live_…)', 'text'],
-                                    ['stripe_webhook_secret', 'Webhook Signing Secret (whsec_…)', 'password'],
-                                    ['stripe_pro_monthly_price_id', 'Pro Monthly Price ID (price_…)', 'text'],
-                                    ['stripe_pro_yearly_price_id', 'Pro Yearly Price ID (price_…)', 'text'],
+                                    ['stripe_webhook_secret',  'Webhook Signing Secret (whsec_…)', 'password'],
                                 ].map(([key, label, type]) => (
                                     <div key={key}>
                                         <label style={{ color: '#64748b', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>{label}</label>
                                         <input type={type} value={(cfg as any)[key]}
                                             onChange={e => setCfg(p => ({ ...p, [key]: e.target.value }))}
                                             style={inputStyle} placeholder={type === 'password' ? '••••••••••••••••' : ''} />
+                                    </div>
+                                ))}
+                                <div style={{ color: '#475569', fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginTop: 4 }}>Stripe Price IDs</div>
+                                {[
+                                    ['stripe_basic_monthly_price_id',      'Basic — Monthly Price ID (price_…)'],
+                                    ['stripe_basic_yearly_price_id',       'Basic — Yearly Price ID (price_…)'],
+                                    ['stripe_pro_monthly_price_id',        'Pro — Monthly Price ID (price_…)'],
+                                    ['stripe_pro_yearly_price_id',         'Pro — Yearly Price ID (price_…)'],
+                                    ['stripe_enterprise_monthly_price_id', 'Enterprise — Monthly Price ID (price_…)'],
+                                    ['stripe_enterprise_yearly_price_id',  'Enterprise — Yearly Price ID (price_…)'],
+                                ].map(([key, label]) => (
+                                    <div key={key}>
+                                        <label style={{ color: '#64748b', fontSize: '0.78rem', display: 'block', marginBottom: 4 }}>{label}</label>
+                                        <input value={(cfg as any)[key]} onChange={e => setCfg(p => ({ ...p, [key]: e.target.value }))}
+                                            style={inputStyle} placeholder="price_…" />
                                     </div>
                                 ))}
                             </div>

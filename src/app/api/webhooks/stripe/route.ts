@@ -140,9 +140,10 @@ export async function POST(req: NextRequest) {
                        updated_at=NOW()`,
                     [orgId, custId, subId]
                 );
+                const planName = session.metadata?.plan || 'pro';
                 await db.execute(
-                    `UPDATE organizations SET billing_status='active', subscription_plan='pro', stripe_customer_id=$1 WHERE id=$2`,
-                    [custId, orgId]
+                    `UPDATE organizations SET billing_status='active', subscription_plan=$1, stripe_customer_id=$2 WHERE id=$3`,
+                    [planName, custId, orgId]
                 );
                 break;
             }

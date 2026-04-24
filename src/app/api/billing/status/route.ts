@@ -44,7 +44,11 @@ export async function GET(req: NextRequest) {
         invoices: invoices || [],
         billingProvider: cfg.billing_provider || 'manual',
         stripeConfigured: !!cfg.stripe_secret_key,
+        basicMonthlyPrice: parseFloat((cfg as any).basic_monthly_price || '19'),
+        basicYearlyPrice: parseFloat((cfg as any).basic_yearly_price || '190'),
         monthlyPrice: parseFloat(cfg.pro_monthly_price || '49'),
         yearlyPrice: parseFloat(cfg.pro_yearly_price || '490'),
+        enterpriseMonthlyPrice: parseFloat((cfg as any).enterprise_monthly_price || '0'),
+        enterpriseYearlyPrice: parseFloat((cfg as any).enterprise_yearly_price || '0'),
     });
 }

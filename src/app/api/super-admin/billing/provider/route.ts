@@ -29,8 +29,12 @@ export async function POST(req: NextRequest) {
     const allowed = [
         'billing_provider', 'stripe_mode',
         'stripe_secret_key', 'stripe_publishable_key', 'stripe_webhook_secret',
-        'stripe_pro_monthly_price_id', 'stripe_pro_yearly_price_id',
-        'pro_monthly_price', 'pro_yearly_price',
+        'stripe_basic_monthly_price_id',      'stripe_basic_yearly_price_id',
+        'stripe_pro_monthly_price_id',        'stripe_pro_yearly_price_id',
+        'stripe_enterprise_monthly_price_id', 'stripe_enterprise_yearly_price_id',
+        'basic_monthly_price',  'basic_yearly_price',
+        'pro_monthly_price',    'pro_yearly_price',
+        'enterprise_monthly_price', 'enterprise_yearly_price',
     ];
 
     const updates: Record<string, string> = {};

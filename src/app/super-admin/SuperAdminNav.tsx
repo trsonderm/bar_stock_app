@@ -28,6 +28,7 @@ export default function SuperAdminNav() {
     const links = [
         { name: 'Mission Control', href: '/super-admin', icon: LayoutDashboard },
         { name: 'Billing', href: '/super-admin/billing', icon: CreditCard },
+        { name: 'Plan Features', href: '/super-admin/plan-features', icon: CreditCard },
         { name: 'Organizations', href: '/super-admin/organizations', icon: Building2 },
         { name: 'Support Tickets', href: '/super-admin/support', icon: Ticket },
         { name: 'Global Users', href: '/super-admin/users', icon: Users },
