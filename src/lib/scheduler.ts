@@ -13,6 +13,7 @@ class Scheduler {
         this.tasks = [
             { name: 'Daily Cleanup', cron: '0 4 * * *', run: () => this.cleanupLogs() },
             { name: 'Billing Check', cron: '0 5 * * *', run: () => this.checkBilling() },
+            { name: 'Auto Backup', cron: '0 * * * *', run: () => this.checkAutoBackup() },
             { name: 'Report Schedules', cron: '* * * * *', run: () => this.runDueReportSchedules() },
             { name: 'Low Stock Alerts', cron: '* * * * *', run: () => this.runDueLowStockAlerts() },
             { name: 'Shift Report Emails', cron: '* * * * *', run: () => this.runShiftReportEmails() },
@@ -420,19 +421,51 @@ class Scheduler {
         console.log(`[CRON] ${name}: ${status} ${error || ''}`);
     }
 
-    async runBackup() {
+    private async checkAutoBackup() {
+        try {
+            const row = await db.one("SELECT value FROM system_settings WHERE key='db_backups'");
+            if (!row) return;
+            const cfg = JSON.parse(row.value);
+            if (!cfg.cron_enabled) return;
+
+            const intervalHours: Record<string, number> = { daily: 24, weekly: 168, monthly: 720 };
+            const minHours = intervalHours[cfg.interval] ?? 168;
+
+            const backupDir = path.join(process.cwd(), 'backups');
+            let lastBackupMs = 0;
+            if (fs.existsSync(backupDir)) {
+                const files = fs.readdirSync(backupDir).filter(f => f.endsWith('.sql'));
+                for (const f of files) {
+                    const mt = fs.statSync(path.join(backupDir, f)).mtimeMs;
+                    if (mt > lastBackupMs) lastBackupMs = mt;
+                }
+            }
+
+            const hoursSinceLast = (Date.now() - lastBackupMs) / 3600000;
+            if (hoursSinceLast < minHours) return;
+
+            console.log(`[Scheduler] Auto backup triggered (interval: ${cfg.interval})`);
+            await this.runBackup();
+        } catch (e) {
+            console.error('[Scheduler] checkAutoBackup error:', e);
+        }
+    }
+
+    async runBackup(): Promise<string> {
         const backupDir = path.join(process.cwd(), 'backups');
         if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir, { recursive: true });
 
-        const filename = `backup-${new Date().toISOString().split('T')[0]}-${Date.now()}.sql`;
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const filename = `backup-${timestamp}.sql`;
         const filepath = path.join(backupDir, filename);
+        const dbUrl = process.env.DATABASE_URL || '';
 
-        const cmd = `pg_dump "${process.env.DATABASE_URL}" > "${filepath}"`;
+        const cmd = `pg_dump --clean --if-exists --no-password --dbname="${dbUrl}" --file="${filepath}"`;
 
         return new Promise((resolve, reject) => {
-            exec(cmd, (error, stdout, stderr) => {
+            exec(cmd, (error, _stdout, stderr) => {
                 if (error) {
-                    console.error(`Backup error: ${error.message}`);
+                    console.error(`[Backup] pg_dump error: ${error.message}`, stderr);
                     return reject(error);
                 }
                 resolve(filename);
@@ -443,10 +476,13 @@ class Scheduler {
     getBackups() {
         const backupDir = path.join(process.cwd(), 'backups');
         if (!fs.existsSync(backupDir)) return [];
-        return fs.readdirSync(backupDir).filter(f => f.endsWith('.sql')).map(f => ({
-            name: f,
-            created: fs.statSync(path.join(backupDir, f)).birthtime
-        }));
+        return fs.readdirSync(backupDir)
+            .filter(f => f.endsWith('.sql'))
+            .map(f => {
+                const stat = fs.statSync(path.join(backupDir, f));
+                return { name: f, size: stat.size, created: stat.mtime };
+            })
+            .sort((a, b) => b.created.getTime() - a.created.getTime());
     }
 }
 
