@@ -125,7 +125,7 @@ export async function POST(req: NextRequest) {
             }
 
             case 'checkout.session.completed': {
-                const session = event.data.object as Stripe.CheckoutSession;
+                const session = event.data.object as Stripe.Checkout.Session;
                 const custId = typeof session.customer === 'string' ? session.customer : (session.customer as any)?.id;
                 const subId = typeof session.subscription === 'string' ? session.subscription : (session.subscription as any)?.id;
                 const orgId = session.metadata?.organization_id ? parseInt(session.metadata.organization_id) : null;
