@@ -8,7 +8,10 @@ import {
     TrendingUp,
     Activity,
     AlertCircle,
-    LayoutDashboard
+    LayoutDashboard,
+    CreditCard,
+    DollarSign,
+    AlertTriangle,
 } from 'lucide-react';
 import { AdminPageHeader } from './components/AdminPageHeader';
 import { StatCard } from './components/StatCard';
@@ -22,21 +25,29 @@ interface DashboardStats {
     activity: any[];
 }
 
+interface BillingStats {
+    mrr: number;
+    activeSubs: number;
+    pastDueOrgs: number;
+}
+
 export default function SuperAdminDashboard() {
     const [stats, setStats] = useState<DashboardStats | null>(null);
+    const [billing, setBilling] = useState<BillingStats | null>(null);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        fetch('/api/super-admin/stats')
-            .then(res => res.json())
-            .then(data => {
-                setStats(data);
-                setLoading(false);
-            })
-            .catch((e) => {
-                console.error("Dashboard stats failed to stream:", e);
-                setLoading(false);
-            });
+        Promise.all([
+            fetch('/api/super-admin/stats').then(r => r.json()),
+            fetch('/api/super-admin/billing/stats').then(r => r.json()),
+        ]).then(([data, billingData]) => {
+            setStats(data);
+            if (billingData.stats) setBilling(billingData.stats);
+            setLoading(false);
+        }).catch((e) => {
+            console.error("Dashboard stats failed:", e);
+            setLoading(false);
+        });
     }, []);
 
     const actions = [
@@ -87,6 +98,51 @@ export default function SuperAdminDashboard() {
                     loading={loading}
                     trend={{ value: 0.1, label: 'uptime', positive: true }}
                 />
+            </div>
+
+            {/* Billing KPIs */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <a href="/super-admin/billing" className="group bg-slate-900 rounded-xl border border-slate-800 p-6 shadow-sm hover:border-slate-700 transition-colors">
+                    <div className="flex items-center gap-3 mb-3">
+                        <div className="w-9 h-9 rounded-lg bg-green-500/10 flex items-center justify-center">
+                            <DollarSign className="w-5 h-5 text-green-400" />
+                        </div>
+                        <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Monthly Recurring Revenue</span>
+                    </div>
+                    {loading ? (
+                        <div className="h-9 w-28 bg-slate-800 rounded animate-pulse" />
+                    ) : (
+                        <p className="text-3xl font-bold text-white">${(billing?.mrr || 0).toFixed(2)}</p>
+                    )}
+                </a>
+                <a href="/super-admin/billing" className="group bg-slate-900 rounded-xl border border-slate-800 p-6 shadow-sm hover:border-slate-700 transition-colors">
+                    <div className="flex items-center gap-3 mb-3">
+                        <div className="w-9 h-9 rounded-lg bg-blue-500/10 flex items-center justify-center">
+                            <CreditCard className="w-5 h-5 text-blue-400" />
+                        </div>
+                        <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Active Subscriptions</span>
+                    </div>
+                    {loading ? (
+                        <div className="h-9 w-16 bg-slate-800 rounded animate-pulse" />
+                    ) : (
+                        <p className="text-3xl font-bold text-white">{billing?.activeSubs || 0}</p>
+                    )}
+                </a>
+                <a href="/super-admin/billing" className="group bg-slate-900 rounded-xl border border-slate-800 p-6 shadow-sm hover:border-slate-700 transition-colors">
+                    <div className="flex items-center gap-3 mb-3">
+                        <div className="w-9 h-9 rounded-lg bg-red-500/10 flex items-center justify-center">
+                            <AlertTriangle className="w-5 h-5 text-red-400" />
+                        </div>
+                        <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Past Due</span>
+                    </div>
+                    {loading ? (
+                        <div className="h-9 w-16 bg-slate-800 rounded animate-pulse" />
+                    ) : (
+                        <p className={`text-3xl font-bold ${(billing?.pastDueOrgs || 0) > 0 ? 'text-red-400' : 'text-white'}`}>
+                            {billing?.pastDueOrgs || 0}
+                        </p>
+                    )}
+                </a>
             </div>
 
             {/* Analytics Section */}
