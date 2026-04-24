@@ -971,9 +971,9 @@ export default function UserSchedulerClient() {
                         {/* Users & Shifts */}
                         <div className="space-y-4" style={{ minWidth: '800px' }}>
                             {users.map(user => {
-                                const userSchedules = schedules.filter(s => s.user_id === user.id);
-                                if (userSchedules.length === 0) return null; // Only show active users? Or show all with empty track?
-                                // Show only users with schedules for cleaner specific day view
+                                const dayStr = formatLocalDate(currentDate);
+                                const userSchedules = schedules.filter(s => s.user_id === user.id && s.date.split('T')[0] === dayStr);
+                                if (userSchedules.length === 0) return null;
 
                                 return (
                                     <div key={user.id} className="relative h-12 flex items-center bg-gray-800/50 rounded p-2 print:bg-white print:border print:border-gray-200">
