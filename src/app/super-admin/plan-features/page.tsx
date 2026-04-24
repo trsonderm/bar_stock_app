@@ -3,9 +3,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Save, RotateCcw, Eye, EyeOff, CheckCircle, XCircle } from 'lucide-react';
 import { AdminPageHeader } from '../components/AdminPageHeader';
-import { DEFAULT_FEATURES } from '@/app/api/super-admin/plan-features/route';
+import { DEFAULT_FEATURES } from '@/lib/plan-features';
 
-type PlanFeature = typeof DEFAULT_FEATURES[number];
+import type { PlanFeature } from '@/lib/plan-features';
 
 const PLANS = [
     { key: 'basic' as const,      label: 'Basic',      color: '#60a5fa' },
