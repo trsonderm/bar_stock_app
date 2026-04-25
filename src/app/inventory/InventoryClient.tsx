@@ -877,22 +877,25 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
                                             const qty = Number(item.quantity);
                                             const mode: string = item.stock_display_mode || 'units';
 
-                                            // Resolve case size
+                                            // Resolve case size — handle both number[] and {label,amount}[] formats
                                             let unitSize = item.order_unit_size && Number(item.order_unit_size) > 1 ? Number(item.order_unit_size) : 0;
                                             if (!unitSize) {
-                                                let oArr = item.order_size;
+                                                let oArr: any = item.order_size;
                                                 if (typeof oArr === 'string') { try { oArr = JSON.parse(oArr); } catch { } }
                                                 if (Array.isArray(oArr) && oArr.length > 0) {
-                                                    const f = Number(oArr[0]);
-                                                    if (f > 1) unitSize = f;
+                                                    const amounts = oArr.map((e: any) => {
+                                                        if (typeof e === 'number') return e;
+                                                        if (e && typeof e === 'object' && 'amount' in e) return Number(e.amount);
+                                                        return 0;
+                                                    }).filter((n: number) => n > 1);
+                                                    if (amounts.length > 0) unitSize = Math.max(...amounts);
                                                 }
                                             }
 
                                             const label = item.order_unit_label || 'case';
-                                            const unitLabel = item.stock_unit_label || 'unit';
 
+                                            // Units-only mode OR no case size defined → show raw number
                                             if (mode === 'units' || !unitSize) {
-                                                // Units only — show raw number large
                                                 return (
                                                     <Typography variant="h4" fontWeight="bold" color="text.primary">
                                                         {qty.toFixed(2).replace(/\.00$/, '')}
@@ -905,25 +908,23 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
                                             const remainder = wholeUnits % unitSize;
 
                                             if (mode === 'cases') {
-                                                // Cases only — e.g. "2 cases"
-                                                const caseStr = `${cases} ${cases === 1 ? label : label + 's'}`;
                                                 return (
                                                     <Typography variant="h4" fontWeight="bold" color="text.primary" sx={{ fontSize: '1.4rem' }}>
-                                                        {caseStr}
+                                                        {cases} {cases === 1 ? label : label + 's'}
                                                     </Typography>
                                                 );
                                             }
 
-                                            // cases_and_units — e.g. "2 cases  4" side by side
+                                            // cases_and_units
                                             return (
-                                                <Box sx={{ display: 'flex', alignItems: 'flex-end', gap: 1 }}>
+                                                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 0 }}>
                                                     {cases > 0 && (
-                                                        <Typography variant="body2" sx={{ color: 'text.secondary', textAlign: 'right', lineHeight: 1.3, fontSize: '0.82rem', mb: 0.5 }}>
+                                                        <Typography variant="body2" sx={{ color: 'text.secondary', lineHeight: 1.2, fontSize: '0.8rem' }}>
                                                             {cases} {cases === 1 ? label : label + 's'}
                                                         </Typography>
                                                     )}
                                                     <Typography variant="h4" fontWeight="bold" color="text.primary">
-                                                        {remainder.toFixed(0)}
+                                                        {remainder === 0 && cases > 0 ? qty.toFixed(0) : remainder.toString()}
                                                     </Typography>
                                                 </Box>
                                             );
