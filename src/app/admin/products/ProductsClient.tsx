@@ -35,6 +35,8 @@ interface Item {
     order_unit_label?: string;
     order_unit_size?: number;
     use_category_qty_defaults?: boolean;
+    stock_display_mode?: 'units' | 'cases' | 'cases_and_units';
+    inventory_display_mode?: 'units' | 'cases' | 'cases_and_units';
     barcodes?: string[];
     aliases?: string[];
 }
@@ -88,6 +90,8 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
         custom_preset_input: '',
         barcodes: [] as string[],
         aliases: [] as string[],
+        stock_display_mode: 'units' as 'units' | 'cases' | 'cases_and_units',
+        inventory_display_mode: 'units' as 'units' | 'cases' | 'cases_and_units',
     });
 
     // Temp input for stock options
@@ -230,6 +234,8 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
             custom_preset_input: '',
             barcodes: [],
             aliases: [],
+            stock_display_mode: 'units' as 'units' | 'cases' | 'cases_and_units',
+            inventory_display_mode: 'units' as 'units' | 'cases' | 'cases_and_units',
         });
         setTempOptionInput('');
         setTempOrderLabel('Pack');
@@ -390,6 +396,8 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
             custom_preset_input: '',
             barcodes: Array.isArray(item.barcodes) ? item.barcodes : [],
             aliases: Array.isArray(item.aliases) ? item.aliases : [],
+            stock_display_mode: (item.stock_display_mode as any) || 'units',
+            inventory_display_mode: (item.inventory_display_mode as any) || 'units',
         });
 
         setModalTab('basic');
@@ -456,6 +464,8 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                 order_unit_size: formData.use_category_qty_defaults ? undefined : parseInt(formData.order_unit_size || '1'),
                 barcodes: formData.barcodes,
                 aliases: formData.aliases,
+                stock_display_mode: formData.stock_display_mode,
+                inventory_display_mode: formData.inventory_display_mode,
             };
 
             const url = '/api/inventory' + (overrideOrgId ? `?orgId=${overrideOrgId}` : '');
@@ -1138,6 +1148,44 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                                 </div>
                             </label>
 
+                            {/* Display Mode — stock view + inventory */}
+                            <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: '8px', padding: '0.875rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                <div style={{ color: 'white', fontWeight: 600, fontSize: '0.9rem' }}>Quantity Display</div>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                                    <div>
+                                        <label className={styles.statLabel} style={{ display: 'flex', alignItems: 'center', marginBottom: '0.35rem' }}>
+                                            Stock View
+                                            <Tip text="How this product's quantity is shown on the main Stock View page." />
+                                        </label>
+                                        <select className={styles.input} value={formData.stock_display_mode}
+                                            onChange={e => setFormData({ ...formData, stock_display_mode: e.target.value as any })}
+                                            style={{ minHeight: '44px', width: '100%' }}>
+                                            <option value="units">Units only — e.g. 24</option>
+                                            <option value="cases">Cases only — e.g. 2 cases</option>
+                                            <option value="cases_and_units">Cases &amp; units — e.g. 2 cases 4</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className={styles.statLabel} style={{ display: 'flex', alignItems: 'center', marginBottom: '0.35rem' }}>
+                                            Inventory / Audit
+                                            <Tip text="How this product's quantity is shown on the Inventory counting and audit pages." />
+                                        </label>
+                                        <select className={styles.input} value={formData.inventory_display_mode}
+                                            onChange={e => setFormData({ ...formData, inventory_display_mode: e.target.value as any })}
+                                            style={{ minHeight: '44px', width: '100%' }}>
+                                            <option value="units">Units only — e.g. 24</option>
+                                            <option value="cases">Cases only — e.g. 2 cases</option>
+                                            <option value="cases_and_units">Cases &amp; units — e.g. 2 cases 4</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                {(formData.stock_display_mode !== 'units' || formData.inventory_display_mode !== 'units') && (
+                                    <p style={{ color: '#64748b', fontSize: '0.75rem', margin: 0 }}>
+                                        Case display requires <strong style={{ color: '#94a3b8' }}>Order Unit Size</strong> to be set below.
+                                    </p>
+                                )}
+                            </div>
+
                             {/* Stock Counting Options — PRODUCT mode */}
                             {stockMode === 'PRODUCT' && (
                                 <div>
@@ -1145,14 +1193,30 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                                         Counting Options
                                         <Tip text="Quick-add buttons shown in Product Level counting mode. Leave empty to use category defaults." />
                                     </label>
-                                    <div style={{ background: '#1f2937', border: '1px solid #374151', borderRadius: '8px', padding: '0.75rem', display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
-                                        {formData.stock_options.map(opt => (
-                                            <span key={opt} style={{ background: '#3b82f6', color: 'white', padding: '4px 10px', borderRadius: '6px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                {opt}
-                                                <button type="button" onClick={() => setFormData(prev => ({ ...prev, stock_options: prev.stock_options.filter(o => o !== opt) }))}
-                                                    style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', padding: 0, fontWeight: 'bold' }}>×</button>
-                                            </span>
-                                        ))}
+                                    <div style={{ background: '#1f2937', border: '1px solid #374151', borderRadius: '8px', padding: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                                            {formData.stock_options.map(opt => (
+                                                <span key={opt} style={{ background: '#3b82f6', color: 'white', padding: '4px 10px', borderRadius: '6px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                    {opt}
+                                                    <button type="button" onClick={() => setFormData(prev => ({ ...prev, stock_options: prev.stock_options.filter(o => o !== opt) }))}
+                                                        style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', padding: 0, fontWeight: 'bold' }}>×</button>
+                                                </span>
+                                            ))}
+                                        </div>
+                                        {/* Order-size shortcuts */}
+                                        {formData.order_size.filter(os => os.amount > 1).length > 0 && (
+                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', paddingTop: '0.25rem', borderTop: '1px solid #374151' }}>
+                                                <span style={{ color: '#64748b', fontSize: '0.72rem', width: '100%' }}>Add from Order Sizes:</span>
+                                                {formData.order_size.filter(os => os.amount > 1).map(os => (
+                                                    <button key={`os-${os.amount}`} type="button"
+                                                        onClick={() => { if (!formData.stock_options.includes(os.amount)) setFormData(prev => ({ ...prev, stock_options: [...prev.stock_options, os.amount].sort((a, b) => a - b) })); }}
+                                                        disabled={formData.stock_options.includes(os.amount)}
+                                                        style={{ padding: '3px 10px', background: formData.stock_options.includes(os.amount) ? '#374151' : '#4c1d95', color: formData.stock_options.includes(os.amount) ? '#6b7280' : '#c4b5fd', border: '1px solid #6d28d9', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem' }}>
+                                                        + {os.label} ({os.amount})
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
                                         <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
                                             <input className={styles.input} value={tempOptionInput} onChange={e => setTempOptionInput(e.target.value)}
                                                 onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); const v = parseInt(tempOptionInput); if (!isNaN(v) && !formData.stock_options.includes(v)) { setFormData(prev => ({ ...prev, stock_options: [...prev.stock_options, v].sort((a, b) => a - b) })); setTempOptionInput(''); } } }}
@@ -1189,34 +1253,54 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                                         </div>
                                         <div>
                                             <label className={styles.statLabel} style={{ display: 'flex', alignItems: 'center' }}>
-                                                Subtraction Amounts
-                                                <Tip text="Quick-subtract buttons shown when removing stock in the Stock View. Tap to toggle common values, or add a custom amount." />
+                                                Adjustment Amounts
+                                                <Tip text="Quick +/- buttons shown on the Stock View. Toggle common values, add order-size shortcuts, or enter a custom amount." />
                                             </label>
+                                            {/* Common presets */}
                                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginBottom: '0.5rem' }}>
                                                 {[1, 6, 12].map(preset => {
                                                     const active = formData.subtraction_presets.includes(preset);
                                                     return (
                                                         <button key={preset} type="button"
                                                             onClick={() => setFormData(prev => ({ ...prev, subtraction_presets: active ? prev.subtraction_presets.filter(p => p !== preset) : [...prev.subtraction_presets, preset].sort((a, b) => a - b) }))}
-                                                            style={{ padding: '6px 16px', background: active ? '#3b82f6' : '#374151', color: active ? 'white' : '#9ca3af', border: `1px solid ${active ? '#3b82f6' : '#4b5563'}`, borderRadius: '6px', cursor: 'pointer', fontWeight: active ? 700 : 400, minHeight: '40px' }}>
+                                                            style={{ padding: '6px 14px', background: active ? '#3b82f6' : '#374151', color: active ? 'white' : '#9ca3af', border: `1px solid ${active ? '#3b82f6' : '#4b5563'}`, borderRadius: '6px', cursor: 'pointer', fontWeight: active ? 700 : 400, minHeight: '40px', fontSize: '0.85rem' }}>
                                                             {preset}
                                                         </button>
                                                     );
                                                 })}
-                                                {formData.subtraction_presets.filter(p => ![1, 6, 12].includes(p)).map(preset => (
+                                                {/* Order-size derived presets */}
+                                                {formData.order_size.filter(os => os.amount > 1 && ![1, 6, 12].includes(os.amount)).map(os => {
+                                                    const active = formData.subtraction_presets.includes(os.amount);
+                                                    return (
+                                                        <button key={`os-${os.amount}`} type="button"
+                                                            onClick={() => setFormData(prev => ({ ...prev, subtraction_presets: active ? prev.subtraction_presets.filter(p => p !== os.amount) : [...prev.subtraction_presets, os.amount].sort((a, b) => a - b) }))}
+                                                            style={{ padding: '6px 14px', background: active ? '#7c3aed' : '#374151', color: active ? 'white' : '#9ca3af', border: `1px solid ${active ? '#7c3aed' : '#4b5563'}`, borderRadius: '6px', cursor: 'pointer', fontWeight: active ? 700 : 400, minHeight: '40px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                            <span style={{ fontSize: '0.7rem', opacity: 0.7 }}>{os.label}</span> {os.amount}
+                                                        </button>
+                                                    );
+                                                })}
+                                                {/* Any order sizes that overlap [1,6,12] — show label badge on matching preset */}
+                                                {/* Custom presets not in the above lists */}
+                                                {formData.subtraction_presets.filter(p => ![1, 6, 12].includes(p) && !formData.order_size.some(os => os.amount === p && os.amount > 1)).map(preset => (
                                                     <span key={preset} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 10px', background: '#3b82f6', color: 'white', borderRadius: '6px', fontSize: '0.9rem' }}>
                                                         {preset}
-                                                        <button type="button" onClick={() => setFormData(prev => ({ ...prev, subtraction_presets: prev.subtraction_presets.filter(p => p !== preset) }))}
+                                                        <button type="button" onClick={() => setFormData(prev => ({ ...prev, subtraction_presets: prev.subtraction_presets.filter(p2 => p2 !== preset) }))}
                                                             style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', padding: 0, fontWeight: 'bold' }}>×</button>
                                                     </span>
                                                 ))}
                                             </div>
+                                            {/* Order size shortcut hint */}
+                                            {formData.order_size.some(os => os.amount > 1) && (
+                                                <p style={{ color: '#64748b', fontSize: '0.72rem', margin: '0 0 0.5rem 0' }}>
+                                                    Purple buttons are from your Order Sizes. Click to include them as quick-adjust presets.
+                                                </p>
+                                            )}
                                             <div style={{ display: 'flex', gap: '0.4rem' }}>
-                                                <input className={styles.input} type="number" min="1" placeholder="Custom value"
+                                                <input className={styles.input} type="number" min="1" placeholder="Custom amount"
                                                     value={formData.custom_preset_input}
                                                     onChange={e => setFormData({ ...formData, custom_preset_input: e.target.value })}
                                                     onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); const v = parseInt(formData.custom_preset_input); if (!isNaN(v) && v > 0 && !formData.subtraction_presets.includes(v)) setFormData(prev => ({ ...prev, subtraction_presets: [...prev.subtraction_presets, v].sort((a, b) => a - b), custom_preset_input: '' })); } }}
-                                                    style={{ width: '120px', minHeight: '40px' }} />
+                                                    style={{ width: '130px', minHeight: '40px' }} />
                                                 <button type="button"
                                                     onClick={() => { const v = parseInt(formData.custom_preset_input); if (!isNaN(v) && v > 0 && !formData.subtraction_presets.includes(v)) setFormData(prev => ({ ...prev, subtraction_presets: [...prev.subtraction_presets, v].sort((a, b) => a - b), custom_preset_input: '' })); }}
                                                     style={{ background: '#10b981', color: 'white', border: 'none', borderRadius: '6px', padding: '6px 14px', cursor: 'pointer', fontWeight: 700, minHeight: '40px' }}>

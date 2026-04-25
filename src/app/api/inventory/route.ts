@@ -4,7 +4,17 @@ import { getSession } from '@/lib/auth';
 import { logActivity } from '@/lib/logger';
 import { checkAndTriggerSmartOrder } from '@/lib/smart-order';
 
+// Ensure new display-mode columns exist (runs once per cold start, no-op after)
+let _displayColsEnsured = false;
+async function ensureDisplayColumns() {
+    if (_displayColsEnsured) return;
+    await db.execute(`ALTER TABLE items ADD COLUMN IF NOT EXISTS stock_display_mode VARCHAR(20) DEFAULT 'units'`).catch(() => {});
+    await db.execute(`ALTER TABLE items ADD COLUMN IF NOT EXISTS inventory_display_mode VARCHAR(20) DEFAULT 'units'`).catch(() => {});
+    _displayColsEnsured = true;
+}
+
 export async function GET(req: NextRequest) {
+    await ensureDisplayColumns();
     try {
         const session = await getSession();
         if (!session || !session.organizationId) {
@@ -74,6 +84,8 @@ export async function GET(req: NextRequest) {
         COALESCE(i.order_unit_label, 'case') as order_unit_label,
         COALESCE(i.order_unit_size, 1) as order_unit_size,
         COALESCE(i.use_category_qty_defaults, true) as use_category_qty_defaults,
+        COALESCE(i.stock_display_mode, 'units') as stock_display_mode,
+        COALESCE(i.inventory_display_mode, 'units') as inventory_display_mode,
         MAX(isp.supplier_id) as supplier_id,
         (SELECT ils.supplier_id FROM item_location_suppliers ils WHERE ils.item_id = i.id AND ils.location_id = $2 LIMIT 1) as location_supplier_id,
         COALESCE(SUM(inv.quantity), 0) as quantity,
@@ -124,6 +136,8 @@ export async function GET(req: NextRequest) {
                 COALESCE(i.order_unit_label, 'case') as order_unit_label,
                 COALESCE(i.order_unit_size, 1) as order_unit_size,
                 COALESCE(i.use_category_qty_defaults, true) as use_category_qty_defaults,
+                COALESCE(i.stock_display_mode, 'units') as stock_display_mode,
+                COALESCE(i.inventory_display_mode, 'units') as inventory_display_mode,
                 MAX(isp.supplier_id) as supplier_id,
                 NULL::int as location_supplier_id,
                 COALESCE(SUM(inv.quantity), 0) as quantity,
@@ -272,7 +286,7 @@ export async function PUT(req: NextRequest) {
 
         if (!canEdit && !canStock) return NextResponse.json({ error: 'Permission denied' }, { status: 403 });
 
-        const { id, unit_cost, sale_price, name, type, quantity, secondary_type, supplier, supplier_id, low_stock_threshold, low_stock_threshold_type, low_stock_threshold_factor, order_size, stock_options, include_in_audit, include_in_low_stock_alerts, exclude_from_smart_order, assignedLocations, stock_unit_label, stock_unit_size, order_unit_label, order_unit_size, use_category_qty_defaults, location_supplier_id, location_sale_price, locationId: bodyLocationId, barcodes, aliases, abv, bottle_size } = await req.json();
+        const { id, unit_cost, sale_price, name, type, quantity, secondary_type, supplier, supplier_id, low_stock_threshold, low_stock_threshold_type, low_stock_threshold_factor, order_size, stock_options, include_in_audit, include_in_low_stock_alerts, exclude_from_smart_order, assignedLocations, stock_unit_label, stock_unit_size, order_unit_label, order_unit_size, use_category_qty_defaults, stock_display_mode, inventory_display_mode, location_supplier_id, location_sale_price, locationId: bodyLocationId, barcodes, aliases, abv, bottle_size } = await req.json();
 
         if (!id) return NextResponse.json({ error: 'Missing ID' }, { status: 400 });
 
@@ -309,6 +323,14 @@ export async function PUT(req: NextRequest) {
             if (use_category_qty_defaults !== undefined) {
                 updates.push(`use_category_qty_defaults = $${pIdx++} `);
                 params.push(use_category_qty_defaults);
+            }
+            if (stock_display_mode !== undefined) {
+                updates.push(`stock_display_mode = $${pIdx++} `);
+                params.push(stock_display_mode);
+            }
+            if (inventory_display_mode !== undefined) {
+                updates.push(`inventory_display_mode = $${pIdx++} `);
+                params.push(inventory_display_mode);
             }
             if (name !== undefined) {
                 updates.push(`name = $${pIdx++} `);

@@ -47,6 +47,9 @@ interface Item {
     order_size?: number[] | string;
     order_unit_size?: number;
     order_unit_label?: string;
+    stock_unit_label?: string;
+    stock_display_mode?: 'units' | 'cases' | 'cases_and_units';
+    inventory_display_mode?: 'units' | 'cases' | 'cases_and_units';
     aliases?: string[];
 }
 
@@ -868,10 +871,13 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
                                             )}
                                         </Typography>
                                     </Box>
-                                    {/* Quantity display: breakdown on left, raw count on right */}
+                                    {/* Quantity display — respects item.stock_display_mode */}
                                     <Box sx={{ display: 'flex', alignItems: 'flex-end', gap: 1.5, flexShrink: 0 }}>
                                         {(() => {
                                             const qty = Number(item.quantity);
+                                            const mode: string = item.stock_display_mode || 'units';
+
+                                            // Resolve case size
                                             let unitSize = item.order_unit_size && Number(item.order_unit_size) > 1 ? Number(item.order_unit_size) : 0;
                                             if (!unitSize) {
                                                 let oArr = item.order_size;
@@ -881,23 +887,47 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
                                                     if (f > 1) unitSize = f;
                                                 }
                                             }
-                                            if (!unitSize || qty <= 0) return null;
+
+                                            const label = item.order_unit_label || 'case';
+                                            const unitLabel = item.stock_unit_label || 'unit';
+
+                                            if (mode === 'units' || !unitSize) {
+                                                // Units only — show raw number large
+                                                return (
+                                                    <Typography variant="h4" fontWeight="bold" color="text.primary">
+                                                        {qty.toFixed(2).replace(/\.00$/, '')}
+                                                    </Typography>
+                                                );
+                                            }
+
                                             const wholeUnits = Math.floor(qty);
                                             const cases = Math.floor(wholeUnits / unitSize);
                                             const remainder = wholeUnits % unitSize;
-                                            const label = item.order_unit_label || 'case';
-                                            const parts: string[] = [];
-                                            if (cases > 0) parts.push(`${cases} ${cases === 1 ? label : label + 's'}`);
-                                            if (remainder > 0 || cases === 0) parts.push(`${remainder}`);
+
+                                            if (mode === 'cases') {
+                                                // Cases only — e.g. "2 cases"
+                                                const caseStr = `${cases} ${cases === 1 ? label : label + 's'}`;
+                                                return (
+                                                    <Typography variant="h4" fontWeight="bold" color="text.primary" sx={{ fontSize: '1.4rem' }}>
+                                                        {caseStr}
+                                                    </Typography>
+                                                );
+                                            }
+
+                                            // cases_and_units — e.g. "2 cases  4" side by side
                                             return (
-                                                <Typography variant="body2" sx={{ color: 'text.secondary', textAlign: 'right', lineHeight: 1.3, fontSize: '0.8rem', mb: 0.5 }}>
-                                                    {parts.join(' ')}
-                                                </Typography>
+                                                <Box sx={{ display: 'flex', alignItems: 'flex-end', gap: 1 }}>
+                                                    {cases > 0 && (
+                                                        <Typography variant="body2" sx={{ color: 'text.secondary', textAlign: 'right', lineHeight: 1.3, fontSize: '0.82rem', mb: 0.5 }}>
+                                                            {cases} {cases === 1 ? label : label + 's'}
+                                                        </Typography>
+                                                    )}
+                                                    <Typography variant="h4" fontWeight="bold" color="text.primary">
+                                                        {remainder.toFixed(0)}
+                                                    </Typography>
+                                                </Box>
                                             );
                                         })()}
-                                        <Typography variant="h4" fontWeight="bold" color="text.primary">
-                                            {Number(item.quantity).toFixed(2).replace(/\.00$/, '')}
-                                        </Typography>
                                     </Box>
                                 </Box>
 
