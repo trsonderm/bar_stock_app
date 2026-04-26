@@ -525,6 +525,25 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
 
     const [importFile, setImportFile] = useState<File | null>(null);
 
+    const handleDownloadTemplate = () => {
+        const headers = ['Name', 'Category', 'Sub-Category', 'Supplier', 'Unit Cost', 'Quantity', 'Order Size', 'Low Stock Level'];
+        const examples = [
+            ['Tito\'s Vodka', 'Spirits', 'Vodka', 'Southern Glazers', '18.50', '24', '12', '6'],
+            ['Heineken', 'Beer', 'Lager', 'Reyes Beverage', '1.25', '48', '24', '12'],
+            ['Casamigos Blanco', 'Spirits', 'Tequila', 'Southern Glazers', '32.00', '12', '6', '3'],
+        ];
+        const escape = (v: string) => v.includes(',') || v.includes('"') ? `"${v.replace(/"/g, '""')}"` : v;
+        const csv = [headers, ...examples].map(row => row.map(escape).join(',')).join('\r\n');
+        // UTF-8 BOM so Excel opens without encoding issues
+        const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'product_import_template.csv';
+        a.click();
+        URL.revokeObjectURL(url);
+    };
+
     const handleImportClick = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
@@ -580,6 +599,12 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                             style={{ background: '#ef4444', color: 'white', padding: '0.5rem 1rem', borderRadius: '0.5rem', fontWeight: 'bold', border: 'none', cursor: 'pointer' }}
                         >
                             Delete All
+                        </button>
+                        <button
+                            onClick={handleDownloadTemplate}
+                            style={{ background: '#0ea5e9', color: 'white', padding: '0.5rem 1rem', borderRadius: '0.5rem', fontWeight: 'bold', border: 'none', cursor: 'pointer' }}
+                        >
+                            ↓ Download Template
                         </button>
                         <button
                             onClick={() => document.getElementById('csvInput')?.click()}
