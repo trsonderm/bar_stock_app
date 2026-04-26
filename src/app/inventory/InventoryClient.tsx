@@ -476,8 +476,9 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
     };
 
     const handleLogout = async () => {
-        await fetch('/api/auth/logout', { method: 'POST' });
-        router.push('/');
+        const res = await fetch('/api/auth/logout', { method: 'POST' });
+        const data = await res.json();
+        router.push(data.registeredDevice ? '/pin' : '/');
         router.refresh();
     };
 
