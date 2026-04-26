@@ -290,11 +290,12 @@ class Scheduler {
                 SELECT s.organization_id,
                        MAX(CASE WHEN s.key = 'low_stock_alert_enabled' THEN s.value END) as alert_enabled,
                        MAX(CASE WHEN s.key = 'low_stock_alert_emails' THEN s.value END) as alert_emails,
-                       MAX(CASE WHEN s.key = 'low_stock_alert_time' THEN s.value END) as alert_time,
+                       MAX(CASE WHEN s.key = 'low_stock_alert_schedule' THEN s.value END) as alert_schedule,
+                       MAX(CASE WHEN s.key = 'low_stock_alert_time' THEN s.value END) as alert_time_legacy,
                        MAX(CASE WHEN s.key = 'low_stock_alert_title' THEN s.value END) as alert_title,
                        MAX(CASE WHEN s.key = 'low_stock_threshold' THEN s.value END) as threshold
                 FROM settings s
-                WHERE s.key IN ('low_stock_alert_enabled','low_stock_alert_emails','low_stock_alert_time','low_stock_alert_title','low_stock_threshold')
+                WHERE s.key IN ('low_stock_alert_enabled','low_stock_alert_emails','low_stock_alert_schedule','low_stock_alert_time','low_stock_alert_title','low_stock_threshold')
                 GROUP BY s.organization_id
                 HAVING MAX(CASE WHEN s.key = 'low_stock_alert_enabled' THEN s.value END) = 'true'
             `);
@@ -303,13 +304,14 @@ class Scheduler {
             const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
             for (const s of orgSettings) {
-                // Parse schedule — may be JSON or plain "HH:MM"
+                // Parse schedule — prefer new low_stock_alert_schedule JSON, fall back to legacy low_stock_alert_time plain string
                 let scheduleTime = '14:00';
                 try {
-                    const parsed = s.alert_time ? JSON.parse(s.alert_time) : null;
-                    scheduleTime = parsed?.time || s.alert_time || '14:00';
+                    const raw = s.alert_schedule || s.alert_time_legacy;
+                    const parsed = raw ? JSON.parse(raw) : null;
+                    scheduleTime = parsed?.time || raw || '14:00';
                 } catch {
-                    scheduleTime = s.alert_time || '14:00';
+                    scheduleTime = s.alert_schedule || s.alert_time_legacy || '14:00';
                 }
 
                 if (scheduleTime !== currentTime) continue;

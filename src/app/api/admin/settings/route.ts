@@ -51,11 +51,13 @@ export async function POST(req: NextRequest) {
     const organizationId = session.organizationId;
     const body = await req.json();
     const keys = [
-        'report_emails', 'report_time', 'low_stock_threshold',
-        'backup_time', 'low_stock_alert_enabled', 'low_stock_alert_emails', 'low_stock_alert_time', 'report_title',
+        'report_emails', 'report_time', 'report_schedule', 'low_stock_threshold',
+        'backup_time', 'low_stock_alert_enabled', 'low_stock_alert_emails',
+        'low_stock_alert_time', 'low_stock_alert_schedule', 'report_title',
         'low_stock_alert_title',
         'company_name', 'billing_email', 'track_bottle_levels', 'report_per_location',
         'shift_report_emails', 'shift_report_schedule', 'shift_report_enabled', 'shift_report_title',
+        'audit_alert_enabled', 'audit_alert_emails', 'audit_alert_actions',
     ];
 
     try {

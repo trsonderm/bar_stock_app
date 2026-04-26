@@ -114,13 +114,14 @@ export async function GET(req: NextRequest) {
             // 2. Low stock alerts — fire daily at configured time
             const lowStockSettings = await db.query(`
                 SELECT s.organization_id,
-                       MAX(CASE WHEN s.key = 'low_stock_alert_enabled' THEN s.value END) AS enabled,
-                       MAX(CASE WHEN s.key = 'low_stock_alert_emails'  THEN s.value END) AS emails,
-                       MAX(CASE WHEN s.key = 'low_stock_alert_time'    THEN s.value END) AS alert_time,
+                       MAX(CASE WHEN s.key = 'low_stock_alert_enabled'  THEN s.value END) AS enabled,
+                       MAX(CASE WHEN s.key = 'low_stock_alert_emails'   THEN s.value END) AS emails,
+                       MAX(CASE WHEN s.key = 'low_stock_alert_schedule' THEN s.value END) AS alert_schedule,
+                       MAX(CASE WHEN s.key = 'low_stock_alert_time'     THEN s.value END) AS alert_time_legacy,
                        o.name AS org_name
                 FROM settings s
                 JOIN organizations o ON s.organization_id = o.id
-                WHERE s.key IN ('low_stock_alert_enabled','low_stock_alert_emails','low_stock_alert_time')
+                WHERE s.key IN ('low_stock_alert_enabled','low_stock_alert_emails','low_stock_alert_schedule','low_stock_alert_time')
                 GROUP BY s.organization_id, o.name
                 HAVING MAX(CASE WHEN s.key = 'low_stock_alert_enabled' THEN s.value END) = 'true'
             `);
@@ -144,9 +145,10 @@ export async function GET(req: NextRequest) {
             for (const s of lowStockSettings) {
                 let timeStr = '14:00';
                 try {
-                    const parsed = s.alert_time ? JSON.parse(s.alert_time) : null;
-                    timeStr = parsed?.time || s.alert_time || '14:00';
-                } catch { timeStr = s.alert_time || '14:00'; }
+                    const raw = s.alert_schedule || s.alert_time_legacy;
+                    const parsed = raw ? JSON.parse(raw) : null;
+                    timeStr = parsed?.time || raw || '14:00';
+                } catch { timeStr = s.alert_schedule || s.alert_time_legacy || '14:00'; }
 
                 const [hh, mm] = timeStr.split(':').map(Number);
                 const cursor = new Date(now);
