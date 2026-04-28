@@ -437,6 +437,8 @@ class Scheduler {
         console.log(`[CRON] ${name}: ${status} ${error || ''}`);
     }
 
+    private static readonly BACKUP_DIR = '/backups';
+
     private async checkAutoBackup() {
         try {
             const row = await db.one("SELECT value FROM system_settings WHERE key='db_backups'");
@@ -447,10 +449,10 @@ class Scheduler {
             const intervalHours: Record<string, number> = { daily: 24, weekly: 168, monthly: 720 };
             const minHours = intervalHours[cfg.interval] ?? 168;
 
-            const backupDir = path.join(process.cwd(), 'backups');
+            const backupDir = Scheduler.BACKUP_DIR;
             let lastBackupMs = 0;
             if (fs.existsSync(backupDir)) {
-                const files = fs.readdirSync(backupDir).filter(f => f.endsWith('.sql'));
+                const files = fs.readdirSync(backupDir).filter(f => f.endsWith('.sql.gz') || f.endsWith('.sql'));
                 for (const f of files) {
                     const mt = fs.statSync(path.join(backupDir, f)).mtimeMs;
                     if (mt > lastBackupMs) lastBackupMs = mt;
@@ -468,18 +470,18 @@ class Scheduler {
     }
 
     async runBackup(): Promise<string> {
-        const backupDir = path.join(process.cwd(), 'backups');
+        const backupDir = Scheduler.BACKUP_DIR;
         if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir, { recursive: true });
 
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-        const filename = `backup-${timestamp}.sql`;
+        const filename = `backup-${timestamp}.sql.gz`;
         const filepath = path.join(backupDir, filename);
         const dbUrl = process.env.DATABASE_URL || '';
 
-        const cmd = `pg_dump --clean --if-exists --no-password --dbname="${dbUrl}" --file="${filepath}"`;
+        const cmd = `pg_dump --clean --if-exists --no-password --dbname="${dbUrl}" | gzip > "${filepath}"`;
 
         return new Promise((resolve, reject) => {
-            exec(cmd, (error, _stdout, stderr) => {
+            exec(cmd, { shell: '/bin/sh' }, (error, _stdout, stderr) => {
                 if (error) {
                     console.error(`[Backup] pg_dump error: ${error.message}`, stderr);
                     return reject(error);
@@ -490,10 +492,10 @@ class Scheduler {
     }
 
     getBackups() {
-        const backupDir = path.join(process.cwd(), 'backups');
+        const backupDir = Scheduler.BACKUP_DIR;
         if (!fs.existsSync(backupDir)) return [];
         return fs.readdirSync(backupDir)
-            .filter(f => f.endsWith('.sql'))
+            .filter(f => f.endsWith('.sql.gz') || f.endsWith('.sql'))
             .map(f => {
                 const stat = fs.statSync(path.join(backupDir, f));
                 return { name: f, size: stat.size, created: stat.mtime };

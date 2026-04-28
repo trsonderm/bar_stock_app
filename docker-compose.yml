@@ -11,6 +11,8 @@ services:
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/topshelf
       - JWT_SECRET=fosters-secret-key-change-in-prod
       - NODE_ENV=production
+    volumes:
+      - /opt/topshelf/backups:/backups
     depends_on:
       - db
     networks:

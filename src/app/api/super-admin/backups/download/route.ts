@@ -3,6 +3,8 @@ import { getSession } from '@/lib/auth';
 import path from 'path';
 import fs from 'fs';
 
+const BACKUP_DIR = '/backups';
+
 export async function GET(req: NextRequest) {
     const session = await getSession();
     if (!session?.isSuperAdmin) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -12,17 +14,15 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ error: 'Invalid filename' }, { status: 400 });
     }
 
-    const backupDir = path.join(process.cwd(), 'backups');
-    const filepath = path.join(backupDir, filename);
-
-    if (!filepath.startsWith(backupDir) || !fs.existsSync(filepath)) {
+    const filepath = path.join(BACKUP_DIR, filename);
+    if (!filepath.startsWith(BACKUP_DIR) || !fs.existsSync(filepath)) {
         return NextResponse.json({ error: 'File not found' }, { status: 404 });
     }
 
     const stat = fs.statSync(filepath);
     const stream = fs.createReadStream(filepath);
+    const isGzipped = filename.endsWith('.gz');
 
-    // Convert Node.js ReadStream to Web ReadableStream
     const webStream = new ReadableStream({
         start(controller) {
             stream.on('data', chunk => controller.enqueue(chunk));
@@ -36,7 +36,7 @@ export async function GET(req: NextRequest) {
 
     return new NextResponse(webStream, {
         headers: {
-            'Content-Type': 'application/sql',
+            'Content-Type': isGzipped ? 'application/gzip' : 'application/sql',
             'Content-Disposition': `attachment; filename="${filename}"`,
             'Content-Length': String(stat.size),
         },

@@ -1,13 +1,26 @@
 #!/bin/bash
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+BACKUP_DIR="/opt/topshelf/backups"
+
 echo "Starting Bar Stock App Deployment (Linux/Docker)..."
+
+# Ensure persistent backup directory exists and is writable by container user (uid 1001)
+mkdir -p "$BACKUP_DIR"
+chmod 777 "$BACKUP_DIR"
 
 # 1. Pull Latest Code
 echo "Pulling latest changes from git..."
 git pull
 
-# 2. Cleanup Existing Sessions / Ports
+# 2. Backup database BEFORE taking containers down
+echo ""
+echo "=== Pre-deploy database backup ==="
+bash "$SCRIPT_DIR/backup-db.sh" "$BACKUP_DIR" || echo "WARNING: Backup failed — proceeding anyway. Check $BACKUP_DIR."
+echo ""
+
+# 3. Cleanup Existing Sessions / Ports
 echo "Cleaning up existing sessions..."
 for PORT in 6050 3000; do
     PID=$(lsof -ti:$PORT || true)
@@ -17,12 +30,12 @@ for PORT in 6050 3000; do
     fi
 done
 
-# 3. Rebuild and Start Containers
+# 4. Rebuild and Start Containers
 echo "Rebuilding and starting containers..."
 docker compose down --remove-orphans
 docker compose up -d --build
 
-# 4. Wait for PostgreSQL to accept connections (using default postgres db)
+# 5. Wait for PostgreSQL to accept connections (using default postgres db)
 echo "Waiting for PostgreSQL to be ready..."
 RETRIES=60
 until docker compose exec -T db pg_isready -U postgres -q 2>/dev/null; do
@@ -36,7 +49,7 @@ until docker compose exec -T db pg_isready -U postgres -q 2>/dev/null; do
 done
 echo "PostgreSQL is accepting connections."
 
-# 5. Ensure the topshelf database exists (safe on fresh and existing volumes)
+# 6. Ensure the topshelf database exists (safe on fresh and existing volumes)
 echo "Ensuring database 'topshelf' exists..."
 docker compose exec -T db psql -U postgres -d postgres -c \
     "SELECT 1 FROM pg_database WHERE datname='topshelf'" \
@@ -45,16 +58,15 @@ docker compose exec -T db psql -U postgres -d postgres -c \
     "CREATE DATABASE topshelf OWNER postgres;" || true
 echo "Database ready."
 
-# 6. Apply base schema (idempotent — CREATE TABLE IF NOT EXISTS throughout)
+# 7. Apply base schema (idempotent — CREATE TABLE IF NOT EXISTS throughout)
 echo "Applying base schema..."
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 if docker compose exec -T db psql -U postgres -d topshelf < "$SCRIPT_DIR/schema.sql"; then
     echo "Base schema applied."
 else
     echo "WARNING: schema.sql returned errors (may be safe if tables already exist)."
 fi
 
-# 7. Run incremental migrations (idempotent ALTER TABLE / CREATE TABLE IF NOT EXISTS)
+# 8. Run incremental migrations (idempotent ALTER TABLE / CREATE TABLE IF NOT EXISTS)
 echo "Running schema migrations..."
 if docker compose exec -T db psql -U postgres -d topshelf < "$SCRIPT_DIR/migrate.sql"; then
     echo "Schema migrations applied successfully."
@@ -63,7 +75,7 @@ else
     echo "         Deployment will continue — existing data is not affected."
 fi
 
-# 8. Seed default super admin if database is empty
+# 9. Seed default super admin if database is empty
 echo "Checking for existing users..."
 USER_COUNT=$(docker compose exec -T db psql -U postgres -d topshelf -tAc "SELECT COUNT(*) FROM users" 2>/dev/null | tr -d '[:space:]' || echo "0")
 if [ "$USER_COUNT" = "0" ]; then
@@ -86,4 +98,8 @@ else
     echo "Users already exist ($USER_COUNT found). Skipping seed."
 fi
 
+echo ""
 echo "Deployment Complete! Application should be running on port 6050."
+echo "Backups stored in: $BACKUP_DIR"
+echo "To restore:  bash $SCRIPT_DIR/restore-db.sh"
+echo "To list:     bash $SCRIPT_DIR/restore-db.sh --list"

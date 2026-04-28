@@ -7,6 +7,7 @@ import fs from 'fs';
 import os from 'os';
 
 const execAsync = util.promisify(exec);
+const BACKUP_DIR = '/backups';
 
 export async function POST(req: NextRequest) {
     const session = await getSession();
@@ -21,33 +22,38 @@ export async function POST(req: NextRequest) {
 
     let tmpPath: string | null = null;
     let cleanup = false;
+    let isGzipped = false;
 
     try {
         if (file) {
-            // Uploaded file — write to temp
+            isGzipped = file.name.endsWith('.gz');
+            const ext = isGzipped ? '.sql.gz' : '.sql';
             const bytes = await file.arrayBuffer();
-            tmpPath = path.join(os.tmpdir(), `restore-${Date.now()}.sql`);
+            tmpPath = path.join(os.tmpdir(), `restore-${Date.now()}${ext}`);
             fs.writeFileSync(tmpPath, Buffer.from(bytes));
             cleanup = true;
         } else if (existingFile) {
-            // Existing backup on disk
             if (existingFile.includes('..') || existingFile.includes('/')) {
                 return NextResponse.json({ error: 'Invalid filename' }, { status: 400 });
             }
-            const backupDir = path.join(process.cwd(), 'backups');
-            tmpPath = path.join(backupDir, existingFile);
-            if (!tmpPath.startsWith(backupDir) || !fs.existsSync(tmpPath)) {
+            tmpPath = path.join(BACKUP_DIR, existingFile);
+            if (!tmpPath.startsWith(BACKUP_DIR) || !fs.existsSync(tmpPath)) {
                 return NextResponse.json({ error: 'Backup file not found' }, { status: 404 });
             }
+            isGzipped = existingFile.endsWith('.gz');
         } else {
             return NextResponse.json({ error: 'No file provided' }, { status: 400 });
         }
 
-        await execAsync(`psql --no-password --dbname="${dbUrl}" --file="${tmpPath}"`);
+        const cmd = isGzipped
+            ? `gunzip -c "${tmpPath}" | psql --no-password --dbname="${dbUrl}"`
+            : `psql --no-password --dbname="${dbUrl}" --file="${tmpPath}"`;
+
+        await execAsync(cmd, { shell: '/bin/sh' });
 
         return NextResponse.json({ success: true });
     } catch (e: any) {
-        console.error('[Restore] psql error:', e);
+        console.error('[Restore] error:', e);
         return NextResponse.json({ error: 'Restore failed: ' + e.message }, { status: 500 });
     } finally {
         if (cleanup && tmpPath && fs.existsSync(tmpPath)) {
