@@ -63,4 +63,27 @@ else
     echo "         Deployment will continue — existing data is not affected."
 fi
 
+# 8. Seed default super admin if database is empty
+echo "Checking for existing users..."
+USER_COUNT=$(docker compose exec -T db psql -U postgres -d topshelf -tAc "SELECT COUNT(*) FROM users" 2>/dev/null | tr -d '[:space:]' || echo "0")
+if [ "$USER_COUNT" = "0" ]; then
+    echo "No users found. Creating default super admin..."
+    DEFAULT_PASS="TopShelf$(date +%Y)!"
+    if docker compose exec -T app node scripts/create_super_admin.js admin@topshelf.app "$DEFAULT_PASS"; then
+        echo ""
+        echo "============================================"
+        echo "  DEFAULT SUPER ADMIN CREDENTIALS"
+        echo "  Email:    admin@topshelf.app"
+        echo "  Password: $DEFAULT_PASS"
+        echo "  CHANGE THESE IMMEDIATELY AFTER FIRST LOGIN"
+        echo "============================================"
+        echo ""
+    else
+        echo "WARNING: Failed to create default super admin. Run manually:"
+        echo "  docker compose exec app node scripts/create_super_admin.js <email> <password>"
+    fi
+else
+    echo "Users already exist ($USER_COUNT found). Skipping seed."
+fi
+
 echo "Deployment Complete! Application should be running on port 6050."
