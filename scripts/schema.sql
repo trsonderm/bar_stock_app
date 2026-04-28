@@ -10,7 +10,10 @@ CREATE TABLE IF NOT EXISTS organizations (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     ai_ordering_config JSONB,
     sms_enabled BOOLEAN DEFAULT FALSE,
-    settings JSONB DEFAULT '{}'
+    settings JSONB DEFAULT '{}',
+    disabled_at TIMESTAMPTZ,
+    disable_reason TEXT,
+    pre_disable_billing_status TEXT
 );
 
 CREATE TABLE IF NOT EXISTS users (

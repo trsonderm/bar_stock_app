@@ -636,3 +636,65 @@ EXCEPTION WHEN duplicate_column THEN NULL; END $$;
 DO $$ BEGIN
   ALTER TABLE shift_closes ADD COLUMN custom_data JSONB DEFAULT '{}'::jsonb;
 EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
+-- =========================================================
+-- 34. Billing tables (invoices + stripe customers)
+-- =========================================================
+CREATE TABLE IF NOT EXISTS invoices (
+    id SERIAL PRIMARY KEY,
+    organization_id INTEGER REFERENCES organizations(id) ON DELETE CASCADE,
+    amount NUMERIC(10,2) NOT NULL DEFAULT 0,
+    status TEXT DEFAULT 'PENDING',
+    due_date DATE,
+    paid_at TIMESTAMPTZ,
+    period_start DATE,
+    period_end DATE,
+    stripe_invoice_id TEXT,
+    stripe_payment_intent_id TEXT,
+    stripe_hosted_url TEXT,
+    stripe_pdf_url TEXT,
+    notes TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS stripe_customers (
+    id SERIAL PRIMARY KEY,
+    organization_id INTEGER UNIQUE REFERENCES organizations(id) ON DELETE CASCADE,
+    stripe_customer_id TEXT NOT NULL UNIQUE,
+    stripe_subscription_id TEXT,
+    stripe_price_id TEXT,
+    payment_method_last4 TEXT,
+    payment_method_brand TEXT,
+    current_period_end TIMESTAMPTZ,
+    cancel_at_period_end BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- =========================================================
+-- 35. Organizations — org disable / billing suspension columns
+-- =========================================================
+DO $$ BEGIN
+  ALTER TABLE organizations ADD COLUMN disabled_at TIMESTAMPTZ;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE organizations ADD COLUMN disable_reason TEXT;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE organizations ADD COLUMN pre_disable_billing_status TEXT;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
+-- =========================================================
+-- 36. Scheduler — user_schedules and shifts location_id
+--     (idempotent; already in schema.sql for fresh DBs)
+-- =========================================================
+DO $$ BEGIN
+  ALTER TABLE shifts ADD COLUMN location_id INTEGER REFERENCES locations(id) ON DELETE CASCADE;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE user_schedules ADD COLUMN location_id INTEGER REFERENCES locations(id) ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;

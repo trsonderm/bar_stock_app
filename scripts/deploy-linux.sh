@@ -45,9 +45,17 @@ docker compose exec -T db psql -U postgres -d postgres -c \
     "CREATE DATABASE topshelf OWNER postgres;" || true
 echo "Database ready."
 
-# 6. Run safe schema migrations
-echo "Running schema migrations..."
+# 6. Apply base schema (idempotent — CREATE TABLE IF NOT EXISTS throughout)
+echo "Applying base schema..."
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+if docker compose exec -T db psql -U postgres -d topshelf < "$SCRIPT_DIR/schema.sql"; then
+    echo "Base schema applied."
+else
+    echo "WARNING: schema.sql returned errors (may be safe if tables already exist)."
+fi
+
+# 7. Run incremental migrations (idempotent ALTER TABLE / CREATE TABLE IF NOT EXISTS)
+echo "Running schema migrations..."
 if docker compose exec -T db psql -U postgres -d topshelf < "$SCRIPT_DIR/migrate.sql"; then
     echo "Schema migrations applied successfully."
 else
