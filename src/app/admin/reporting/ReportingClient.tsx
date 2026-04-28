@@ -643,10 +643,53 @@ export default function ReportingClient() {
     // --- New Sub-Components ---
 
 
-    const handleSaveConfig = () => {
-        console.log("Saving Config for", selectedReportId, reportConfig);
-        alert("Schedule settings saved!");
+    const handleSaveConfig = async () => {
+        if (typeof selectedReportId !== 'number') {
+            alert('Select a saved report to configure its schedule.');
+            return;
+        }
+        try {
+            const recipients = reportConfig.recipients.split(',').map(s => s.trim()).filter(Boolean).join(',');
+            const res = await fetch('/api/admin/reporting/schedules', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    reportId: selectedReportId,
+                    frequency: reportConfig.frequency,
+                    recipients,
+                    active: reportConfig.enabled,
+                }),
+            });
+            if (res.ok) {
+                alert('Schedule saved! It will appear in the email queue.');
+                setConfigExpanded(false);
+            } else {
+                const d = await res.json();
+                alert(d.error || 'Failed to save schedule');
+            }
+        } catch {
+            alert('Error saving schedule');
+        }
     };
+
+    // Load existing schedule when a saved report is selected
+    useEffect(() => {
+        if (typeof selectedReportId !== 'number') return;
+        fetch(`/api/admin/reporting/schedules?reportId=${selectedReportId}`)
+            .then(r => r.json())
+            .then(d => {
+                if (d.schedule) {
+                    const s = d.schedule;
+                    setReportConfig(prev => ({
+                        ...prev,
+                        enabled: s.active ?? false,
+                        frequency: s.frequency || 'weekly',
+                        recipients: s.recipients || '',
+                    }));
+                }
+            })
+            .catch(() => {});
+    }, [selectedReportId]);
 
     // --- Item Filter State ---
     const [selectedItems, setSelectedItems] = useState<number[]>([]);

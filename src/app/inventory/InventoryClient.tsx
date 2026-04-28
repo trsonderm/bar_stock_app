@@ -67,13 +67,16 @@ interface UserSession {
     iat?: number;
 }
 
+interface OrgLocation { id: number; name: string; }
+
 interface InventoryClientProps {
     user: UserSession;
     trackBottleLevels: boolean;
     bottleOptions: any[];
+    orgLocations?: OrgLocation[];
 }
 
-export default function InventoryClient({ user, trackBottleLevels: initialTrack, bottleOptions: initialOptions }: InventoryClientProps) {
+export default function InventoryClient({ user, trackBottleLevels: initialTrack, bottleOptions: initialOptions, orgLocations = [] }: InventoryClientProps) {
     const [items, setItems] = useState<Item[]>([]);
     const [myActivity, setMyActivity] = useState<ActivityLog[]>([]);
     const [sort, setSort] = useState<'usage' | 'name'>('usage');
@@ -155,6 +158,14 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
     const [pendingChanges, setPendingChanges] = useState<Record<number, { netChange: number; itemName: string; originalQty: number }>>({});
     const [showSubmitModal, setShowSubmitModal] = useState(false);
     const [submitting, setSubmitting] = useState(false);
+
+    // Transfer mode
+    const [transferMode, setTransferMode] = useState(false);
+    const [transferToLocationId, setTransferToLocationId] = useState<number | null>(null);
+    const [transferFromLocationId, setTransferFromLocationId] = useState<number | null>(null);
+    const [transferQtys, setTransferQtys] = useState<Record<number, string>>({});
+    const [showTransferConfirm, setShowTransferConfirm] = useState(false);
+    const [transferring, setTransferring] = useState(false);
 
     const fetchItems = async () => {
         try {
@@ -488,6 +499,43 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
         setSecondaryFilter('');
     };
 
+    const startTransfer = () => {
+        // Default fromLocation to current cookie location if available
+        const cookieLocId = parseInt(document.cookie.split('; ').find(r => r.startsWith('current_location_id='))?.split('=')[1] || '0');
+        setTransferFromLocationId(cookieLocId && orgLocations.find(l => l.id === cookieLocId) ? cookieLocId : (orgLocations[0]?.id ?? null));
+        setTransferToLocationId(null);
+        setTransferQtys({});
+        setTransferMode(true);
+    };
+
+    const transferItems = items.filter(i => transferQtys[i.id] && parseFloat(transferQtys[i.id]) > 0);
+
+    const handleSubmitTransfer = async () => {
+        if (!transferFromLocationId || !transferToLocationId) return;
+        setTransferring(true);
+        try {
+            const res = await fetch('/api/inventory/transfer', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    fromLocationId: transferFromLocationId,
+                    toLocationId: transferToLocationId,
+                    items: transferItems.map(i => ({ itemId: i.id, quantity: parseFloat(transferQtys[i.id]) })),
+                }),
+            });
+            const data = await res.json();
+            if (!res.ok) { alert(data.error || 'Transfer failed'); return; }
+            setTransferMode(false);
+            setShowTransferConfirm(false);
+            setTransferQtys({});
+            fetchItems();
+        } catch (e) {
+            alert('Transfer failed');
+        } finally {
+            setTransferring(false);
+        }
+    };
+
     const handleBarcodeDetected = async (barcode: string) => {
         setScanResult(null);
         setScanError('');
@@ -684,7 +732,69 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
                 >
                     Activity
                 </Button>
+                {orgLocations.length > 1 && canAddStock && !transferMode && (
+                    <Button
+                        variant="contained"
+                        size="small"
+                        onClick={startTransfer}
+                        sx={{ background: '#0f766e', '&:hover': { background: '#0d9488' }, flexShrink: 0 }}
+                    >
+                        ⇄ Transfer Stock
+                    </Button>
+                )}
+                {transferMode && (
+                    <Button
+                        variant="outlined"
+                        color="error"
+                        size="small"
+                        onClick={() => { setTransferMode(false); setTransferQtys({}); }}
+                        sx={{ flexShrink: 0 }}
+                    >
+                        Cancel Transfer
+                    </Button>
+                )}
             </Box>
+
+            {/* Transfer Mode Banner */}
+            {transferMode && (
+                <Box sx={{ bgcolor: '#134e4a', borderBottom: '1px solid #0f766e', px: 2, py: 1.5, display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <Typography variant="body2" sx={{ color: '#99f6e4', fontWeight: 700, mr: 1 }}>TRANSFER MODE</Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Typography variant="caption" sx={{ color: '#99f6e4' }}>From:</Typography>
+                        <Select
+                            size="small"
+                            value={transferFromLocationId ?? ''}
+                            onChange={e => setTransferFromLocationId(Number(e.target.value))}
+                            sx={{ minWidth: 140, bgcolor: '#0f766e', color: 'white', '.MuiOutlinedInput-notchedOutline': { borderColor: '#0d9488' } }}
+                        >
+                            {orgLocations.map(l => <MenuItem key={l.id} value={l.id}>{l.name}</MenuItem>)}
+                        </Select>
+                    </Box>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Typography variant="caption" sx={{ color: '#99f6e4' }}>To:</Typography>
+                        <Select
+                            size="small"
+                            value={transferToLocationId ?? ''}
+                            onChange={e => setTransferToLocationId(Number(e.target.value))}
+                            sx={{ minWidth: 140, bgcolor: '#0f766e', color: 'white', '.MuiOutlinedInput-notchedOutline': { borderColor: '#0d9488' } }}
+                        >
+                            <MenuItem value=""><em>Select location…</em></MenuItem>
+                            {orgLocations.filter(l => l.id !== transferFromLocationId).map(l => <MenuItem key={l.id} value={l.id}>{l.name}</MenuItem>)}
+                        </Select>
+                    </Box>
+                    <Typography variant="caption" sx={{ color: '#6ee7b7' }}>Enter quantities on each item row to transfer</Typography>
+                    {transferItems.length > 0 && transferToLocationId && (
+                        <Button
+                            variant="contained"
+                            size="small"
+                            onClick={() => setShowTransferConfirm(true)}
+                            sx={{ ml: 'auto', background: '#10b981', '&:hover': { background: '#059669' } }}
+                        >
+                            Review Transfer ({transferItems.length} items)
+                        </Button>
+                    )}
+                </Box>
+            )}
 
             <Container maxWidth="xl" sx={{ pb: 6 }}>
 
@@ -932,6 +1042,21 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
                                         })()}
                                     </Box>
                                 </Box>
+
+                                {transferMode && (
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                                        <Typography variant="caption" sx={{ color: '#6ee7b7' }}>Transfer qty:</Typography>
+                                        <TextField
+                                            size="small"
+                                            type="number"
+                                            inputProps={{ min: 0, step: 1 }}
+                                            value={transferQtys[item.id] ?? ''}
+                                            onChange={e => setTransferQtys(prev => ({ ...prev, [item.id]: e.target.value }))}
+                                            placeholder="0"
+                                            sx={{ width: 90, '& .MuiInputBase-root': { bgcolor: '#134e4a' } }}
+                                        />
+                                    </Box>
+                                )}
 
                                 <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
                                     {(() => {
@@ -1507,6 +1632,54 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
                         disabled={submitting}
                     >
                         {submitting ? 'Submitting…' : 'Yes, Submit'}
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
+            {/* Transfer Confirm Modal */}
+            <Dialog open={showTransferConfirm} onClose={() => setShowTransferConfirm(false)} maxWidth="sm" fullWidth>
+                <DialogTitle sx={{ borderBottom: '1px solid', borderColor: 'divider', display: 'flex', alignItems: 'center', gap: 1 }}>
+                    ⇄ Confirm Stock Transfer
+                </DialogTitle>
+                <DialogContent dividers>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                        Transfer from <strong>{orgLocations.find(l => l.id === transferFromLocationId)?.name}</strong> → <strong>{orgLocations.find(l => l.id === transferToLocationId)?.name}</strong>
+                    </Typography>
+                    <Box component="table" sx={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <Box component="thead">
+                            <Box component="tr" sx={{ borderBottom: '2px solid', borderColor: 'divider' }}>
+                                <Box component="th" sx={{ textAlign: 'left', pb: 1, color: 'text.secondary', fontWeight: 600, fontSize: '0.8rem', textTransform: 'uppercase', pr: 2 }}>Item</Box>
+                                <Box component="th" sx={{ textAlign: 'right', pb: 1, color: 'text.secondary', fontWeight: 600, fontSize: '0.8rem', textTransform: 'uppercase', pr: 2 }}>Available</Box>
+                                <Box component="th" sx={{ textAlign: 'right', pb: 1, color: 'text.secondary', fontWeight: 600, fontSize: '0.8rem', textTransform: 'uppercase' }}>Transfer Qty</Box>
+                            </Box>
+                        </Box>
+                        <Box component="tbody">
+                            {transferItems.map(item => (
+                                <Box component="tr" key={item.id} sx={{ borderBottom: '1px solid', borderColor: 'divider' }}>
+                                    <Box component="td" sx={{ py: 1.25, pr: 2 }}>
+                                        <Typography variant="body2" fontWeight={600}>{item.name}</Typography>
+                                        <Typography variant="caption" color="text.secondary">{item.type}</Typography>
+                                    </Box>
+                                    <Box component="td" sx={{ py: 1.25, textAlign: 'right', pr: 2 }}>
+                                        <Typography variant="body2" color="text.secondary">{Number(item.quantity)}</Typography>
+                                    </Box>
+                                    <Box component="td" sx={{ py: 1.25, textAlign: 'right' }}>
+                                        <Typography variant="body2" fontWeight={700} color="teal">{transferQtys[item.id]}</Typography>
+                                    </Box>
+                                </Box>
+                            ))}
+                        </Box>
+                    </Box>
+                </DialogContent>
+                <DialogActions sx={{ gap: 1, px: 2, py: 1.5 }}>
+                    <Button variant="outlined" onClick={() => setShowTransferConfirm(false)} disabled={transferring}>Back</Button>
+                    <Button
+                        variant="contained"
+                        onClick={handleSubmitTransfer}
+                        disabled={transferring}
+                        sx={{ background: '#0f766e', '&:hover': { background: '#0d9488' } }}
+                    >
+                        {transferring ? 'Transferring…' : 'Confirm Transfer'}
                     </Button>
                 </DialogActions>
             </Dialog>

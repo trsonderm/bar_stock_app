@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
     }
 
     try {
-        const orgs = await db.query('SELECT id, name, billing_status, sms_enabled, subscription_plan, settings, created_at FROM organizations ORDER BY created_at DESC');
+        const orgs = await db.query('SELECT id, name, billing_status, sms_enabled, subscription_plan, settings, created_at, disabled_at, disable_reason FROM organizations ORDER BY created_at DESC');
         return NextResponse.json({ organizations: orgs });
     } catch (e) {
         return NextResponse.json({ error: 'Internal Error' }, { status: 500 });

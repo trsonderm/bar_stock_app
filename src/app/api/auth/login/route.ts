@@ -103,9 +103,15 @@ export async function POST(req: NextRequest) {
                 }
             }
 
-            // Fetch Organization Plan
-            const org = await db.one('SELECT subscription_plan FROM organizations WHERE id = $1', [matchedUser.organization_id || 1]);
+            // Fetch Organization Plan + Check if disabled
+            const org = await db.one('SELECT subscription_plan, billing_status, disable_reason FROM organizations WHERE id = $1', [matchedUser.organization_id || 1]);
             const subscriptionPlan = org ? org.subscription_plan : 'base';
+
+            if (org?.billing_status === 'disabled') {
+                const reason = org.disable_reason || 'Your account has been suspended.';
+                await recordLoginAttempt({ ip, userAgent, email: email || null, userId: matchedUser.id, organizationId: matchedUser.organization_id || 1, success: false, failReason: 'org_disabled' });
+                return NextResponse.json({ error: `Account suspended: ${reason} Please contact support.` }, { status: 403 });
+            }
 
             const permissions = typeof matchedUser.permissions === 'string' ? JSON.parse(matchedUser.permissions) : matchedUser.permissions;
             // Check if permissions includes super_admin

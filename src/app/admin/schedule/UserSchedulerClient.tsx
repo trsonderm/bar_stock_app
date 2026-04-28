@@ -46,7 +46,7 @@ export default function UserSchedulerClient() {
     };
 
     const [activeTab, setActiveTab] = useState<'weekly' | 'daily' | 'monthly' | 'shifts'>('weekly');
-    const [viewMode, setViewMode] = useState<'employees' | 'shifts' | 'coverage'>('employees');
+    const [viewMode, setViewMode] = useState<'employees' | 'shifts' | 'coverage' | 'timeline'>('timeline');
     const [currentDate, setCurrentDate] = useState(new Date());
     const [weekStart, setWeekStart] = useState<Date>(getStartOfWeek(new Date()));
 
@@ -79,6 +79,8 @@ export default function UserSchedulerClient() {
     const [editRecurringEndDate, setEditRecurringEndDate] = useState('');
 
     const [notifyOnAssign, setNotifyOnAssign] = useState(false);
+    const [notifyOnEdit, setNotifyOnEdit] = useState(false);
+    const [notifyMessage, setNotifyMessage] = useState('');
 
     // Drag & Drop State
     const [draggedSchedule, setDraggedSchedule] = useState<Schedule | null>(null);
@@ -181,6 +183,8 @@ export default function UserSchedulerClient() {
         setModifyStrategy('instance');
         setIsEditRecurring(false);
         setEditRecurringEndDate('');
+        setNotifyOnEdit(false);
+        setNotifyMessage('');
         setEditModalOpen(true);
     };
 
@@ -246,6 +250,23 @@ export default function UserSchedulerClient() {
         });
 
         if (res.ok) {
+            if (notifyOnEdit) {
+                const shiftDef = shifts.find(s => s.id === parseInt(editShiftId));
+                const scheduleEntries = [{
+                    date: editingSchedule.date.split('T')[0],
+                    shiftName: shiftDef?.label || editingSchedule.shift_name,
+                    startTime: shiftDef?.start_time || editingSchedule.start_time,
+                    endTime: shiftDef?.end_time || editingSchedule.end_time,
+                    color: shiftDef?.color || '#3b82f6',
+                }];
+                await fetch('/api/admin/schedule/notify', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userIds: [parseInt(editUserId)], scheduleEntries, message: notifyMessage }),
+                });
+            }
+            setNotifyOnEdit(false);
+            setNotifyMessage('');
             setEditModalOpen(false);
             if (activeTab === 'weekly') fetchSchedules(weekStart, 7);
             else if (activeTab === 'monthly') fetchSchedules(currentDate, 35);
@@ -446,23 +467,33 @@ export default function UserSchedulerClient() {
         });
 
         if (res.ok) {
-            alert('Schedule Updated');
-
-            if (notifyOnAssign) {
-                // Trigger notification logic here (simplified)
-                alert('Notifications queued for selected users.');
+            if (notifyOnAssign && selectedUsers.length > 0) {
+                const shiftDef = shifts.find(s => s.id === parseInt(selectedShift));
+                const scheduleEntries = dates.map(d => ({
+                    date: d,
+                    shiftName: shiftDef?.label || '',
+                    startTime: shiftDef?.start_time || '',
+                    endTime: shiftDef?.end_time || '',
+                    color: shiftDef?.color || '#3b82f6',
+                }));
+                await fetch('/api/admin/schedule/notify', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userIds: selectedUsers, scheduleEntries, message: notifyMessage }),
+                });
             }
+
+            alert('Schedule Updated');
 
             // Reset Form
             setSelectedUsers([]);
             setSelectedShift('');
-            // Keep dates? Usually better to reset or keep last? User asked to "deselect checkboxes", implying reset.
-            // Let's reset everything for a clean state.
             setStartDate('');
             setEndDate('');
             setIsRecurring(false);
             setRecurringEndDate('');
             setNotifyOnAssign(false);
+            setNotifyMessage('');
 
             setAssignModalOpen(false);
             if (activeTab === 'weekly') fetchSchedules(weekStart, 7);
@@ -686,6 +717,12 @@ export default function UserSchedulerClient() {
 
                         <div className="flex gap-4 items-center">
                             <div className="bg-gray-700 rounded p-1 flex text-sm">
+                                <button
+                                    onClick={() => setViewMode('timeline')}
+                                    className={`px-3 py-1 rounded ${viewMode === 'timeline' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'}`}
+                                >
+                                    Timeline
+                                </button>
                                 <button
                                     onClick={() => setViewMode('employees')}
                                     className={`px-3 py-1 rounded ${viewMode === 'employees' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'}`}
@@ -938,6 +975,161 @@ export default function UserSchedulerClient() {
                             </tbody>
                         </table>
                     </div>
+
+                    {/* TIMELINE VIEW */}
+                    {viewMode === 'timeline' && (
+                        <div className="overflow-x-auto border border-gray-700 rounded-b-lg bg-gray-900">
+                            {/* Day header row */}
+                            <div className="flex" style={{ minWidth: '800px' }}>
+                                <div className="flex-shrink-0 bg-gray-800 border-r border-b border-gray-700" style={{ width: '160px' }} />
+                                {weekDays.map((day, i) => {
+                                    const isToday = formatLocalDate(day) === formatLocalDate(new Date());
+                                    return (
+                                        <div
+                                            key={i}
+                                            className={`flex-1 border-r border-b border-gray-700 px-2 py-2 text-center ${isToday ? 'bg-blue-900/30' : 'bg-gray-800'}`}
+                                        >
+                                            <div className={`font-bold text-sm ${isToday ? 'text-blue-300' : 'text-white'}`}>
+                                                {day.toLocaleDateString('en-US', { weekday: 'short' })}
+                                            </div>
+                                            <div className={`text-xs ${isToday ? 'text-blue-400 font-bold' : 'text-gray-500'}`}>
+                                                {day.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                            </div>
+                                            {/* Hour tick marks */}
+                                            <div className="relative mt-1 h-3">
+                                                {[6, 12, 18].map(h => (
+                                                    <div
+                                                        key={h}
+                                                        className="absolute text-[9px] text-gray-600 -translate-x-1/2"
+                                                        style={{ left: `${(h / 24) * 100}%` }}
+                                                    >
+                                                        {h === 12 ? '12p' : h > 12 ? `${h - 12}p` : `${h}a`}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+
+                            {/* Employee rows */}
+                            {users.length === 0 ? (
+                                <div className="text-center text-gray-500 py-10 text-sm">No employees found for this location.</div>
+                            ) : (
+                                users.map(user => {
+                                    const hasAnyShift = weekDays.some(day =>
+                                        schedules.some(s => s.user_id === user.id && s.date.split('T')[0] === formatLocalDate(day))
+                                    );
+                                    return (
+                                        <div key={user.id} className="flex border-b border-gray-800 hover:bg-gray-800/30 transition-colors" style={{ minWidth: '800px' }}>
+                                            <div
+                                                className="flex-shrink-0 border-r border-gray-800 flex items-center px-3 py-2"
+                                                style={{ width: '160px' }}
+                                            >
+                                                <div>
+                                                    <div className="text-white text-sm font-medium leading-tight">{user.first_name}</div>
+                                                    <div className="text-gray-500 text-xs">{user.last_name}</div>
+                                                </div>
+                                            </div>
+                                            {weekDays.map((day, di) => {
+                                                const dateStr = formatLocalDate(day);
+                                                const isToday = dateStr === formatLocalDate(new Date());
+                                                const daySchedules = schedules.filter(s => s.user_id === user.id && s.date.split('T')[0] === dateStr);
+
+                                                return (
+                                                    <div
+                                                        key={di}
+                                                        className={`flex-1 border-r border-gray-800 relative ${isToday ? 'bg-blue-900/10' : ''}`}
+                                                        style={{ minHeight: '56px' }}
+                                                        onDragOver={handleDragOver}
+                                                        onDrop={(e) => handleDrop(e, dateStr, user.id)}
+                                                    >
+                                                        {/* Hour grid lines */}
+                                                        {[6, 12, 18].map(h => (
+                                                            <div
+                                                                key={h}
+                                                                className="absolute inset-y-0 border-l border-gray-800/60"
+                                                                style={{ left: `${(h / 24) * 100}%` }}
+                                                            />
+                                                        ))}
+
+                                                        {daySchedules.length === 0 && !hasAnyShift && (
+                                                            <div className="absolute inset-0 flex items-center justify-center">
+                                                                <div className="w-full h-px bg-gray-800/60" />
+                                                            </div>
+                                                        )}
+
+                                                        {daySchedules.map(schedule => {
+                                                            const shiftDef = shifts.find(s => s.id === schedule.shift_id);
+                                                            const color = shiftDef?.color || '#3b82f6';
+                                                            const [startH, startM] = schedule.start_time.split(':').map(Number);
+                                                            const [endH, endM] = schedule.end_time.split(':').map(Number);
+                                                            const startTotal = startH * 60 + startM;
+                                                            let endTotal = endH * 60 + endM;
+                                                            if (endTotal <= startTotal) endTotal = 24 * 60;
+                                                            const leftPct = (startTotal / (24 * 60)) * 100;
+                                                            const widthPct = Math.max(((endTotal - startTotal) / (24 * 60)) * 100, 4);
+
+                                                            return (
+                                                                <div
+                                                                    key={schedule.id}
+                                                                    draggable
+                                                                    onDragStart={(e) => handleDragStart(e, schedule)}
+                                                                    className="absolute top-2 bottom-2 rounded px-2 flex flex-col justify-center overflow-hidden group cursor-pointer hover:brightness-110 hover:z-10 shadow-sm transition-all"
+                                                                    style={{
+                                                                        left: `${leftPct}%`,
+                                                                        width: `${widthPct}%`,
+                                                                        backgroundColor: color,
+                                                                        border: '1px solid rgba(255,255,255,0.15)',
+                                                                    }}
+                                                                    onClick={() => handleEdit(schedule)}
+                                                                    title={`${schedule.shift_name} · ${schedule.start_time}–${schedule.end_time}`}
+                                                                >
+                                                                    <div className="text-white text-[10px] font-bold truncate leading-tight drop-shadow">
+                                                                        {schedule.shift_name}
+                                                                    </div>
+                                                                    <div className="text-white/80 text-[9px] truncate leading-tight">
+                                                                        {schedule.start_time}–{schedule.end_time}
+                                                                    </div>
+                                                                    {schedule.recurring_group_id && (
+                                                                        <div className="absolute right-1 top-1 w-1 h-1 rounded-full bg-white opacity-70" title="Recurring" />
+                                                                    )}
+                                                                    <button
+                                                                        onClick={(e) => { e.stopPropagation(); handleDelete(schedule.id, schedule); }}
+                                                                        className="absolute right-0 top-0 bottom-0 bg-red-600/80 px-1 opacity-0 group-hover:opacity-100 transition-opacity flex items-center rounded-r"
+                                                                    >
+                                                                        <Trash2 size={9} />
+                                                                    </button>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    );
+                                })
+                            )}
+
+                            {/* Time scale footer */}
+                            <div className="flex border-t border-gray-700" style={{ minWidth: '800px' }}>
+                                <div className="flex-shrink-0" style={{ width: '160px' }} />
+                                {weekDays.map((_, i) => (
+                                    <div key={i} className="flex-1 relative h-5">
+                                        {[0, 6, 12, 18].map(h => (
+                                            <div
+                                                key={h}
+                                                className="absolute text-[9px] text-gray-600 -translate-x-1/2"
+                                                style={{ left: `${(h / 24) * 100}%`, top: '3px' }}
+                                            >
+                                                {h === 0 ? '12a' : h === 12 ? '12p' : h > 12 ? `${h - 12}p` : `${h}a`}
+                                            </div>
+                                        ))}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                 </>
             )}
 
@@ -1133,7 +1325,7 @@ export default function UserSchedulerClient() {
                             </div>
 
                             <div className="mt-4 pt-4 border-t border-gray-700">
-                                <label className="flex items-center gap-2 cursor-pointer">
+                                <label className="flex items-center gap-2 cursor-pointer mb-2">
                                     <input
                                         type="checkbox"
                                         checked={notifyOnAssign}
@@ -1141,10 +1333,19 @@ export default function UserSchedulerClient() {
                                         className="rounded bg-gray-700 border-gray-600"
                                     />
                                     <div>
-                                        <span className="text-white block">Notify Checked Users Now</span>
+                                        <span className="text-white block">Notify Selected Employees</span>
                                         <span className="text-xs text-gray-500">Sends an email to selected users with their new schedule.</span>
                                     </div>
                                 </label>
+                                {notifyOnAssign && (
+                                    <input
+                                        type="text"
+                                        value={notifyMessage}
+                                        onChange={e => setNotifyMessage(e.target.value)}
+                                        placeholder="Optional message to include in email..."
+                                        className="w-full bg-gray-900 text-white rounded p-2 border border-gray-700 text-sm"
+                                    />
+                                )}
                             </div>
                         </div>
 
@@ -1347,7 +1548,31 @@ export default function UserSchedulerClient() {
                             )}
                         </div>
 
-                        <div className="flex justify-between items-center mt-8">
+                        <div className="mt-4 pt-4 border-t border-gray-700">
+                            <label className="flex items-center gap-2 cursor-pointer mb-2">
+                                <input
+                                    type="checkbox"
+                                    checked={notifyOnEdit}
+                                    onChange={e => setNotifyOnEdit(e.target.checked)}
+                                    className="rounded bg-gray-700 border-gray-600"
+                                />
+                                <div>
+                                    <span className="text-white block text-sm">Notify Employee of Change</span>
+                                    <span className="text-xs text-gray-500">Sends an email to the assigned employee with their updated shift.</span>
+                                </div>
+                            </label>
+                            {notifyOnEdit && (
+                                <input
+                                    type="text"
+                                    value={notifyMessage}
+                                    onChange={e => setNotifyMessage(e.target.value)}
+                                    placeholder="Optional message to include..."
+                                    className="w-full bg-gray-900 text-white rounded p-2 border border-gray-700 text-sm mt-1"
+                                />
+                            )}
+                        </div>
+
+                        <div className="flex justify-between items-center mt-6">
                             <button
                                 onClick={() => handleDelete(editingSchedule.id, editingSchedule)}
                                 className="text-red-500 hover:text-red-400 text-sm flex items-center gap-1"

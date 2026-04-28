@@ -13,6 +13,7 @@ class Scheduler {
         this.tasks = [
             { name: 'Daily Cleanup', cron: '0 4 * * *', run: () => this.cleanupLogs() },
             { name: 'Billing Check', cron: '0 5 * * *', run: () => this.checkBilling() },
+            { name: 'Auto Disable Past Due', cron: '0 6 * * *', run: () => this.runAutoDisablePastDue() },
             { name: 'Auto Backup', cron: '0 * * * *', run: () => this.checkAutoBackup() },
             { name: 'Report Schedules', cron: '* * * * *', run: () => this.runDueReportSchedules() },
             { name: 'Low Stock Alerts', cron: '* * * * *', run: () => this.runDueLowStockAlerts() },
@@ -72,6 +73,58 @@ class Scheduler {
             if (row) days = parseInt(row.value) || 90;
         } catch { }
         await db.execute(`DELETE FROM activity_logs WHERE timestamp < NOW() - INTERVAL '${days} days'`);
+    }
+
+    private async runAutoDisablePastDue() {
+        try {
+            const enabledRow = await db.one(
+                `SELECT value FROM system_settings WHERE key = 'billing_auto_disable_enabled'`
+            ).catch(() => null);
+            if (enabledRow?.value !== 'true') return;
+
+            const graceRow = await db.one(
+                `SELECT value FROM system_settings WHERE key = 'billing_auto_disable_grace_days'`
+            ).catch(() => null);
+            const graceDays = parseInt(graceRow?.value || '7');
+
+            // Ensure columns exist
+            await db.execute(`ALTER TABLE organizations ADD COLUMN IF NOT EXISTS disabled_at TIMESTAMPTZ`);
+            await db.execute(`ALTER TABLE organizations ADD COLUMN IF NOT EXISTS disable_reason TEXT`);
+            await db.execute(`ALTER TABLE organizations ADD COLUMN IF NOT EXISTS pre_disable_billing_status TEXT`);
+
+            const candidates = await db.query(`
+                SELECT DISTINCT ON (o.id)
+                    o.id, o.name
+                FROM organizations o
+                JOIN invoices i ON i.organization_id = o.id
+                WHERE o.billing_status = 'past_due'
+                  AND i.status IN ('FAILED', 'PENDING')
+                  AND i.created_at < NOW() - INTERVAL '1 day' * $1
+                ORDER BY o.id, i.created_at DESC
+            `, [graceDays]);
+
+            for (const org of candidates) {
+                await db.execute(
+                    `UPDATE organizations
+                     SET billing_status = 'disabled',
+                         disabled_at = NOW(),
+                         disable_reason = $1,
+                         pre_disable_billing_status = 'past_due'
+                     WHERE id = $2`,
+                    [`Auto-disabled: payment past due for ${graceDays} days`, org.id]
+                );
+                try {
+                    await db.execute(
+                        `INSERT INTO activity_logs (organization_id, user_id, action, details)
+                         VALUES ($1, 0, 'ORG_AUTO_DISABLED', $2)`,
+                        [org.id, JSON.stringify({ reason: `Auto-disabled: payment past due for ${graceDays} days` })]
+                    );
+                } catch { /* non-fatal */ }
+                console.log(`[auto-disable] Disabled org: ${org.name} (id=${org.id})`);
+            }
+        } catch (e) {
+            console.error('[auto-disable] Failed:', e);
+        }
     }
 
     private async checkBilling() {

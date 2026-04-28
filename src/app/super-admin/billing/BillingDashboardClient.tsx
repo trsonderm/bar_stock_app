@@ -65,7 +65,7 @@ function StatusBadge({ status }: { status: string }) {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function BillingDashboardClient() {
-    const [tab, setTab] = useState<'overview' | 'invoices' | 'settings' | 'orgs'>('overview');
+    const [tab, setTab] = useState<'overview' | 'invoices' | 'settings' | 'orgs' | 'disabled' | 'stripe'>('overview');
     const [stats, setStats] = useState<BillingStats | null>(null);
     const [invoices, setInvoices] = useState<Invoice[]>([]);
     const [invoiceTotal, setInvoiceTotal] = useState(0);
@@ -78,6 +78,24 @@ export default function BillingDashboardClient() {
     const [stripeConfigured, setStripeConfigured] = useState(false);
     const [stripeMode, setStripeMode] = useState('test');
     const [billingProvider, setBillingProvider] = useState('manual');
+
+    // Disabled org queue
+    const [disabledOrgs, setDisabledOrgs] = useState<any[]>([]);
+    const [disableReason, setDisableReason] = useState('');
+    const [disablingId, setDisablingId] = useState<number | null>(null);
+
+    // Auto-disable settings
+    const [autoDisableEnabled, setAutoDisableEnabled] = useState(false);
+    const [autoDisableGraceDays, setAutoDisableGraceDays] = useState(7);
+    const [autoDisableSaving, setAutoDisableSaving] = useState(false);
+    const [autoDisableRunResult, setAutoDisableRunResult] = useState<string | null>(null);
+
+    // Stripe report
+    const [stripeReport, setStripeReport] = useState<any[]>([]);
+    const [stripeSummary, setStripeSummary] = useState<any>(null);
+    const [stripeReportLoading, setStripeReportLoading] = useState(false);
+    const [stripeReportError, setStripeReportError] = useState<string | null>(null);
+    const [stripeFilter, setStripeFilter] = useState<'all' | 'problems'>('all');
 
     // Settings state
     const [cfg, setCfg] = useState<BillingConfig>({
@@ -136,10 +154,42 @@ export default function BillingDashboardClient() {
         if (d.organizations) setOrgs(d.organizations);
     }, []);
 
+    const loadDisabledOrgs = useCallback(async () => {
+        const r = await fetch('/api/super-admin/organizations/disable');
+        const d = await r.json();
+        if (d.disabled) setDisabledOrgs(d.disabled);
+    }, []);
+
+    const loadAutoDisableSettings = useCallback(async () => {
+        const r = await fetch('/api/super-admin/billing/auto-disable');
+        const d = await r.json();
+        setAutoDisableEnabled(d.enabled || false);
+        setAutoDisableGraceDays(d.graceDays || 7);
+    }, []);
+
+    const loadStripeReport = useCallback(async () => {
+        setStripeReportLoading(true);
+        setStripeReportError(null);
+        try {
+            const r = await fetch('/api/super-admin/billing/stripe-report');
+            const d = await r.json();
+            if (d.error && !d.stripeConfigured) {
+                setStripeReportError('Stripe is not configured. Add your Stripe keys in Settings.');
+            } else if (d.error) {
+                setStripeReportError(d.error);
+            } else {
+                setStripeReport(d.invoices || []);
+                setStripeSummary(d.summary || null);
+            }
+        } catch (e) { setStripeReportError('Failed to load Stripe data'); } finally { setStripeReportLoading(false); }
+    }, []);
+
     useEffect(() => { loadStats(); }, [loadStats]);
     useEffect(() => { if (tab === 'invoices') loadInvoices(); }, [tab, loadInvoices]);
-    useEffect(() => { if (tab === 'settings') loadConfig(); }, [tab, loadConfig]);
+    useEffect(() => { if (tab === 'settings') { loadConfig(); loadAutoDisableSettings(); } }, [tab, loadConfig, loadAutoDisableSettings]);
     useEffect(() => { if (tab === 'orgs' || tab === 'invoices') loadOrgs(); }, [tab, loadOrgs]);
+    useEffect(() => { if (tab === 'disabled') { loadDisabledOrgs(); loadOrgs(); } }, [tab, loadDisabledOrgs, loadOrgs]);
+    useEffect(() => { if (tab === 'stripe') loadStripeReport(); }, [tab, loadStripeReport]);
 
     const saveConfig = async () => {
         setCfgSaving(true); setCfgTestResult(null);
@@ -189,6 +239,44 @@ export default function BillingDashboardClient() {
         loadStats();
     };
 
+    const disableOrg = async (orgId: number, reason: string) => {
+        setDisablingId(orgId);
+        try {
+            await fetch('/api/super-admin/organizations/disable', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ orgId, action: 'disable', reason }),
+            });
+            loadOrgs(); loadDisabledOrgs(); loadStats();
+        } finally { setDisablingId(null); setDisableReason(''); }
+    };
+
+    const enableOrg = async (orgId: number) => {
+        setDisablingId(orgId);
+        try {
+            await fetch('/api/super-admin/organizations/disable', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ orgId, action: 'enable' }),
+            });
+            loadOrgs(); loadDisabledOrgs(); loadStats();
+        } finally { setDisablingId(null); }
+    };
+
+    const saveAutoDisable = async (runNow?: boolean) => {
+        setAutoDisableSaving(true);
+        setAutoDisableRunResult(null);
+        try {
+            const r = await fetch('/api/super-admin/billing/auto-disable', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ enabled: autoDisableEnabled, graceDays: autoDisableGraceDays, runNow: runNow || false }),
+            });
+            const d = await r.json();
+            if (runNow && d.disabled !== undefined) {
+                setAutoDisableRunResult(d.disabled === 0 ? 'No orgs met the auto-disable criteria.' : `Disabled ${d.disabled} org(s): ${d.orgs?.join(', ')}`);
+                loadDisabledOrgs(); loadStats();
+            }
+        } finally { setAutoDisableSaving(false); }
+    };
+
     const tabStyle = (t: string) => ({
         padding: '8px 18px', borderRadius: 8, border: 'none', cursor: 'pointer',
         fontWeight: 600, fontSize: '0.875rem',
@@ -233,9 +321,20 @@ export default function BillingDashboardClient() {
             </div>
 
             {/* Tabs */}
-            <div style={{ display: 'flex', gap: 4, marginBottom: '1.5rem', background: '#0f172a', borderRadius: 10, padding: 4, width: 'fit-content' }}>
-                {[['overview', '📊 Overview'], ['invoices', '🧾 Invoices'], ['orgs', '🏢 Subscriptions'], ['settings', '⚙️ Settings']].map(([t, label]) => (
-                    <button key={t} style={tabStyle(t)} onClick={() => setTab(t as any)}>{label}</button>
+            <div style={{ display: 'flex', gap: 4, marginBottom: '1.5rem', background: '#0f172a', borderRadius: 10, padding: 4, flexWrap: 'wrap' }}>
+                {[
+                    ['overview', '📊 Overview'],
+                    ['invoices', '🧾 Invoices'],
+                    ['orgs', '🏢 Subscriptions'],
+                    ['disabled', `🚫 Disabled${disabledOrgs.length > 0 ? ` (${disabledOrgs.length})` : ''}`],
+                    ['stripe', '💳 Stripe Report'],
+                    ['settings', '⚙️ Settings'],
+                ].map(([t, label]) => (
+                    <button key={t} style={{
+                        ...tabStyle(t),
+                        ...(t === 'disabled' && disabledOrgs.length > 0 && tab !== 'disabled'
+                            ? { color: '#fca5a5', background: '#3f0b0b' } : {}),
+                    }} onClick={() => setTab(t as any)}>{label}</button>
                 ))}
             </div>
 
@@ -435,48 +534,252 @@ export default function BillingDashboardClient() {
 
             {/* ── ORG SUBSCRIPTIONS ── */}
             {tab === 'orgs' && (
-                <div style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 12, overflow: 'hidden' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-                        <thead>
-                            <tr style={{ background: '#020617', color: '#64748b', textAlign: 'left' }}>
-                                {['Organization', 'Plan', 'Billing Status', 'Trial Ends', 'Actions'].map(h => (
-                                    <th key={h} style={{ padding: '10px 16px', fontWeight: 600, fontSize: '0.72rem', textTransform: 'uppercase' }}>{h}</th>
-                                ))}
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {orgs.map((o: any) => (
-                                <tr key={o.id} style={{ borderTop: '1px solid #1e293b' }}>
-                                    <td style={{ padding: '10px 16px', color: '#e2e8f0', fontWeight: 600 }}>{o.name}</td>
-                                    <td style={{ padding: '10px 16px' }}>
-                                        <select defaultValue={o.subscription_plan}
-                                            onChange={e => updateOrgPlan(o.id, e.target.value, o.billing_status)}
-                                            style={{ background: '#1e293b', color: '#e2e8f0', border: '1px solid #334155', borderRadius: 6, padding: '3px 8px', fontSize: '0.8rem', cursor: 'pointer' }}>
-                                            {['free_trial','basic','pro','enterprise'].map(p => <option key={p} value={p}>{p}</option>)}
-                                        </select>
-                                    </td>
-                                    <td style={{ padding: '10px 16px' }}>
-                                        <select defaultValue={o.billing_status}
-                                            onChange={e => updateOrgPlan(o.id, o.subscription_plan, e.target.value)}
-                                            style={{ background: '#1e293b', color: '#e2e8f0', border: '1px solid #334155', borderRadius: 6, padding: '3px 8px', fontSize: '0.8rem', cursor: 'pointer' }}>
-                                            {['active','past_due','canceled','free'].map(s => <option key={s} value={s}>{s}</option>)}
-                                        </select>
-                                    </td>
-                                    <td style={{ padding: '10px 16px', color: '#64748b', fontSize: '0.8rem' }}>
-                                        {o.trial_ends_at ? new Date(o.trial_ends_at).toLocaleDateString() : '—'}
-                                    </td>
-                                    <td style={{ padding: '10px 16px' }}>
-                                        <button onClick={() => {
-                                            setNewInv(p => ({ ...p, organization_id: String(o.id), amount: '49' }));
-                                            setTab('invoices');
-                                        }} style={{ background: '#1e293b', color: '#94a3b8', border: '1px solid #334155', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontSize: '0.75rem' }}>
-                                            + Invoice
-                                        </button>
-                                    </td>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    <div style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 12, overflow: 'hidden' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                            <thead>
+                                <tr style={{ background: '#020617', color: '#64748b', textAlign: 'left' }}>
+                                    {['Organization', 'Plan', 'Billing Status', 'Trial Ends', 'Actions'].map(h => (
+                                        <th key={h} style={{ padding: '10px 16px', fontWeight: 600, fontSize: '0.72rem', textTransform: 'uppercase' }}>{h}</th>
+                                    ))}
                                 </tr>
-                            ))}
-                        </tbody>
-                    </table>
+                            </thead>
+                            <tbody>
+                                {orgs.filter((o: any) => o.billing_status !== 'disabled').map((o: any) => {
+                                    const isPastDue = o.billing_status === 'past_due';
+                                    return (
+                                        <tr key={o.id} style={{ borderTop: '1px solid #1e293b', background: isPastDue ? '#2d1a0a' : undefined }}>
+                                            <td style={{ padding: '10px 16px', fontWeight: 600 }}>
+                                                <span style={{ color: isPastDue ? '#fca5a5' : '#e2e8f0' }}>{o.name}</span>
+                                                {isPastDue && <span style={{ marginLeft: 6, fontSize: '0.7rem', color: '#ef4444', background: '#3f0b0b', padding: '1px 6px', borderRadius: 6 }}>PAST DUE</span>}
+                                            </td>
+                                            <td style={{ padding: '10px 16px' }}>
+                                                <select defaultValue={o.subscription_plan}
+                                                    onChange={e => updateOrgPlan(o.id, e.target.value, o.billing_status)}
+                                                    style={{ background: '#1e293b', color: '#e2e8f0', border: '1px solid #334155', borderRadius: 6, padding: '3px 8px', fontSize: '0.8rem', cursor: 'pointer' }}>
+                                                    {['free_trial','basic','pro','enterprise'].map(p => <option key={p} value={p}>{p}</option>)}
+                                                </select>
+                                            </td>
+                                            <td style={{ padding: '10px 16px' }}>
+                                                <select defaultValue={o.billing_status}
+                                                    onChange={e => updateOrgPlan(o.id, o.subscription_plan, e.target.value)}
+                                                    style={{ background: '#1e293b', color: '#e2e8f0', border: '1px solid #334155', borderRadius: 6, padding: '3px 8px', fontSize: '0.8rem', cursor: 'pointer' }}>
+                                                    {['active','past_due','canceled','free'].map(s => <option key={s} value={s}>{s}</option>)}
+                                                </select>
+                                            </td>
+                                            <td style={{ padding: '10px 16px', color: '#64748b', fontSize: '0.8rem' }}>
+                                                {o.trial_ends_at ? new Date(o.trial_ends_at).toLocaleDateString() : '—'}
+                                            </td>
+                                            <td style={{ padding: '10px 16px' }}>
+                                                <div style={{ display: 'flex', gap: 6 }}>
+                                                    <button onClick={() => {
+                                                        setNewInv(p => ({ ...p, organization_id: String(o.id), amount: '49' }));
+                                                        setTab('invoices');
+                                                    }} style={{ background: '#1e293b', color: '#94a3b8', border: '1px solid #334155', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontSize: '0.75rem' }}>
+                                                        + Invoice
+                                                    </button>
+                                                    <button
+                                                        disabled={disablingId === o.id}
+                                                        onClick={() => {
+                                                            const reason = prompt(`Reason for disabling "${o.name}"?\n(Leave blank for default)`) ?? '';
+                                                            if (reason !== null) disableOrg(o.id, reason);
+                                                        }}
+                                                        style={{ background: '#3f0b0b', color: '#fca5a5', border: '1px solid #7f1d1d', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontSize: '0.75rem' }}>
+                                                        🚫 Disable
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
+
+            {/* ── DISABLED ORG QUEUE ── */}
+            {tab === 'disabled' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                    <div style={{ background: '#0f172a', border: '1px solid #7f1d1d', borderRadius: 12, overflow: 'hidden' }}>
+                        <div style={{ padding: '1rem 1.5rem', borderBottom: '1px solid #7f1d1d', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div>
+                                <span style={{ color: '#fca5a5', fontWeight: 700 }}>🚫 Disabled Organizations</span>
+                                <span style={{ marginLeft: 8, color: '#64748b', fontSize: '0.82rem' }}>Orgs are locked out — users cannot log in</span>
+                            </div>
+                            <button onClick={loadDisabledOrgs} style={{ background: '#1e293b', color: '#94a3b8', border: '1px solid #334155', borderRadius: 6, padding: '4px 12px', cursor: 'pointer', fontSize: '0.8rem' }}>↻ Refresh</button>
+                        </div>
+                        {disabledOrgs.length === 0 ? (
+                            <div style={{ padding: '2.5rem', textAlign: 'center', color: '#475569' }}>No disabled organizations. 🎉</div>
+                        ) : (
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                                <thead>
+                                    <tr style={{ background: '#020617', color: '#64748b', textAlign: 'left' }}>
+                                        {['Organization', 'Previous Status', 'Disabled At', 'Reason', 'Action'].map(h => (
+                                            <th key={h} style={{ padding: '10px 16px', fontWeight: 600, fontSize: '0.72rem', textTransform: 'uppercase' }}>{h}</th>
+                                        ))}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {disabledOrgs.map((o: any) => (
+                                        <tr key={o.id} style={{ borderTop: '1px solid #3f0b0b', background: '#1a0505' }}>
+                                            <td style={{ padding: '10px 16px', color: '#fca5a5', fontWeight: 700 }}>{o.name}</td>
+                                            <td style={{ padding: '10px 16px', color: '#94a3b8', fontSize: '0.8rem' }}>{o.pre_disable_billing_status || '—'}</td>
+                                            <td style={{ padding: '10px 16px', color: '#64748b', fontSize: '0.8rem' }}>
+                                                {o.disabled_at ? new Date(o.disabled_at).toLocaleString() : '—'}
+                                            </td>
+                                            <td style={{ padding: '10px 16px', color: '#94a3b8', fontSize: '0.8rem', maxWidth: 280 }}>{o.disable_reason || '—'}</td>
+                                            <td style={{ padding: '10px 16px' }}>
+                                                <button
+                                                    disabled={disablingId === o.id}
+                                                    onClick={() => enableOrg(o.id)}
+                                                    style={{ background: '#052e16', color: '#4ade80', border: '1px solid #15803d', borderRadius: 6, padding: '4px 14px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700 }}>
+                                                    ✓ Re-enable
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        )}
+                    </div>
+
+                    {/* Manually disable an org */}
+                    <div style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 12, padding: '1.25rem 1.5rem' }}>
+                        <div style={{ color: '#e2e8f0', fontWeight: 700, marginBottom: '0.75rem' }}>Manually Disable an Organization</div>
+                        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                            <select
+                                value={disableReason}
+                                onChange={e => setDisableReason(e.target.value)}
+                                style={{ ...inputStyle, flex: '0 0 220px' }}
+                            >
+                                <option value="">Select organization…</option>
+                                {orgs.filter((o: any) => o.billing_status !== 'disabled').map((o: any) => (
+                                    <option key={o.id} value={String(o.id)}>#{o.id} {o.name} ({o.billing_status})</option>
+                                ))}
+                            </select>
+                            <input
+                                placeholder="Reason (optional)"
+                                style={{ ...inputStyle, flex: 1 }}
+                                id="disable-reason-input"
+                            />
+                            <button
+                                onClick={() => {
+                                    const orgId = parseInt(disableReason);
+                                    const reason = (document.getElementById('disable-reason-input') as HTMLInputElement)?.value || '';
+                                    if (!orgId) return alert('Select an org first');
+                                    if (!confirm(`Disable org #${orgId}? Users will not be able to log in.`)) return;
+                                    disableOrg(orgId, reason);
+                                    setDisableReason('');
+                                }}
+                                style={{ background: '#3f0b0b', color: '#fca5a5', border: '1px solid #7f1d1d', borderRadius: 8, padding: '8px 20px', cursor: 'pointer', fontWeight: 700 }}>
+                                Disable Org
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ── STRIPE REPORT ── */}
+            {tab === 'stripe' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                    {stripeReportLoading && <div style={{ color: '#94a3b8', padding: '2rem' }}>Loading Stripe data…</div>}
+                    {stripeReportError && (
+                        <div style={{ background: '#1a0a00', border: '1px solid #78350f', borderRadius: 10, padding: '1rem 1.5rem', color: '#fbbf24' }}>
+                            ⚠ {stripeReportError}
+                        </div>
+                    )}
+                    {stripeSummary && (
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '1rem' }}>
+                            <StatCard label="Collected (Stripe)" value={fmt(stripeSummary.totalCollected)} color="#34d399" />
+                            <StatCard label="Outstanding" value={fmt(stripeSummary.totalOutstanding)} color="#fbbf24" />
+                            <StatCard label="Problem Payments" value={String(stripeSummary.pastDueCount)} color="#ef4444" sub="past due or failed" />
+                            <StatCard label="Problem Orgs" value={String(stripeSummary.problemOrgs)} color="#f87171" />
+                        </div>
+                    )}
+                    {!stripeReportLoading && !stripeReportError && stripeReport.length > 0 && (
+                        <div style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 12, overflow: 'hidden' }}>
+                            <div style={{ padding: '0.75rem 1.5rem', borderBottom: '1px solid #1e293b', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ color: 'white', fontWeight: 700 }}>Stripe Payments</span>
+                                <div style={{ display: 'flex', gap: 6 }}>
+                                    <button onClick={() => setStripeFilter('all')}
+                                        style={{ padding: '4px 12px', borderRadius: 6, border: `1px solid ${stripeFilter === 'all' ? '#3b82f6' : '#334155'}`, background: stripeFilter === 'all' ? '#1d3461' : 'transparent', color: stripeFilter === 'all' ? '#93c5fd' : '#64748b', cursor: 'pointer', fontSize: '0.78rem' }}>
+                                        All ({stripeReport.length})
+                                    </button>
+                                    <button onClick={() => setStripeFilter('problems')}
+                                        style={{ padding: '4px 12px', borderRadius: 6, border: `1px solid ${stripeFilter === 'problems' ? '#ef4444' : '#334155'}`, background: stripeFilter === 'problems' ? '#3f0b0b' : 'transparent', color: stripeFilter === 'problems' ? '#fca5a5' : '#64748b', cursor: 'pointer', fontSize: '0.78rem' }}>
+                                        Problems only
+                                    </button>
+                                    <button onClick={loadStripeReport}
+                                        style={{ padding: '4px 12px', borderRadius: 6, border: '1px solid #334155', background: 'transparent', color: '#94a3b8', cursor: 'pointer', fontSize: '0.78rem' }}>↻</button>
+                                </div>
+                            </div>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.83rem' }}>
+                                <thead>
+                                    <tr style={{ background: '#020617', color: '#64748b', textAlign: 'left' }}>
+                                        {['Organization', 'Amount', 'Status', 'Due Date', 'Created', 'Payment Method', 'Link'].map(h => (
+                                            <th key={h} style={{ padding: '9px 14px', fontWeight: 600, fontSize: '0.7rem', textTransform: 'uppercase' }}>{h}</th>
+                                        ))}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {stripeReport
+                                        .filter(r => stripeFilter === 'all' || r.is_past_due || r.is_failed)
+                                        .map((r: any, i: number) => {
+                                            const isProblem = r.is_past_due || r.is_failed;
+                                            const statusColors: Record<string, { bg: string; text: string }> = {
+                                                paid:             { bg: '#064e3b', text: '#6ee7b7' },
+                                                open:             { bg: '#78350f', text: '#fcd34d' },
+                                                uncollectible:    { bg: '#7f1d1d', text: '#fca5a5' },
+                                                draft:            { bg: '#1e293b', text: '#64748b' },
+                                                requires_payment_method: { bg: '#7f1d1d', text: '#fca5a5' },
+                                                canceled:         { bg: '#1e293b', text: '#64748b' },
+                                            };
+                                            const sc = statusColors[r.status] || { bg: '#1e293b', text: '#94a3b8' };
+                                            return (
+                                                <tr key={i} style={{ borderTop: '1px solid #1e293b', background: isProblem ? '#1a0505' : undefined }}>
+                                                    <td style={{ padding: '9px 14px' }}>
+                                                        <div style={{ color: isProblem ? '#fca5a5' : '#e2e8f0', fontWeight: 600 }}>{r.org_name}</div>
+                                                        {r.customer_email && <div style={{ color: '#475569', fontSize: '0.75rem' }}>{r.customer_email}</div>}
+                                                        {isProblem && r.billing_status === 'active' && (
+                                                            <span style={{ fontSize: '0.68rem', background: '#7f1d1d', color: '#fca5a5', borderRadius: 4, padding: '1px 5px', marginTop: 2, display: 'inline-block' }}>⚠ Org still active</span>
+                                                        )}
+                                                    </td>
+                                                    <td style={{ padding: '9px 14px', color: isProblem ? '#fca5a5' : '#34d399', fontWeight: 700 }}>
+                                                        {fmt(r.amount_due)}
+                                                        {r.amount_paid > 0 && r.amount_paid < r.amount_due && (
+                                                            <div style={{ color: '#64748b', fontSize: '0.73rem' }}>paid: {fmt(r.amount_paid)}</div>
+                                                        )}
+                                                    </td>
+                                                    <td style={{ padding: '9px 14px' }}>
+                                                        <span style={{ background: sc.bg, color: sc.text, borderRadius: 8, padding: '2px 8px', fontSize: '0.68rem', fontWeight: 700 }}>
+                                                            {r.status?.toUpperCase()}
+                                                        </span>
+                                                        {r.is_past_due && <div style={{ color: '#ef4444', fontSize: '0.68rem', marginTop: 2 }}>PAST DUE</div>}
+                                                    </td>
+                                                    <td style={{ padding: '9px 14px', color: r.due_date && new Date(r.due_date) < new Date() ? '#ef4444' : '#64748b', fontSize: '0.8rem' }}>
+                                                        {r.due_date ? new Date(r.due_date).toLocaleDateString() : '—'}
+                                                    </td>
+                                                    <td style={{ padding: '9px 14px', color: '#64748b', fontSize: '0.78rem' }}>{new Date(r.created).toLocaleDateString()}</td>
+                                                    <td style={{ padding: '9px 14px', color: '#64748b', fontSize: '0.78rem' }}>{r.payment_method || '—'}</td>
+                                                    <td style={{ padding: '9px 14px' }}>
+                                                        {r.hosted_url && (
+                                                            <a href={r.hosted_url} target="_blank" rel="noreferrer"
+                                                                style={{ color: '#818cf8', fontSize: '0.75rem' }}>Invoice ↗</a>
+                                                        )}
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                    {!stripeReportLoading && !stripeReportError && stripeReport.length === 0 && (
+                        <div style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 12, padding: '3rem', textAlign: 'center', color: '#475569' }}>
+                            No Stripe payment data found.
+                        </div>
+                    )}
                 </div>
             )}
 
@@ -595,6 +898,68 @@ export default function BillingDashboardClient() {
                         {cfgTestResult && (
                             <span style={{ color: cfgTestResult.startsWith('✓') ? '#4ade80' : '#ef4444', fontWeight: 600, fontSize: '0.85rem' }}>{cfgTestResult}</span>
                         )}
+                    </div>
+
+                    {/* Auto-Disable Settings */}
+                    <div style={{ background: '#0f172a', border: '1px solid #7f1d1d', borderRadius: 12, padding: '1.5rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                            <div>
+                                <div style={{ color: '#fca5a5', fontWeight: 700, fontSize: '0.95rem' }}>🚫 Auto-Disable on Billing Failure</div>
+                                <div style={{ color: '#64748b', fontSize: '0.8rem', marginTop: 2 }}>Automatically disable orgs with past-due invoices after a grace period</div>
+                            </div>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                                <div
+                                    onClick={() => setAutoDisableEnabled(v => !v)}
+                                    style={{
+                                        width: 44, height: 24, borderRadius: 12, position: 'relative', cursor: 'pointer',
+                                        background: autoDisableEnabled ? '#dc2626' : '#1e293b',
+                                        border: `2px solid ${autoDisableEnabled ? '#ef4444' : '#334155'}`,
+                                        transition: 'background 0.2s',
+                                    }}
+                                >
+                                    <div style={{
+                                        position: 'absolute', top: 2, left: autoDisableEnabled ? 20 : 2,
+                                        width: 16, height: 16, borderRadius: 8, background: 'white',
+                                        transition: 'left 0.2s',
+                                    }} />
+                                </div>
+                                <span style={{ color: autoDisableEnabled ? '#fca5a5' : '#64748b', fontSize: '0.82rem', fontWeight: 600 }}>
+                                    {autoDisableEnabled ? 'ENABLED' : 'DISABLED'}
+                                </span>
+                            </label>
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
+                            <label style={{ color: '#94a3b8', fontSize: '0.85rem', whiteSpace: 'nowrap' }}>Grace period (days before disabling):</label>
+                            <input
+                                type="number"
+                                min={1}
+                                max={90}
+                                value={autoDisableGraceDays}
+                                onChange={e => setAutoDisableGraceDays(parseInt(e.target.value) || 7)}
+                                style={{ ...inputStyle, width: 80 }}
+                            />
+                        </div>
+
+                        {autoDisableEnabled && (
+                            <div style={{ background: '#1a0505', border: '1px solid #3f0b0b', borderRadius: 8, padding: '0.75rem 1rem', marginBottom: '1rem', fontSize: '0.82rem', color: '#fca5a5' }}>
+                                ⚠ When enabled, orgs with <strong>past_due</strong> billing status whose most recent invoice has been unpaid for more than <strong>{autoDisableGraceDays} day{autoDisableGraceDays !== 1 ? 's' : ''}</strong> will be automatically disabled each night at 6 AM. Their users will not be able to log in until re-enabled.
+                            </div>
+                        )}
+
+                        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                            <button onClick={() => saveAutoDisable(false)} disabled={autoDisableSaving}
+                                style={{ background: '#2563eb', color: 'white', border: 'none', borderRadius: 8, padding: '8px 18px', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem' }}>
+                                Save Settings
+                            </button>
+                            <button onClick={() => saveAutoDisable(true)} disabled={autoDisableSaving}
+                                style={{ background: '#3f0b0b', color: '#fca5a5', border: '1px solid #7f1d1d', borderRadius: 8, padding: '8px 18px', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem' }}>
+                                {autoDisableSaving ? 'Running…' : 'Run Now'}
+                            </button>
+                            {autoDisableRunResult && (
+                                <span style={{ color: autoDisableRunResult.includes('No orgs') ? '#4ade80' : '#fbbf24', fontSize: '0.82rem' }}>{autoDisableRunResult}</span>
+                            )}
+                        </div>
                     </div>
                 </div>
             )}

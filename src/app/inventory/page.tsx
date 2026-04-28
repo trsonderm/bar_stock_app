@@ -31,5 +31,13 @@ export default async function InventoryPage() {
         console.error("Failed to load settings in inventory page", e);
     }
 
-    return <InventoryClient user={user} trackBottleLevels={trackBottleLevels} bottleOptions={bottleOptions} />;
+    let orgLocations: { id: number; name: string }[] = [];
+    try {
+        orgLocations = await db.query(
+            'SELECT id, name FROM locations WHERE organization_id = $1 ORDER BY id ASC',
+            [session.organizationId]
+        );
+    } catch {}
+
+    return <InventoryClient user={user} trackBottleLevels={trackBottleLevels} bottleOptions={bottleOptions} orgLocations={orgLocations} />;
 }
