@@ -17,9 +17,14 @@ export async function GET(req: NextRequest) {
 
     const now = new Date();
     let since: Date;
-    const until: Date = new Date(now);
+    let until: Date = new Date(now);
 
-    if (period === 'week') {
+    if (period === 'custom') {
+        const startParam = searchParams.get('start');
+        const endParam = searchParams.get('end');
+        since = startParam ? new Date(startParam + 'T00:00:00') : new Date(now.getFullYear(), now.getMonth(), 1);
+        until = endParam ? new Date(endParam + 'T23:59:59.999') : new Date(now);
+    } else if (period === 'week') {
         since = new Date(now.getTime() - 7 * 86400000);
     } else if (period === 'month') {
         since = new Date(now.getFullYear(), now.getMonth(), 1);

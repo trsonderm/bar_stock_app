@@ -51,6 +51,7 @@ const PERIOD_LABELS: Record<string, string> = {
     week: 'Last 7 Days',
     month: 'This Month',
     year: 'This Year',
+    custom: 'Custom Range',
 };
 
 const fmt = (v: number) =>
@@ -144,7 +145,11 @@ const DarkTooltip = ({ active, payload, label }: any) => {
 
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function FinancesClient() {
-    const [period, setPeriod] = useState<'week' | 'month' | 'year'>('month');
+    const [period, setPeriod] = useState<'week' | 'month' | 'year' | 'custom'>('month');
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10);
+    const [customStart, setCustomStart] = useState(monthStart);
+    const [customEnd, setCustomEnd] = useState(todayStr);
     const [selectedUserId, setSelectedUserId] = useState<string>('');
     const [selectedLocationId, setSelectedLocationId] = useState<string>('');
     const [rows, setRows] = useState<ShiftRow[]>([]);
@@ -156,9 +161,11 @@ export default function FinancesClient() {
     const [error, setError] = useState('');
 
     useEffect(() => {
+        if (period === 'custom' && (!customStart || !customEnd)) return;
         setLoading(true);
         setError('');
         const params = new URLSearchParams({ period });
+        if (period === 'custom') { params.set('start', customStart); params.set('end', customEnd); }
         if (selectedUserId) params.set('userId', selectedUserId);
         if (selectedLocationId) params.set('locationId', selectedLocationId);
         fetch(`/api/admin/finances?${params}`)
@@ -173,7 +180,7 @@ export default function FinancesClient() {
             })
             .catch(() => setError('Failed to load data'))
             .finally(() => setLoading(false));
-    }, [period, selectedUserId, selectedLocationId]);
+    }, [period, customStart, customEnd, selectedUserId, selectedLocationId]);
 
     // ── Aggregations ──────────────────────────────────────────────────────────
     const kpis = useMemo(() => {
@@ -313,7 +320,7 @@ export default function FinancesClient() {
                             💰 Financial Dashboard
                         </h1>
                         <p style={{ margin: '0.35rem 0 0', color: '#94a3b8', fontSize: '0.875rem' }}>
-                            {PERIOD_LABELS[period]} · {kpis.shiftCount} shift{kpis.shiftCount !== 1 ? 's' : ''}
+                            {period === 'custom' ? `${customStart} — ${customEnd}` : PERIOD_LABELS[period]} · {kpis.shiftCount} shift{kpis.shiftCount !== 1 ? 's' : ''}
                             {selectedUserId && employees.find(e => String(e.id) === selectedUserId)
                                 ? ` · ${employees.find(e => String(e.id) === selectedUserId)!.name}`
                                 : ' · All Staff'}
@@ -325,7 +332,7 @@ export default function FinancesClient() {
                     <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
                         {/* Period pills */}
                         <div style={{ display: 'flex', background: '#0f172a', borderRadius: '0.5rem', padding: '0.2rem', border: '1px solid #1e293b' }}>
-                            {(['week', 'month', 'year'] as const).map(p => (
+                            {(['week', 'month', 'year', 'custom'] as const).map(p => (
                                 <button
                                     key={p}
                                     onClick={() => setPeriod(p)}
@@ -341,10 +348,29 @@ export default function FinancesClient() {
                                         transition: 'all 0.15s',
                                     }}
                                 >
-                                    {p === 'week' ? '7D' : p === 'month' ? '1M' : '1Y'}
+                                    {p === 'week' ? '7D' : p === 'month' ? '1M' : p === 'year' ? '1Y' : 'Custom'}
                                 </button>
                             ))}
                         </div>
+
+                        {/* Custom date range pickers */}
+                        {period === 'custom' && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <input
+                                    type="date"
+                                    value={customStart}
+                                    onChange={e => setCustomStart(e.target.value)}
+                                    style={{ background: '#0f172a', color: 'white', border: '1px solid #1e293b', borderRadius: '0.5rem', padding: '0.35rem 0.6rem', fontSize: '0.8rem', cursor: 'pointer' }}
+                                />
+                                <span style={{ color: '#64748b', fontSize: '0.8rem' }}>—</span>
+                                <input
+                                    type="date"
+                                    value={customEnd}
+                                    onChange={e => setCustomEnd(e.target.value)}
+                                    style={{ background: '#0f172a', color: 'white', border: '1px solid #1e293b', borderRadius: '0.5rem', padding: '0.35rem 0.6rem', fontSize: '0.8rem', cursor: 'pointer' }}
+                                />
+                            </div>
+                        )}
 
                         {/* Location filter */}
                         {locations.length > 1 && (
@@ -404,7 +430,7 @@ export default function FinancesClient() {
                             icon="📦"
                         />
                         <KpiCard
-                            label={`Stock Used · ${PERIOD_LABELS[period]}`}
+                            label={`Stock Used · ${period === 'custom' ? `${customStart} — ${customEnd}` : PERIOD_LABELS[period]}`}
                             value={fmt(totalStockMoved)}
                             sub={`${movementRows.reduce((s, r) => s + (Number(r.qty) || 0), 0).toFixed(0)} units subtracted`}
                             color="#a855f7"
@@ -438,7 +464,7 @@ export default function FinancesClient() {
                     {/* ── Stock Movement Chart ── */}
                     {movementSeries.length > 0 && (
                         <div style={{ marginBottom: '1rem' }}>
-                            <ChartCard title={`📉 Stock Used (Cost Value) · ${PERIOD_LABELS[period]}`} height={240}>
+                            <ChartCard title={`📉 Stock Used (Cost Value) · ${period === 'custom' ? `${customStart} — ${customEnd}` : PERIOD_LABELS[period]}`} height={240}>
                                 <ResponsiveContainer width="100%" height="100%">
                                     <AreaChart data={movementSeries} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
                                         <defs>
