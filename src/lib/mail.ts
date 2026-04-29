@@ -9,6 +9,7 @@ export type EmailType =
     | 'scheduled_report'
     | 'smart_order'
     | 'shift_report'
+    | 'activity_report'
     | 'test'
     | 'manual'
     | 'order_received'

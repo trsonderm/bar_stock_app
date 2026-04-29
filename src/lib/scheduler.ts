@@ -123,7 +123,7 @@ class Scheduler {
                 SELECT rs.*, sr.name as report_name, sr.config as report_config,
                        o.subscription_plan, o.settings as org_settings
                 FROM report_schedules rs
-                JOIN saved_reports sr ON rs.report_id::int = sr.id
+                JOIN saved_reports sr ON rs.report_id::text = sr.id::text
                 JOIN organizations o ON rs.organization_id = o.id
                 WHERE rs.active = TRUE
                   AND rs.next_run_at <= $1
@@ -132,6 +132,13 @@ class Scheduler {
             for (const schedule of due) {
                 try {
                     await this.sendScheduledReport(schedule);
+
+                    // Record the run
+                    await db.execute(
+                        `INSERT INTO report_runs (report_id, organization_id, ran_at, status, recipients_json)
+                         VALUES ($1, $2, NOW(), 'success', $3)`,
+                        [schedule.id, schedule.organization_id, JSON.stringify(schedule.recipients ? schedule.recipients.split(',').map((r: string) => r.trim()) : [])]
+                    ).catch(() => {});
 
                     // Advance next_run_at
                     const next = new Date();

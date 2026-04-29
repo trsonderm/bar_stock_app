@@ -42,6 +42,7 @@ const TYPE_LABELS: Record<string, string> = {
     scheduled_report: 'Scheduled Report',
     smart_order: 'Smart Order',
     shift_report: 'Shift Report',
+    activity_report: 'Activity Report',
     test: 'Test Email',
     manual: 'Manual Send',
     order_received: 'Order Received',

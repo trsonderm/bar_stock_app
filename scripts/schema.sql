@@ -309,3 +309,23 @@ CREATE TABLE IF NOT EXISTS notifications (
     is_read BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS email_log (
+    id            BIGSERIAL PRIMARY KEY,
+    organization_id INT REFERENCES organizations(id) ON DELETE SET NULL,
+    org_name      VARCHAR(255),
+    email_type    VARCHAR(50)  NOT NULL DEFAULT 'other',
+    tier          VARCHAR(20)  NOT NULL DEFAULT 'reporting',
+    subject       TEXT,
+    recipients    JSONB,
+    html_body     TEXT,
+    text_body     TEXT,
+    status        VARCHAR(20)  NOT NULL DEFAULT 'sent',
+    error_message TEXT,
+    scheduled     BOOLEAN      DEFAULT FALSE,
+    sent_at       TIMESTAMPTZ  DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS email_log_org_idx     ON email_log(organization_id);
+CREATE INDEX IF NOT EXISTS email_log_sent_at_idx ON email_log(sent_at DESC);
+CREATE INDEX IF NOT EXISTS email_log_status_idx  ON email_log(status);
+CREATE INDEX IF NOT EXISTS email_log_type_idx    ON email_log(email_type);

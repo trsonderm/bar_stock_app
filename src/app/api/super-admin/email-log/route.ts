@@ -104,7 +104,7 @@ export async function GET(req: NextRequest) {
                        rs.recipients, sr.name AS report_name,
                        o.name AS org_name
                 FROM report_schedules rs
-                JOIN saved_reports sr ON rs.report_id::int = sr.id
+                JOIN saved_reports sr ON rs.report_id::text = sr.id::text
                 JOIN organizations o ON rs.organization_id = o.id
                 WHERE rs.active = TRUE
                   AND rs.next_run_at BETWEEN $1 AND $2
