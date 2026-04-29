@@ -45,7 +45,10 @@ export default function ManualOrderClient({ user }: { user: any }) {
     const [items, setItems] = useState<Item[]>([]);
     const [suppliers, setSuppliers] = useState<{ id: number, name: string }[]>([]);
     const [selectedSupplierId, setSelectedSupplierId] = useState<number | 'all'>('all');
-    const [cart, setCart] = useState<Record<string, CartItem>>({});
+    const [cart, setCart] = useState<Record<string, CartItem>>(() => {
+        if (typeof window === 'undefined') return {};
+        try { return JSON.parse(localStorage.getItem('manual_order_cart') || '{}'); } catch { return {}; }
+    });
     const [showPreview, setShowPreview] = useState(false);
     const [loading, setLoading] = useState(true);
 
@@ -89,6 +92,10 @@ export default function ManualOrderClient({ user }: { user: any }) {
             }
         });
     }, []);
+
+    useEffect(() => {
+        localStorage.setItem('manual_order_cart', JSON.stringify(cart));
+    }, [cart]);
 
     const fetchData = async () => {
         setLoading(true);
@@ -251,6 +258,7 @@ export default function ManualOrderClient({ user }: { user: any }) {
 
             if (!res.ok) throw new Error('Order submission failed');
             alert('Order submitted successfully!');
+            localStorage.removeItem('manual_order_cart');
             setCart({});
             setShowPreview(false);
             setSendEmail(false);
@@ -330,7 +338,24 @@ export default function ManualOrderClient({ user }: { user: any }) {
                                     <tr key={item.id} style={{ background: hasOrders ? 'rgba(52,211,153,0.1)' : 'transparent' }}>
                                         <td style={{ fontWeight: 'bold' }}>{item.name}</td>
                                         <td style={{ color: item.quantity === 0 ? '#ef4444' : '#9ca3af' }}>
-                                            {Number(item.quantity).toFixed(2).replace(/\.00$/, '')}
+                                            {(() => {
+                                                const qty = Number(item.quantity);
+                                                const primaryOpt = orderSizeOptions[0];
+                                                const unitQty = qty.toFixed(2).replace(/\.00$/, '');
+                                                if (primaryOpt && primaryOpt.amount > 1) {
+                                                    const orderUnits = Math.floor(qty / primaryOpt.amount);
+                                                    const remainder = qty % primaryOpt.amount;
+                                                    return (
+                                                        <div>
+                                                            <div>{unitQty} units</div>
+                                                            <div style={{ fontSize: '0.78rem', color: '#6b7280' }}>
+                                                                {orderUnits} {primaryOpt.label}{remainder > 0 ? ` + ${remainder}` : ''}
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                }
+                                                return unitQty;
+                                            })()}
                                         </td>
                                         <td style={{ textAlign: 'center', fontSize: '0.95rem', fontWeight: 'bold' }}>
                                             {hasOrders ? itemCartEntries.map(c => (

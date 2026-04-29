@@ -143,10 +143,25 @@ export default function CategoriesClient() {
         );
     };
 
-    const addSubCat = () => {
-        if (newSubCat.trim() && !subCats.includes(newSubCat.trim())) {
-            setSubCats([...subCats, newSubCat.trim()]);
-            setNewSubCat('');
+    const addSubCat = async () => {
+        const trimmed = newSubCat.trim();
+        if (!trimmed || subCats.includes(trimmed)) return;
+        const updated = [...subCats, trimmed];
+        setSubCats(updated);
+        setNewSubCat('');
+        if (editingId) {
+            await fetch('/api/admin/categories', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    id: editingId,
+                    name: name.trim(),
+                    stock_options: selectedOptions.sort((a, b) => a - b),
+                    sub_categories: updated,
+                    enable_low_stock_reporting: enableReporting,
+                }),
+            }).catch(() => {});
+            fetchCategories();
         }
     };
 
@@ -284,7 +299,24 @@ export default function CategoriesClient() {
                                 <span key={sub} style={{ background: '#1f2937', color: '#e5e7eb', padding: '4px 8px', borderRadius: '15px', border: '1px solid #4b5563', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                     {sub}
                                     <span
-                                        onClick={() => setSubCats(subCats.filter(s => s !== sub))}
+                                        onClick={async () => {
+                                            const updated = subCats.filter(s => s !== sub);
+                                            setSubCats(updated);
+                                            if (editingId) {
+                                                await fetch('/api/admin/categories', {
+                                                    method: 'PUT',
+                                                    headers: { 'Content-Type': 'application/json' },
+                                                    body: JSON.stringify({
+                                                        id: editingId,
+                                                        name: name.trim(),
+                                                        stock_options: selectedOptions.sort((a, b) => a - b),
+                                                        sub_categories: updated,
+                                                        enable_low_stock_reporting: enableReporting,
+                                                    }),
+                                                }).catch(() => {});
+                                                fetchCategories();
+                                            }
+                                        }}
                                         style={{ cursor: 'pointer', color: '#9ca3af', fontWeight: 'bold' }}
                                     >×</span>
                                 </span>
