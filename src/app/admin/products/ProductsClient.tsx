@@ -1405,10 +1405,17 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                                                 <option value="stock_options">× Stock Options</option>
                                             </select>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                                                <input className={styles.input} type="number" min="0.01"
+                                                <input className={styles.input} type="number"
+                                                    min={formData.low_stock_threshold_type === 'fixed' ? '1' : '0.1'}
                                                     step={formData.low_stock_threshold_type === 'fixed' ? '1' : '0.5'}
                                                     value={formData.low_stock_threshold_factor}
-                                                    onChange={e => setFormData({ ...formData, low_stock_threshold_factor: e.target.value, low_stock_threshold: e.target.value })}
+                                                    onChange={e => {
+                                                        const raw = e.target.value;
+                                                        const val = formData.low_stock_threshold_type === 'fixed'
+                                                            ? String(Math.max(1, Math.round(Number(raw) || 1)))
+                                                            : raw;
+                                                        setFormData({ ...formData, low_stock_threshold_factor: val, low_stock_threshold: val });
+                                                    }}
                                                     placeholder={formData.low_stock_threshold_type === 'fixed' ? '5' : '2'}
                                                     style={{ width: '100px', minHeight: '44px' }} />
                                                 <span style={{ color: '#9ca3af', fontSize: '0.82rem' }}>
