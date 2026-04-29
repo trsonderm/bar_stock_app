@@ -581,7 +581,9 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
     };
 
     const filtered = items.filter(i => {
-        const matchSearch = i.name.toLowerCase().includes(search.toLowerCase());
+        const q = search.toLowerCase();
+        const matchSearch = !q || i.name.toLowerCase().includes(q) ||
+            (i.aliases ?? []).some(a => a.toLowerCase().includes(q));
         const matchType = filterType === 'All' || i.type === filterType;
         return matchSearch && matchType;
     });
