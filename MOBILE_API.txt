@@ -1,0 +1,819 @@
+================================================================================
+  TOPSHELF INVENTORY — MOBILE API REFERENCE
+  Base URL: https://www.topshelfInventory.com
+  All data is scoped to the authenticated user's organization.
+================================================================================
+
+
+────────────────────────────────────────────────────────────────────────────────
+OVERVIEW
+────────────────────────────────────────────────────────────────────────────────
+
+All mobile API endpoints live under /api/mobile/.
+
+Authentication uses JWT Bearer tokens — not cookies.
+  1. Call POST /api/mobile/auth to get a token.
+  2. Include the token in every subsequent request:
+       Authorization: Bearer <your-token>
+
+Tokens expire after 7 days. Store them securely:
+  iOS    → Keychain (via react-native-keychain or expo-secure-store)
+  Android → EncryptedSharedPreferences or Keystore
+
+Every response is JSON. Every request body must be JSON with the header:
+  Content-Type: application/json
+
+All data returned is filtered to the authenticated user's organization —
+no cross-organization data leakage is possible.
+
+
+────────────────────────────────────────────────────────────────────────────────
+1. AUTHENTICATION — Login and get a token
+────────────────────────────────────────────────────────────────────────────────
+
+POST /api/mobile/auth
+
+No Authorization header needed for this request.
+
+REQUEST BODY:
+{
+  "organization_subdomain": "your-bar",     ← required (your org's subdomain)
+  "email": "admin@yourbar.com",             ← use EITHER email+password
+  "password": "yourpassword"
+}
+
+OR:
+{
+  "organization_subdomain": "your-bar",
+  "pin": "1234"                             ← OR a 4-digit PIN
+}
+
+RESPONSE (200 OK):
+{
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "expires_in": 604800,
+  "user": {
+    "id": 42,
+    "first_name": "Alex",
+    "last_name": "Smith",
+    "email": "admin@yourbar.com",
+    "role": "admin",
+    "permissions": ["all"]
+  },
+  "organization": {
+    "id": 7,
+    "name": "The Rusty Nail",
+    "subdomain": "your-bar",
+    "subscription_plan": "pro"
+  }
+}
+
+ERROR RESPONSES:
+  401 { "error": "Invalid credentials" }
+  401 { "error": "Invalid PIN" }
+  404 { "error": "Organization not found" }
+  400 { "error": "Provide email+password or pin" }
+
+USAGE AFTER LOGIN:
+  Save the "token" value and send it on every future request:
+    Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+
+
+────────────────────────────────────────────────────────────────────────────────
+2. REGISTRATION — Join via admin invite link
+────────────────────────────────────────────────────────────────────────────────
+
+Admins generate invite links from Settings → Users → "Invite New User by Email."
+The link looks like:
+  https://www.topshelfInventory.com/register/invite?token=abc123...
+
+The token in that URL is what the mobile app uses. No Authorization header
+is needed for either registration endpoint.
+
+── Step 1: Validate the token ──────────────────────────────────────────────────
+
+GET /api/mobile/register?token=<invite-token>
+
+RESPONSE (200 OK):
+{
+  "valid": true,
+  "org_name": "The Rusty Nail",
+  "email": "newstaff@yourbar.com",   ← pre-filled email (may be null)
+  "role": "user"
+}
+
+ERROR RESPONSES:
+  404 { "error": "Invalid token" }
+  410 { "error": "Invitation already used" }
+  410 { "error": "Invitation expired" }
+
+── Step 2: Complete registration ────────────────────────────────────────────────
+
+POST /api/mobile/register
+
+REQUEST BODY:
+{
+  "token": "abc123...",              ← required — from the invite link
+  "firstName": "Alex",              ← required
+  "lastName": "Smith",              ← required
+  "displayName": "Alex S.",         ← optional (shown in feed & messages)
+  "email": "alex@yourbar.com",      ← required if not pre-filled by admin
+  "phone": "5550001234",            ← optional
+  "password": "mysecurepassword",   ← required, min 6 characters
+  "pin": "1234"                     ← required, exactly 4 digits
+}
+
+RESPONSE (200 OK):
+{
+  "token": "eyJhbGciOiJIUzI1NiIs...",   ← save this, use as Bearer token
+  "expires_in": 604800,
+  "user": {
+    "id": 55,
+    "first_name": "Alex",
+    "last_name": "Smith",
+    "role": "user",
+    "email": "alex@yourbar.com"
+  },
+  "organization": {
+    "id": 7,
+    "name": "The Rusty Nail"
+  }
+}
+
+ERROR RESPONSES:
+  400 { "error": "First and last name are required" }
+  400 { "error": "Password must be at least 6 characters" }
+  400 { "error": "PIN must be exactly 4 digits" }
+  409 { "error": "Email already in use" }
+  410 { "error": "Invitation already used" }
+  410 { "error": "Invitation expired" }
+
+NOTE: Each invite token can only be used once. After successful registration,
+use the returned "token" exactly like any other Bearer token for all subsequent
+API calls. The user is automatically assigned to all locations in the org.
+
+
+────────────────────────────────────────────────────────────────────────────────
+3. DASHBOARD FEED — Organization activity posts
+────────────────────────────────────────────────────────────────────────────────
+
+GET /api/mobile/feed
+
+HEADERS:
+  Authorization: Bearer <token>
+
+QUERY PARAMETERS (all optional):
+  ?page=1        Page number (default: 1)
+  ?limit=20      Results per page (max: 50, default: 20)
+
+RESPONSE (200 OK):
+{
+  "posts": [
+    {
+      "id": 101,
+      "content": "Counted the liquor shelf — all good!",
+      "images": [
+        "data:image/jpeg;base64,/9j/4AAQSkZJRgAB..."
+      ],
+      "tagged_user_ids": [3, 8],
+      "created_at": "2026-04-30T14:22:00Z",
+      "user_id": 5,
+      "author_name": "Alex Smith",
+      "author_avatar": "data:image/jpeg;base64,..."   ← null if no photo set
+    }
+  ],
+  "total": 84,
+  "page": 1,
+  "users": [
+    {
+      "id": 3,
+      "display_name": "Jamie Lee",
+      "profile_picture": null
+    },
+    {
+      "id": 8,
+      "display_name": "Morgan D.",
+      "profile_picture": "data:image/jpeg;base64,..."
+    }
+  ]
+}
+
+NOTES:
+- "images" is an array of base64 data-URL strings. Decode and display directly.
+- "tagged_user_ids" references IDs in the "users" array returned alongside posts.
+- "author_avatar" and "profile_picture" are base64 data-URLs or null.
+- Posts are returned newest-first. Paginate with ?page=2, ?page=3, etc.
+- total tells you how many posts exist; stop paginating when posts.length >= total.
+
+
+────────────────────────────────────────────────────────────────────────────────
+4. BARRED LIST — Persons barred from the venue
+────────────────────────────────────────────────────────────────────────────────
+
+GET /api/mobile/barred
+
+HEADERS:
+  Authorization: Bearer <token>
+
+QUERY PARAMETERS (all optional):
+  ?trespassed_only=true    Only return persons with a formal trespass order
+
+RESPONSE (200 OK):
+{
+  "barred": [
+    {
+      "id": 1,
+      "name": "John Doe",
+      "aliases": ["Johnny D", "JD"],
+      "photo": "data:image/jpeg;base64,...",   ← null if no photo
+      "description": "Involved in assault incident on 2026-03-12. Banned indefinitely.",
+      "barred_by_name": "Alex Smith",
+      "trespassed": true,
+      "created_at": "2026-03-12T20:00:00Z"
+    },
+    {
+      "id": 2,
+      "name": "Jane Roe",
+      "aliases": [],
+      "photo": null,
+      "description": "Repeatedly attempted to re-enter after warnings.",
+      "barred_by_name": "Morgan Davis",
+      "trespassed": false,
+      "created_at": "2026-04-01T21:30:00Z"
+    }
+  ],
+  "total": 2
+}
+
+⚠ IMPORTANT: If "trespassed" is true, display a prominent warning in your UI.
+  This person has a formal trespass order and must not be admitted under any
+  circumstances. Highlight trespassed entries in red / with an alert banner.
+
+DISPLAY RECOMMENDATION:
+  - Show photo (or placeholder silhouette if null)
+  - Name in bold, aliases below in smaller text
+  - Red "TRESPASS" badge if trespassed = true
+  - Description and "Barred by" attribution
+  - Sort trespassed entries to the top
+
+
+────────────────────────────────────────────────────────────────────────────────
+5. OUT-OF-STOCK / LOW STOCK ITEMS
+────────────────────────────────────────────────────────────────────────────────
+
+GET /api/mobile/out-of-stock
+
+HEADERS:
+  Authorization: Bearer <token>
+
+QUERY PARAMETERS (all optional):
+  ?location_id=2    Filter to a specific location ID
+
+RESPONSE (200 OK):
+{
+  "items": [
+    {
+      "id": 88,
+      "name": "Tito's Vodka 750ml",
+      "type": "Liquor",
+      "secondary_type": "Vodka",
+      "quantity": 0,
+      "low_stock_threshold": 3,
+      "order_size": [{ "label": "Case", "amount": 12 }],
+      "supplier": "Southern Glazers"
+    },
+    {
+      "id": 44,
+      "name": "Heineken 12pk",
+      "type": "Beer",
+      "secondary_type": "Lager",
+      "quantity": 2,
+      "low_stock_threshold": 4,
+      "order_size": [{ "label": "Case", "amount": 24 }],
+      "supplier": "Reyes Beverage"
+    }
+  ],
+  "total": 12,
+  "out_of_stock": 4,
+  "low_stock": 8
+}
+
+NOTES:
+- "out_of_stock" = items with quantity exactly 0
+- "low_stock" = items with quantity > 0 but <= low_stock_threshold
+- Items sorted by quantity ascending (most urgent first)
+- "order_size" is an array; each entry has a label and an amount (unit count)
+- If "low_stock_threshold" is null, only quantity = 0 items are included
+
+
+────────────────────────────────────────────────────────────────────────────────
+6. ERROR HANDLING — Standard error responses
+────────────────────────────────────────────────────────────────────────────────
+
+All endpoints use standard HTTP status codes.
+
+Status  Meaning
+──────  ────────────────────────────────────────────────────────────────────────
+200     Success
+400     Bad request — missing or invalid input
+401     Unauthorized — missing, expired, or invalid Bearer token
+403     Forbidden — authenticated but insufficient permissions
+404     Not found — resource or org does not exist
+409     Conflict — e.g. email already registered
+410     Gone — invite token already used or expired
+500     Internal server error
+
+Error response body always follows this format:
+{
+  "error": "Human-readable description of what went wrong"
+}
+
+TOKEN EXPIRY HANDLING:
+  When you receive a 401, the token has expired (7-day lifetime).
+  Re-authenticate by calling POST /api/mobile/auth again and save the new token.
+  Recommended: store the login credentials securely so you can auto-refresh.
+
+
+────────────────────────────────────────────────────────────────────────────────
+7. COMPLETE IMPLEMENTATION EXAMPLE — React Native / Expo
+────────────────────────────────────────────────────────────────────────────────
+
+The following is a complete working implementation using fetch() and
+expo-secure-store for secure token storage.
+
+── api.js ───────────────────────────────────────────────────────────────────────
+
+import * as SecureStore from 'expo-secure-store';
+
+const BASE = 'https://www.topshelfInventory.com';
+const TOKEN_KEY = 'topshelf_token';
+
+// ── Token helpers ─────────────────────────────────────────────────────────────
+
+async function saveToken(token) {
+  await SecureStore.setItemAsync(TOKEN_KEY, token);
+}
+
+async function getToken() {
+  return await SecureStore.getItemAsync(TOKEN_KEY);
+}
+
+async function clearToken() {
+  await SecureStore.deleteItemAsync(TOKEN_KEY);
+}
+
+// ── Core fetch wrapper — attaches Bearer token automatically ──────────────────
+
+async function apiFetch(path, options = {}) {
+  const token = await getToken();
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+    ...(options.headers || {}),
+  };
+
+  const res = await fetch(`${BASE}${path}`, { ...options, headers });
+
+  if (res.status === 401) {
+    // Token expired — clear it and redirect to login
+    await clearToken();
+    throw new Error('SESSION_EXPIRED');
+  }
+
+  const data = await res.json();
+
+  if (!res.ok) {
+    throw new Error(data.error || `Request failed: ${res.status}`);
+  }
+
+  return data;
+}
+
+// ── Auth ──────────────────────────────────────────────────────────────────────
+
+export async function login(subdomain, email, password) {
+  const data = await apiFetch('/api/mobile/auth', {
+    method: 'POST',
+    body: JSON.stringify({
+      organization_subdomain: subdomain,
+      email,
+      password,
+    }),
+  });
+  await saveToken(data.token);
+  return data; // { token, user, organization }
+}
+
+export async function loginWithPin(subdomain, pin) {
+  const data = await apiFetch('/api/mobile/auth', {
+    method: 'POST',
+    body: JSON.stringify({
+      organization_subdomain: subdomain,
+      pin,
+    }),
+  });
+  await saveToken(data.token);
+  return data;
+}
+
+export async function logout() {
+  await clearToken();
+}
+
+// ── Registration via invite ───────────────────────────────────────────────────
+
+export async function validateInviteToken(token) {
+  // No auth header needed
+  const res = await fetch(`${BASE}/api/mobile/register?token=${token}`);
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error);
+  return data; // { valid, org_name, email, role }
+}
+
+export async function registerWithInvite({ token, firstName, lastName,
+  displayName, email, phone, password, pin }) {
+  const res = await fetch(`${BASE}/api/mobile/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token, firstName, lastName, displayName,
+      email, phone, password, pin }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error);
+  await saveToken(data.token); // log the user in immediately
+  return data; // { token, user, organization }
+}
+
+// ── Dashboard Feed ────────────────────────────────────────────────────────────
+
+export async function getFeed(page = 1, limit = 20) {
+  return apiFetch(`/api/mobile/feed?page=${page}&limit=${limit}`);
+  // Returns: { posts, total, page, users }
+}
+
+// ── Barred List ───────────────────────────────────────────────────────────────
+
+export async function getBarredList(trespassedOnly = false) {
+  const qs = trespassedOnly ? '?trespassed_only=true' : '';
+  return apiFetch(`/api/mobile/barred${qs}`);
+  // Returns: { barred, total }
+}
+
+// ── Out-of-Stock / Low Stock ──────────────────────────────────────────────────
+
+export async function getOutOfStock(locationId = null) {
+  const qs = locationId ? `?location_id=${locationId}` : '';
+  return apiFetch(`/api/mobile/out-of-stock${qs}`);
+  // Returns: { items, total, out_of_stock, low_stock }
+}
+
+── Example usage in a React Native screen ───────────────────────────────────────
+
+import React, { useEffect, useState } from 'react';
+import { View, Text, FlatList, Image, StyleSheet, Alert } from 'react-native';
+import { login, getFeed, getBarredList, getOutOfStock } from './api';
+
+// ── LoginScreen ───────────────────────────────────────────────────────────────
+
+export function LoginScreen({ navigation }) {
+  const [subdomain, setSubdomain] = useState('');
+  const [email, setEmail]         = useState('');
+  const [password, setPassword]   = useState('');
+
+  const handleLogin = async () => {
+    try {
+      const { user, organization } = await login(subdomain, email, password);
+      Alert.alert('Welcome', `Logged in to ${organization.name} as ${user.first_name}`);
+      navigation.replace('Dashboard');
+    } catch (err) {
+      Alert.alert('Login Failed', err.message);
+    }
+  };
+
+  // ... render TextInput fields and a Login button that calls handleLogin
+}
+
+// ── RegisterScreen (via invite link / deep link) ──────────────────────────────
+
+export function RegisterScreen({ route, navigation }) {
+  // Assumes the invite token was parsed from a deep link URL:
+  //   topshelf://register?token=abc123
+  // or passed as a route param after scanning a QR code
+  const { token } = route.params;
+
+  const [orgName, setOrgName]           = useState('');
+  const [prefillEmail, setPrefillEmail] = useState('');
+  const [firstName, setFirstName]       = useState('');
+  const [lastName, setLastName]         = useState('');
+  const [email, setEmail]               = useState('');
+  const [password, setPassword]         = useState('');
+  const [pin, setPin]                   = useState('');
+
+  useEffect(() => {
+    validateInviteToken(token)
+      .then(({ org_name, email: pre }) => {
+        setOrgName(org_name);
+        if (pre) { setPrefillEmail(pre); setEmail(pre); }
+      })
+      .catch(err => Alert.alert('Invalid Invite', err.message));
+  }, [token]);
+
+  const handleRegister = async () => {
+    try {
+      const { user } = await registerWithInvite({
+        token, firstName, lastName, email, password, pin,
+      });
+      Alert.alert('Welcome!', `Account created for ${user.first_name}`);
+      navigation.replace('Dashboard');
+    } catch (err) {
+      Alert.alert('Registration Failed', err.message);
+    }
+  };
+
+  // ... render form with org name header and fields, call handleRegister on submit
+}
+
+// ── FeedScreen ────────────────────────────────────────────────────────────────
+
+export function FeedScreen() {
+  const [posts, setPosts]   = useState([]);
+  const [users, setUsers]   = useState({});  // id → user object map
+  const [page, setPage]     = useState(1);
+  const [total, setTotal]   = useState(0);
+  const [loading, setLoading] = useState(false);
+
+  const loadPosts = async (nextPage = 1) => {
+    setLoading(true);
+    try {
+      const data = await getFeed(nextPage);
+      // Build a lookup map for tagged users
+      const userMap = {};
+      data.users.forEach(u => { userMap[u.id] = u; });
+      setUsers(userMap);
+      setPosts(prev => nextPage === 1 ? data.posts : [...prev, ...data.posts]);
+      setTotal(data.total);
+      setPage(nextPage);
+    } catch (err) {
+      if (err.message === 'SESSION_EXPIRED') { /* navigate to login */ }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { loadPosts(1); }, []);
+
+  const renderPost = ({ item: post }) => (
+    <View style={styles.postCard}>
+      {/* Author avatar */}
+      {post.author_avatar
+        ? <Image source={{ uri: post.author_avatar }} style={styles.avatar} />
+        : <View style={[styles.avatar, styles.avatarPlaceholder]}>
+            <Text style={styles.avatarInitial}>{post.author_name[0]}</Text>
+          </View>
+      }
+      <View style={{ flex: 1 }}>
+        <Text style={styles.authorName}>{post.author_name}</Text>
+        <Text style={styles.postContent}>{post.content}</Text>
+
+        {/* Tagged users */}
+        {post.tagged_user_ids?.length > 0 && (
+          <Text style={styles.tags}>
+            {post.tagged_user_ids
+              .map(id => users[id] ? `@${users[id].display_name}` : '')
+              .filter(Boolean)
+              .join(' ')}
+          </Text>
+        )}
+
+        {/* Post images */}
+        {post.images?.map((img, i) => (
+          <Image key={i} source={{ uri: img }} style={styles.postImage} />
+        ))}
+
+        <Text style={styles.timestamp}>
+          {new Date(post.created_at).toLocaleString()}
+        </Text>
+      </View>
+    </View>
+  );
+
+  return (
+    <FlatList
+      data={posts}
+      keyExtractor={p => String(p.id)}
+      renderItem={renderPost}
+      onEndReached={() => { if (posts.length < total) loadPosts(page + 1); }}
+      onEndReachedThreshold={0.3}
+      onRefresh={() => loadPosts(1)}
+      refreshing={loading && page === 1}
+    />
+  );
+}
+
+// ── BarredListScreen ──────────────────────────────────────────────────────────
+
+export function BarredListScreen() {
+  const [barred, setBarred] = useState([]);
+
+  useEffect(() => {
+    getBarredList().then(data => setBarred(data.barred));
+  }, []);
+
+  const renderPerson = ({ item }) => (
+    <View style={[styles.personCard, item.trespassed && styles.trespassCard]}>
+      {item.trespassed && (
+        <View style={styles.trespassBanner}>
+          <Text style={styles.trespassText}>⚠ TRESPASS ORDER — DO NOT ADMIT</Text>
+        </View>
+      )}
+      {item.photo
+        ? <Image source={{ uri: item.photo }} style={styles.personPhoto} />
+        : <View style={[styles.personPhoto, styles.personPhotoPlaceholder]} />
+      }
+      <Text style={styles.personName}>{item.name}</Text>
+      {item.aliases?.length > 0 && (
+        <Text style={styles.aliases}>AKA: {item.aliases.join(', ')}</Text>
+      )}
+      {item.description && (
+        <Text style={styles.description}>{item.description}</Text>
+      )}
+      <Text style={styles.barredBy}>Barred by {item.barred_by_name}</Text>
+    </View>
+  );
+
+  return (
+    <FlatList
+      data={barred}
+      keyExtractor={p => String(p.id)}
+      renderItem={renderPerson}
+    />
+  );
+}
+
+// ── OutOfStockScreen ──────────────────────────────────────────────────────────
+
+export function OutOfStockScreen() {
+  const [items, setItems]     = useState([]);
+  const [summary, setSummary] = useState({ out_of_stock: 0, low_stock: 0 });
+
+  useEffect(() => {
+    getOutOfStock().then(data => {
+      setItems(data.items);
+      setSummary({ out_of_stock: data.out_of_stock, low_stock: data.low_stock });
+    });
+  }, []);
+
+  return (
+    <View style={{ flex: 1 }}>
+      {/* Summary header */}
+      <View style={styles.summaryRow}>
+        <Text style={styles.summaryBadgeRed}>{summary.out_of_stock} OUT OF STOCK</Text>
+        <Text style={styles.summaryBadgeAmber}>{summary.low_stock} LOW STOCK</Text>
+      </View>
+
+      <FlatList
+        data={items}
+        keyExtractor={i => String(i.id)}
+        renderItem={({ item }) => (
+          <View style={styles.itemRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.itemName}>{item.name}</Text>
+              <Text style={styles.itemCategory}>{item.type}{item.secondary_type ? ` · ${item.secondary_type}` : ''}</Text>
+              {item.supplier && <Text style={styles.itemSupplier}>{item.supplier}</Text>}
+            </View>
+            <View style={styles.qtyBox}>
+              <Text style={[styles.qty, item.quantity === 0 ? styles.qtyZero : styles.qtyLow]}>
+                {item.quantity}
+              </Text>
+              <Text style={styles.qtyLabel}>in stock</Text>
+            </View>
+          </View>
+        )}
+      />
+    </View>
+  );
+}
+
+// ── Shared styles ─────────────────────────────────────────────────────────────
+
+const styles = StyleSheet.create({
+  postCard:            { flexDirection: 'row', padding: 12, borderBottomWidth: 1, borderColor: '#374151', gap: 10 },
+  avatar:              { width: 40, height: 40, borderRadius: 20 },
+  avatarPlaceholder:   { backgroundColor: '#1d4ed8', alignItems: 'center', justifyContent: 'center' },
+  avatarInitial:       { color: 'white', fontWeight: '700' },
+  authorName:          { color: 'white', fontWeight: '700', fontSize: 14 },
+  postContent:         { color: '#d1d5db', fontSize: 14, marginTop: 4, lineHeight: 20 },
+  tags:                { color: '#60a5fa', fontSize: 13, marginTop: 4 },
+  postImage:           { width: '100%', height: 200, borderRadius: 8, marginTop: 8 },
+  timestamp:           { color: '#6b7280', fontSize: 11, marginTop: 6 },
+
+  personCard:          { margin: 8, borderRadius: 12, backgroundColor: '#1f2937', overflow: 'hidden' },
+  trespassCard:        { borderWidth: 2, borderColor: '#ef4444' },
+  trespassBanner:      { backgroundColor: '#7f1d1d', padding: 8 },
+  trespassText:        { color: '#fca5a5', fontWeight: '800', textAlign: 'center', fontSize: 13 },
+  personPhoto:         { width: 80, height: 80, borderRadius: 40, margin: 12, alignSelf: 'center' },
+  personPhotoPlaceholder: { backgroundColor: '#374151' },
+  personName:          { color: 'white', fontWeight: '700', fontSize: 16, textAlign: 'center' },
+  aliases:             { color: '#9ca3af', fontSize: 13, textAlign: 'center', marginTop: 2 },
+  description:         { color: '#d1d5db', fontSize: 13, padding: 12, lineHeight: 19 },
+  barredBy:            { color: '#6b7280', fontSize: 12, textAlign: 'center', paddingBottom: 12 },
+
+  summaryRow:          { flexDirection: 'row', gap: 8, padding: 12 },
+  summaryBadgeRed:     { flex: 1, backgroundColor: '#7f1d1d', color: '#fca5a5', textAlign: 'center', padding: 10, borderRadius: 8, fontWeight: '700', fontSize: 13 },
+  summaryBadgeAmber:   { flex: 1, backgroundColor: '#78350f', color: '#fcd34d', textAlign: 'center', padding: 10, borderRadius: 8, fontWeight: '700', fontSize: 13 },
+  itemRow:             { flexDirection: 'row', padding: 12, borderBottomWidth: 1, borderColor: '#1f2937', alignItems: 'center' },
+  itemName:            { color: 'white', fontWeight: '600', fontSize: 14 },
+  itemCategory:        { color: '#9ca3af', fontSize: 12, marginTop: 2 },
+  itemSupplier:        { color: '#6b7280', fontSize: 11, marginTop: 2 },
+  qtyBox:              { alignItems: 'center', minWidth: 50 },
+  qty:                 { fontSize: 22, fontWeight: '800' },
+  qtyZero:             { color: '#ef4444' },
+  qtyLow:              { color: '#f59e0b' },
+  qtyLabel:            { color: '#6b7280', fontSize: 10 },
+});
+
+
+────────────────────────────────────────────────────────────────────────────────
+8. DEEP LINK SETUP (optional — for invite links)
+────────────────────────────────────────────────────────────────────────────────
+
+To handle invite links automatically in your app, configure a deep link scheme.
+When the user taps their invite email on their phone, the OS opens your app
+directly instead of a browser.
+
+── app.json (Expo) ──────────────────────────────────────────────────────────────
+
+{
+  "expo": {
+    "scheme": "topshelf",
+    "android": { "intentFilters": [{
+      "action": "VIEW",
+      "data": [{ "scheme": "https", "host": "www.topshelfInventory.com" }],
+      "category": ["BROWSABLE", "DEFAULT"]
+    }]},
+    "ios": { "associatedDomains": ["applinks:www.topshelfInventory.com"] }
+  }
+}
+
+── Linking handler ───────────────────────────────────────────────────────────────
+
+import { Linking } from 'react-native';
+
+// On app start, check for incoming invite URL
+Linking.getInitialURL().then(url => {
+  if (url?.includes('/register/invite')) {
+    const token = new URL(url).searchParams.get('token');
+    if (token) navigation.navigate('Register', { token });
+  }
+});
+
+// Also listen while app is foregrounded
+Linking.addEventListener('url', ({ url }) => {
+  if (url?.includes('/register/invite')) {
+    const token = new URL(url).searchParams.get('token');
+    if (token) navigation.navigate('Register', { token });
+  }
+});
+
+
+────────────────────────────────────────────────────────────────────────────────
+9. ENDPOINT QUICK REFERENCE
+────────────────────────────────────────────────────────────────────────────────
+
+METHOD  PATH                           AUTH NEEDED   DESCRIPTION
+──────  ─────────────────────────────  ───────────   ────────────────────────────
+POST    /api/mobile/auth               No            Login → get Bearer token
+GET     /api/mobile/register?token=…   No            Validate invite token
+POST    /api/mobile/register           No            Complete registration
+GET     /api/mobile/feed               Bearer        Dashboard feed (paginated)
+GET     /api/mobile/barred             Bearer        Barred persons list
+GET     /api/mobile/out-of-stock       Bearer        Low/out-of-stock inventory
+
+
+────────────────────────────────────────────────────────────────────────────────
+10. SECURITY NOTES
+────────────────────────────────────────────────────────────────────────────────
+
+- Tokens are signed JWT (HS256). Never decode and trust the payload client-side
+  for security decisions — the server validates the signature on every request.
+
+- Store tokens ONLY in secure storage (Keychain / EncryptedSharedPreferences).
+  Never store in AsyncStorage — it is unencrypted.
+
+- Tokens expire after 7 days. Handle 401 responses by clearing the stored token
+  and redirecting the user to the login screen.
+
+- Invite tokens are single-use. Once a registration completes, the token is
+  marked used and cannot be reused.
+
+- All returned data is scoped to the authenticated user's organization. The
+  server enforces this — it is not possible to access another org's data with
+  a valid token from a different org.
+
+- HTTPS is required. All endpoints are served over TLS only.
+
+================================================================================
+  TopShelf Inventory — Mobile API Reference
+  Server: https://www.topshelfInventory.com
+  API Version: 1.0  |  Last updated: 2026-04-30
+================================================================================
