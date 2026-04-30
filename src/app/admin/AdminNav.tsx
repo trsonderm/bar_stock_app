@@ -3,6 +3,9 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import NotificationBell from '@/components/NotificationBell';
+import MessagePanel from '@/components/MessagePanel';
+import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
+import Badge from '@mui/material/Badge';
 
 import AppBar from '@mui/material/AppBar';
 import Box from '@mui/material/Box';
@@ -89,6 +92,25 @@ export default function AdminNav({ user, children }: { user: NavUser, children: 
     const [currentLocName, setCurrentLocName] = useState('');
     const [anchorElLoc, setAnchorElLoc] = useState<null | HTMLElement>(null);
     const [anchorElProfile, setAnchorElProfile] = useState<null | HTMLElement>(null);
+    const [showMessages, setShowMessages] = useState(false);
+    const [unreadMessages, setUnreadMessages] = useState(0);
+    const [myUserId, setMyUserId] = useState(0);
+
+    useEffect(() => {
+        const fetchUnread = async () => {
+            try {
+                const res = await fetch('/api/admin/messages');
+                const data = await res.json();
+                setUnreadMessages(data.unreadTotal || 0);
+            } catch {}
+        };
+        fetch('/api/admin/profile').then(r => r.json()).then(d => {
+            if (d.user?.id) setMyUserId(d.user.id);
+        }).catch(() => {});
+        fetchUnread();
+        const t = setInterval(fetchUnread, 30000);
+        return () => clearInterval(t);
+    }, []);
 
     const isPro = user?.subscriptionPlan === 'pro' || user?.subscriptionPlan === 'free_trial' || user?.role === 'super_admin';
     const canAudit = user?.role === 'admin' || user?.permissions?.includes('audit') || user?.permissions?.includes('all');
@@ -373,6 +395,13 @@ export default function AdminNav({ user, children }: { user: NavUser, children: 
                         </>
                     )}
 
+                    <Box sx={{ mr: 1 }}>
+                        <IconButton onClick={() => setShowMessages(s => !s)} sx={{ color: 'text.primary' }}>
+                            <Badge badgeContent={unreadMessages > 0 ? unreadMessages : undefined} color="error" max={99}>
+                                <ChatBubbleOutlineIcon fontSize="small" />
+                            </Badge>
+                        </IconButton>
+                    </Box>
                     <Box sx={{ mr: 2 }}>
                         <NotificationBell />
                     </Box>
@@ -387,7 +416,8 @@ export default function AdminNav({ user, children }: { user: NavUser, children: 
                         open={Boolean(anchorElProfile)}
                         onClose={() => setAnchorElProfile(null)}
                     >
-                        <MenuItem disabled sx={{ opacity: '1 !important', fontWeight: 'bold' }}>UI Theme</MenuItem>
+                        <MenuItem component="a" href="/admin/profile" onClick={() => setAnchorElProfile(null)}>My Profile</MenuItem>
+                        <MenuItem disabled sx={{ opacity: '1 !important', fontWeight: 'bold', borderTop: '1px solid', borderColor: 'divider', mt: 0.5, pt: 1 }}>UI Theme</MenuItem>
                         <MenuItem onClick={() => { fetch('/api/user/theme', { method: 'POST', body: JSON.stringify({ theme: 'dark' }) }).then(() => window.location.reload()) }}>Dark</MenuItem>
                         <MenuItem onClick={() => { fetch('/api/user/theme', { method: 'POST', body: JSON.stringify({ theme: 'light' }) }).then(() => window.location.reload()) }}>Light</MenuItem>
                         <MenuItem onClick={() => { fetch('/api/user/theme', { method: 'POST', body: JSON.stringify({ theme: 'blue' }) }).then(() => window.location.reload()) }}>Deep Blue</MenuItem>
@@ -424,6 +454,10 @@ export default function AdminNav({ user, children }: { user: NavUser, children: 
             <Box component="main" sx={{ flexGrow: 1, p: { xs: 1.5, sm: 3 }, width: { sm: `calc(100% - ${drawerWidth}px)` }, mt: 8, minWidth: 0 }}>
                 {children}
             </Box>
+
+            {showMessages && myUserId > 0 && (
+                <MessagePanel myId={myUserId} onClose={() => setShowMessages(false)} />
+            )}
         </Box>
     );
 }

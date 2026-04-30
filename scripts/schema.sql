@@ -32,7 +32,9 @@ CREATE TABLE IF NOT EXISTS users (
     notification_preferences JSONB DEFAULT '{}',
     is_active BOOLEAN DEFAULT TRUE,
     is_archived BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    profile_picture TEXT,
+    display_name TEXT
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email) WHERE email IS NOT NULL;
 
@@ -335,6 +337,30 @@ CREATE TABLE IF NOT EXISTS global_categories (
     name TEXT NOT NULL UNIQUE,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS org_posts (
+    id SERIAL PRIMARY KEY,
+    organization_id INTEGER REFERENCES organizations(id) ON DELETE CASCADE,
+    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    content TEXT,
+    images JSONB DEFAULT '[]',
+    tagged_user_ids JSONB DEFAULT '[]',
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS org_posts_org_idx ON org_posts(organization_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS messages (
+    id SERIAL PRIMARY KEY,
+    organization_id INTEGER REFERENCES organizations(id) ON DELETE CASCADE,
+    sender_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    recipient_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    content TEXT NOT NULL,
+    is_read BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS messages_recipient_idx ON messages(recipient_id, is_read);
+CREATE INDEX IF NOT EXISTS messages_org_idx ON messages(organization_id);
 
 CREATE TABLE IF NOT EXISTS server_alert_configs (
     id SERIAL PRIMARY KEY,

@@ -67,6 +67,17 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
     const suggestTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
     const suggestRef = useRef<HTMLDivElement>(null);
 
+    // Quick Add
+    const [showQuickAdd, setShowQuickAdd] = useState(false);
+    const [qaName, setQaName] = useState('');
+    const [qaCategory, setQaCategory] = useState('');
+    const [qaSubCategory, setQaSubCategory] = useState('');
+    const [qaCount, setQaCount] = useState(1);
+    const [qaLocations, setQaLocations] = useState<number[]>([]);
+    const [qaLog, setQaLog] = useState<{ name: string; category: string }[]>([]);
+    const [qaSaving, setQaSaving] = useState(false);
+    const qaNameRef = useRef<HTMLInputElement>(null);
+
     // Unified Form State
     const [formData, setFormData] = useState({
         name: '',
@@ -410,6 +421,62 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
         setShowModal(true);
     };
 
+    const openQuickAdd = () => {
+        setQaName('');
+        setQaCategory(categories[0]?.name || '');
+        setQaSubCategory('');
+        setQaCount(1);
+        setQaLocations(myLocations.map(l => l.id));
+        setQaLog([]);
+        setShowQuickAdd(true);
+        setTimeout(() => qaNameRef.current?.focus(), 50);
+    };
+
+    const saveQuickAdd = async (goNext: boolean) => {
+        if (!qaName.trim()) return;
+        setQaSaving(true);
+        try {
+            const body: any = {
+                name: qaName.trim(),
+                type: qaCategory,
+                secondary_type: qaSubCategory || undefined,
+                quantity: qaCount,
+                assignedLocations: myLocations.length > 1 ? qaLocations : myLocations.map(l => l.id),
+                add_to_all_locations: myLocations.length <= 1,
+                ...(selectedLocationId ? { locationId: selectedLocationId } : {}),
+            };
+            const url = '/api/inventory' + (overrideOrgId ? `?orgId=${overrideOrgId}` : '');
+            await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+            setQaLog(prev => [{ name: qaName.trim(), category: qaCategory }, ...prev]);
+            if (goNext) {
+                setQaName('');
+                setQaSubCategory('');
+                setQaCount(1);
+                setTimeout(() => qaNameRef.current?.focus(), 30);
+            } else {
+                setShowQuickAdd(false);
+                fetchData();
+            }
+        } finally {
+            setQaSaving(false);
+            if (!goNext) fetchData();
+        }
+    };
+
+    useEffect(() => {
+        if (!showQuickAdd) return;
+        const handler = (e: KeyboardEvent) => {
+            if (e.key === 'n' || e.key === 'N') {
+                const active = document.activeElement as HTMLElement;
+                if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.tagName === 'SELECT')) return;
+                e.preventDefault();
+                saveQuickAdd(true);
+            }
+        };
+        window.addEventListener('keydown', handler);
+        return () => window.removeEventListener('keydown', handler);
+    }, [showQuickAdd, qaName, qaCategory, qaSubCategory, qaCount, qaLocations]);
+
     const fetchGlobalSuggestions = useCallback(async (name: string) => {
         if (name.length < 2) { setGlobalSuggestions([]); setShowSuggestions(false); return; }
         const res = await fetch(`/api/admin/products/global-suggest?q=${encodeURIComponent(name)}`);
@@ -644,6 +711,12 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                             style={{ display: 'none' }}
                             onChange={handleImportClick}
                         />
+                        <button
+                            onClick={openQuickAdd}
+                            style={{ background: '#059669', color: 'white', padding: '0.5rem 1rem', borderRadius: '0.5rem', fontWeight: 'bold', border: 'none', cursor: 'pointer' }}
+                        >
+                            ⚡ Quick Add
+                        </button>
                         <button
                             onClick={handleCreateClick}
                             style={{ background: '#d97706', color: 'white', padding: '0.5rem 1rem', borderRadius: '0.5rem', fontWeight: 'bold', border: 'none', cursor: 'pointer' }}
@@ -1535,6 +1608,116 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                 onClose={() => setShowBarcodeScanner(false)}
                 onDetected={handleBarcodeScanForProduct}
             />
+
+            {showQuickAdd && (
+                <div style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+                    <div style={{ background: '#111827', border: '1px solid #374151', borderRadius: '12px', width: '100%', maxWidth: '480px', display: 'flex', flexDirection: 'column', maxHeight: '90vh' }}>
+                        {/* Header */}
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1rem 1.25rem', borderBottom: '1px solid #1f2937' }}>
+                            <h2 style={{ margin: 0, color: 'white', fontSize: '1.1rem', fontWeight: 700 }}>⚡ Quick Add Product</h2>
+                            <button onClick={() => { setShowQuickAdd(false); if (qaLog.length > 0) fetchData(); }}
+                                style={{ background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: '1.3rem', lineHeight: 1 }}>×</button>
+                        </div>
+
+                        <div style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem', overflowY: 'auto' }}>
+                            {/* Name */}
+                            <div>
+                                <label style={{ color: '#9ca3af', fontSize: '0.8rem', fontWeight: 600, display: 'block', marginBottom: '0.4rem' }}>Product Name *</label>
+                                <input
+                                    ref={qaNameRef}
+                                    value={qaName}
+                                    onChange={e => setQaName(e.target.value)}
+                                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); saveQuickAdd(true); } }}
+                                    placeholder="e.g. Tito's Vodka 750ml"
+                                    style={{ width: '100%', background: '#1f2937', border: '1px solid #374151', borderRadius: '8px', color: 'white', padding: '0.65rem 0.9rem', fontSize: '0.9rem', outline: 'none' }}
+                                />
+                            </div>
+
+                            {/* Category + Sub-Category */}
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                                <div>
+                                    <label style={{ color: '#9ca3af', fontSize: '0.8rem', fontWeight: 600, display: 'block', marginBottom: '0.4rem' }}>Category</label>
+                                    <select value={qaCategory} onChange={e => { setQaCategory(e.target.value); setQaSubCategory(''); }}
+                                        style={{ width: '100%', background: '#1f2937', border: '1px solid #374151', borderRadius: '8px', color: 'white', padding: '0.65rem 0.9rem', fontSize: '0.9rem', outline: 'none' }}>
+                                        {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                                    </select>
+                                </div>
+                                {(() => {
+                                    const cat = categories.find(c => c.name === qaCategory);
+                                    if (!cat?.sub_categories?.length) return null;
+                                    return (
+                                        <div>
+                                            <label style={{ color: '#9ca3af', fontSize: '0.8rem', fontWeight: 600, display: 'block', marginBottom: '0.4rem' }}>Sub-Category</label>
+                                            <select value={qaSubCategory} onChange={e => setQaSubCategory(e.target.value)}
+                                                style={{ width: '100%', background: '#1f2937', border: '1px solid #374151', borderRadius: '8px', color: 'white', padding: '0.65rem 0.9rem', fontSize: '0.9rem', outline: 'none' }}>
+                                                <option value="">(None)</option>
+                                                {cat.sub_categories.map(s => <option key={s} value={s}>{s}</option>)}
+                                            </select>
+                                        </div>
+                                    );
+                                })()}
+                            </div>
+
+                            {/* Count */}
+                            <div>
+                                <label style={{ color: '#9ca3af', fontSize: '0.8rem', fontWeight: 600, display: 'block', marginBottom: '0.4rem' }}>Starting Count</label>
+                                <input type="number" min="0" step="1" value={qaCount}
+                                    onChange={e => setQaCount(Number(e.target.value))}
+                                    style={{ width: '120px', background: '#1f2937', border: '1px solid #374151', borderRadius: '8px', color: 'white', padding: '0.65rem 0.9rem', fontSize: '0.9rem', outline: 'none' }} />
+                            </div>
+
+                            {/* Locations — only if multiple */}
+                            {myLocations.length > 1 && (
+                                <div>
+                                    <label style={{ color: '#9ca3af', fontSize: '0.8rem', fontWeight: 600, display: 'block', marginBottom: '0.5rem' }}>Locations</label>
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                                        {myLocations.map(loc => (
+                                            <label key={loc.id} style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', color: '#d1d5db', fontSize: '0.875rem' }}>
+                                                <input type="checkbox" checked={qaLocations.includes(loc.id)}
+                                                    onChange={e => setQaLocations(prev => e.target.checked ? [...prev, loc.id] : prev.filter(id => id !== loc.id))}
+                                                    style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: '#3b82f6' }} />
+                                                {loc.name}
+                                            </label>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Log of added items */}
+                            {qaLog.length > 0 && (
+                                <div style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', padding: '0.75rem' }}>
+                                    <p style={{ color: '#6b7280', fontSize: '0.75rem', fontWeight: 600, margin: '0 0 0.5rem' }}>Added this session ({qaLog.length}):</p>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', maxHeight: '120px', overflowY: 'auto' }}>
+                                        {qaLog.map((entry, i) => (
+                                            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                <span style={{ color: '#34d399', fontSize: '0.8rem' }}>✓</span>
+                                                <span style={{ color: '#e5e7eb', fontSize: '0.85rem' }}>{entry.name}</span>
+                                                <span style={{ color: '#6b7280', fontSize: '0.75rem' }}>{entry.category}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Buttons */}
+                        <div style={{ padding: '1rem 1.25rem', borderTop: '1px solid #1f2937', display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+                            <button onClick={() => { setShowQuickAdd(false); if (qaLog.length > 0) fetchData(); }}
+                                style={{ background: 'none', border: '1px solid #374151', color: '#9ca3af', padding: '0.6rem 1rem', borderRadius: '8px', cursor: 'pointer', fontSize: '0.875rem' }}>
+                                {qaLog.length > 0 ? 'Done' : 'Cancel'}
+                            </button>
+                            <button onClick={() => saveQuickAdd(false)} disabled={qaSaving || !qaName.trim()}
+                                style={{ background: '#374151', color: 'white', border: 'none', padding: '0.6rem 1.25rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, fontSize: '0.875rem', opacity: (qaSaving || !qaName.trim()) ? 0.5 : 1 }}>
+                                Done
+                            </button>
+                            <button onClick={() => saveQuickAdd(true)} disabled={qaSaving || !qaName.trim()}
+                                style={{ background: '#059669', color: 'white', border: 'none', padding: '0.6rem 1.25rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 700, fontSize: '0.875rem', opacity: (qaSaving || !qaName.trim()) ? 0.5 : 1 }}>
+                                {qaSaving ? 'Saving…' : 'Next (n)'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {webSearchPendingBarcode && (
                 <div style={{ position: 'fixed', inset: 0, zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)' }}>
