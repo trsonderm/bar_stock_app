@@ -140,6 +140,63 @@ export default async function MobileApiDocsPage() {
                 </Block>
             </Section>
 
+            <Section title="User Registration (Invite Flow)">
+                <p style={p}>Admins generate invite links from the Users settings page. The link contains a one-time token valid for 7 days. Mobile apps can use these two endpoints to register new users without a browser:</p>
+
+                <Block label="GET /api/mobile/register?token=..." method="GET">
+{`// No auth header needed — validates the invite token
+// Returns org info and pre-filled email if admin set one
+
+// Success response (200):
+{
+  "valid": true,
+  "org_name": "The Rusty Nail",
+  "email": "newstaff@yourbar.com",  // pre-filled (may be null)
+  "role": "user"
+}
+
+// Error responses:
+// 404 — { "error": "Invalid token" }
+// 410 — { "error": "Invitation already used" }
+// 410 — { "error": "Invitation expired" }`}
+                </Block>
+
+                <Block label="POST /api/mobile/register" method="POST">
+{`// No auth header needed — completes registration
+// Returns a Bearer token (same format as /api/mobile/auth)
+
+// Request body (JSON):
+{
+  "token": "abc123...",           // required — from invite link
+  "firstName": "Alex",           // required
+  "lastName": "Smith",           // required
+  "displayName": "Alex S.",      // optional — shown in feed & messages
+  "email": "alex@yourbar.com",   // required if not pre-filled by admin
+  "phone": "5550001234",         // optional
+  "password": "securepass",      // required — min 6 characters
+  "pin": "1234"                  // required — exactly 4 digits
+}
+
+// Success response (200):
+{
+  "token": "eyJhbGciOiJIUzI1NiIs...",
+  "expires_in": 604800,
+  "user": {
+    "id": 55,
+    "first_name": "Alex",
+    "last_name": "Smith",
+    "role": "user",
+    "email": "alex@yourbar.com"
+  },
+  "organization": { "id": 7, "name": "The Rusty Nail" }
+}`}
+                </Block>
+                <p style={{ ...p, color: '#60a5fa' }}>
+                    After registration, save the returned <code style={code}>token</code> and use it as your Bearer token for all subsequent requests.
+                    Each invite link can only be used once.
+                </p>
+            </Section>
+
             <Section title="Error Responses">
                 <p style={p}>All endpoints return standard HTTP status codes:</p>
                 <Block label="Error format" method="">

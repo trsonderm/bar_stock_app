@@ -796,3 +796,23 @@ CREATE TABLE IF NOT EXISTS security_incidents (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS security_incidents_org_idx ON security_incidents(organization_id, created_at DESC);
+
+-- =========================================================
+-- 41. User invitation links
+-- =========================================================
+CREATE TABLE IF NOT EXISTS user_invitations (
+    id SERIAL PRIMARY KEY,
+    organization_id INTEGER REFERENCES organizations(id) ON DELETE CASCADE,
+    token TEXT NOT NULL UNIQUE,
+    email TEXT,
+    role TEXT DEFAULT 'user',
+    permissions JSONB DEFAULT '[]',
+    created_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_by_name TEXT,
+    expires_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '7 days'),
+    used_at TIMESTAMPTZ,
+    used_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS user_invitations_token_idx ON user_invitations(token);
+CREATE INDEX IF NOT EXISTS user_invitations_org_idx ON user_invitations(organization_id);

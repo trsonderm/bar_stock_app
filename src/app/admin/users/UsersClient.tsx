@@ -52,6 +52,48 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
     // Edit Mode
     const [editingId, setEditingId] = useState<number | null>(null);
 
+    // Invite state
+    const [inviteEmail, setInviteEmail] = useState('');
+    const [inviteSending, setInviteSending] = useState(false);
+    const [inviteResult, setInviteResult] = useState<{ ok: boolean; message: string; url?: string } | null>(null);
+    const [invitations, setInvitations] = useState<any[]>([]);
+
+    const fetchInvitations = async () => {
+        const res = await fetch('/api/admin/invitations');
+        const data = await res.json();
+        setInvitations(data.invitations || []);
+    };
+
+    const sendInvite = async () => {
+        if (!inviteEmail.trim()) return;
+        setInviteSending(true);
+        setInviteResult(null);
+        try {
+            const res = await fetch('/api/admin/invitations', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: inviteEmail.trim() }),
+            });
+            const data = await res.json();
+            if (res.ok) {
+                setInviteResult({ ok: true, message: `Invite sent to ${inviteEmail.trim()}`, url: data.invite_url });
+                setInviteEmail('');
+                fetchInvitations();
+            } else {
+                setInviteResult({ ok: false, message: data.error || 'Failed to send invite.' });
+            }
+        } catch {
+            setInviteResult({ ok: false, message: 'Network error. Please try again.' });
+        } finally {
+            setInviteSending(false);
+        }
+    };
+
+    const revokeInvite = async (id: number) => {
+        await fetch(`/api/admin/invitations?id=${id}`, { method: 'DELETE' });
+        fetchInvitations();
+    };
+
     const fetchUsers = async () => {
         try {
             const url = overrideOrgId ? `/api/admin/users?orgId=${overrideOrgId}` : '/api/admin/users';
@@ -92,6 +134,7 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
 
     useEffect(() => {
         fetchUsers();
+        fetchInvitations();
     }, [overrideOrgId]);
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -499,6 +542,65 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
                             </button>
                         </div>
                     </form>
+                </div>
+
+                {/* ── Invite by Email ──────────────────────────────────────────── */}
+                <div className={styles.card} style={{ gridColumn: 'span 3' }}>
+                    <div className={styles.cardTitle} style={{ marginBottom: '1rem' }}>📧 Invite New User by Email</div>
+                    <p style={{ color: '#9ca3af', fontSize: '0.85rem', marginTop: 0, marginBottom: '1rem' }}>
+                        Send a registration link to any email address. The recipient clicks the link to set up their name, password, and PIN — no admin setup required.
+                    </p>
+                    <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                        <input
+                            type="email"
+                            value={inviteEmail}
+                            onChange={e => setInviteEmail(e.target.value)}
+                            onKeyDown={async e => { if (e.key === 'Enter') { e.preventDefault(); await sendInvite(); } }}
+                            placeholder="staff@yourbar.com"
+                            style={{ flex: 1, minWidth: '220px', background: '#111827', border: '1px solid #374151', borderRadius: '8px', color: 'white', padding: '0.65rem 0.9rem', fontSize: '0.9rem', outline: 'none' }}
+                        />
+                        <button
+                            onClick={sendInvite}
+                            disabled={inviteSending || !inviteEmail.trim()}
+                            style={{ background: '#059669', color: 'white', border: 'none', borderRadius: '8px', padding: '0.65rem 1.25rem', fontWeight: 700, cursor: 'pointer', fontSize: '0.9rem', opacity: (inviteSending || !inviteEmail.trim()) ? 0.5 : 1, whiteSpace: 'nowrap' }}>
+                            {inviteSending ? 'Sending…' : '✉ Send Invite'}
+                        </button>
+                    </div>
+
+                    {inviteResult && (
+                        <div style={{ marginTop: '0.75rem', background: inviteResult.ok ? '#052e16' : '#7f1d1d', border: `1px solid ${inviteResult.ok ? '#16a34a' : '#ef4444'}`, borderRadius: '8px', padding: '0.65rem 0.9rem', display: 'flex', alignItems: 'flex-start', gap: '0.75rem' }}>
+                            <span style={{ color: inviteResult.ok ? '#34d399' : '#fca5a5', fontSize: '0.875rem', flex: 1 }}>{inviteResult.message}</span>
+                            {inviteResult.url && (
+                                <button onClick={() => { navigator.clipboard.writeText(inviteResult!.url!); }}
+                                    style={{ background: '#374151', border: 'none', color: '#d1d5db', borderRadius: '6px', padding: '4px 10px', cursor: 'pointer', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>
+                                    Copy Link
+                                </button>
+                            )}
+                            <button onClick={() => setInviteResult(null)} style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', padding: 0, fontSize: '1rem', lineHeight: 1 }}>×</button>
+                        </div>
+                    )}
+
+                    {/* Pending invitations */}
+                    {invitations.filter(i => i.is_active).length > 0 && (
+                        <div style={{ marginTop: '1.25rem' }}>
+                            <div style={{ color: '#9ca3af', fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.5rem' }}>PENDING INVITATIONS</div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                                {invitations.filter(i => i.is_active).map(inv => (
+                                    <div key={inv.id} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', background: '#111827', borderRadius: '8px', padding: '0.5rem 0.75rem', border: '1px solid #1f2937' }}>
+                                        <span style={{ color: '#60a5fa', fontSize: '0.85rem', flex: 1 }}>{inv.email}</span>
+                                        <span style={{ color: '#6b7280', fontSize: '0.75rem' }}>
+                                            expires {new Date(inv.expires_at).toLocaleDateString()}
+                                        </span>
+                                        <span style={{ color: '#9ca3af', fontSize: '0.75rem' }}>by {inv.created_by_name}</span>
+                                        <button onClick={() => revokeInvite(inv.id)}
+                                            style={{ background: 'none', border: '1px solid #374151', color: '#9ca3af', borderRadius: '6px', padding: '3px 8px', cursor: 'pointer', fontSize: '0.75rem' }}>
+                                            Revoke
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 <div className={styles.card} style={{ gridColumn: 'span 2' }}>
