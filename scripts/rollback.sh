@@ -181,7 +181,8 @@ docker compose exec -T db psql -U postgres -d postgres -c \
     "CREATE DATABASE topshelf OWNER postgres;" > /dev/null
 
 echo "Restoring data..."
-gunzip -c "$ROLLBACK_BACKUP_PATH" | docker compose exec -T db psql -U postgres -d topshelf > /dev/null
+CONTAINER_BACKUP="/backups/$(basename "$ROLLBACK_BACKUP_PATH")"
+docker compose exec -T db bash -c "gunzip -c '$CONTAINER_BACKUP' | psql -U postgres -d topshelf"
 echo "Database restored."
 
 # ── Step 3: Checkout previous code ────────────────────────────────────────────

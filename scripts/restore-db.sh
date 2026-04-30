@@ -120,7 +120,10 @@ docker compose exec -T db psql -U postgres -d postgres -c \
 # ── Restore ───────────────────────────────────────────────────────────────────
 
 echo "Restoring from backup..."
-gunzip -c "$BACKUP_FILE" | docker compose exec -T db psql -U postgres -d topshelf
+# Run gunzip + psql entirely inside the container where /backups is mounted.
+# Piping host-side gunzip through docker compose exec -T is unreliable.
+CONTAINER_BACKUP="/backups/$(basename "$BACKUP_FILE")"
+docker compose exec -T db bash -c "gunzip -c '$CONTAINER_BACKUP' | psql -U postgres -d topshelf"
 
 echo ""
 echo "============================================================"
