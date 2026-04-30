@@ -1,12 +1,12 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Database, Copy, AlertTriangle, RefreshCw, Layers } from 'lucide-react';
+import { Database, Copy, AlertTriangle, RefreshCw, Layers, Zap, TrendingDown, Clock } from 'lucide-react';
 
 export default function MaintenancePage() {
     const [organizations, setOrganizations] = useState<any[]>([]);
     const [selectedOrg, setSelectedOrg] = useState<string>('');
-    const [tab, setTab] = useState<'EXPLORER' | 'DUPLICATES' | 'ORPHANS'>('EXPLORER');
+    const [tab, setTab] = useState<'EXPLORER' | 'DUPLICATES' | 'ORPHANS' | 'OPTIMIZE'>('EXPLORER');
 
     // Explorer State
     const [tables, setTables] = useState<string[]>([]);
@@ -22,6 +22,11 @@ export default function MaintenancePage() {
     const [orphanType, setOrphanType] = useState('inventory_items');
     const [orphans, setOrphans] = useState<any[]>([]);
     const [linkTargetId, setLinkTargetId] = useState('');
+
+    // Optimize State
+    const [optimizeStats, setOptimizeStats] = useState<any>(null);
+    const [optimizeTable, setOptimizeTable] = useState('');
+    const [optimizeResult, setOptimizeResult] = useState('');
 
     useEffect(() => {
         fetch('/api/super-admin/organizations').then(r => r.json()).then(d => {
@@ -72,6 +77,28 @@ export default function MaintenancePage() {
             else alert('Failed');
         } catch { }
         setLoading(false);
+    };
+
+    const loadOptimizeStats = async () => {
+        setLoading(true);
+        const res = await fetch('/api/super-admin/db-optimize?action=stats');
+        const data = await res.json();
+        setOptimizeStats(data);
+        setLoading(false);
+    };
+
+    const runOptimize = async (action: 'vacuum' | 'analyze' | 'reindex', table?: string) => {
+        setLoading(true);
+        setOptimizeResult('');
+        const res = await fetch('/api/super-admin/db-optimize', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action, table: table || undefined }),
+        });
+        const data = await res.json();
+        setOptimizeResult(data.message || data.error || 'Done');
+        setLoading(false);
+        loadOptimizeStats();
     };
 
     const fetchOrphans = async () => {
@@ -136,7 +163,8 @@ export default function MaintenancePage() {
                 {[
                     { id: 'EXPLORER', label: 'Table Explorer', icon: Database },
                     { id: 'DUPLICATES', label: 'Duplicate Cleaner', icon: Copy },
-                    { id: 'ORPHANS', label: 'Orphan Detective', icon: AlertTriangle }
+                    { id: 'ORPHANS', label: 'Orphan Detective', icon: AlertTriangle },
+                    { id: 'OPTIMIZE', label: 'Optimize DB', icon: Zap }
                 ].map(t => {
                     const Icon = t.icon;
                     return (
@@ -312,6 +340,114 @@ export default function MaintenancePage() {
                     )}
 
                     {orphans.length === 0 && <div className="text-center py-12 text-slate-600 italic">No orphans found. Database integrity is 100%.</div>}
+                </div>
+            )}
+
+            {tab === 'OPTIMIZE' && (
+                <div className="bg-slate-900 rounded-xl border border-slate-800 p-6">
+                    <div className="flex gap-4 mb-6 items-center flex-wrap">
+                        <button onClick={loadOptimizeStats} className="bg-blue-600 hover:bg-blue-500 text-white px-5 py-2.5 rounded-lg font-bold flex items-center gap-2 transition-colors">
+                            <RefreshCw size={16} /> Analyze Tables
+                        </button>
+                        <div className="flex gap-2 flex-1 items-center">
+                            <select
+                                value={optimizeTable}
+                                onChange={e => setOptimizeTable(e.target.value)}
+                                className="bg-slate-950 text-white p-2.5 rounded-lg border border-slate-700 outline-none focus:border-blue-500 flex-1"
+                            >
+                                <option value="">All Tables</option>
+                                {tables.map(t => <option key={t} value={t}>{t}</option>)}
+                            </select>
+                            <button onClick={() => runOptimize('vacuum', optimizeTable || undefined)} className="bg-green-700 hover:bg-green-600 text-white px-4 py-2.5 rounded-lg font-bold flex items-center gap-1.5 transition-colors whitespace-nowrap">
+                                <Zap size={14} /> VACUUM ANALYZE
+                            </button>
+                            <button onClick={() => runOptimize('analyze', optimizeTable || undefined)} className="bg-yellow-700 hover:bg-yellow-600 text-white px-4 py-2.5 rounded-lg font-bold flex items-center gap-1.5 transition-colors">
+                                <TrendingDown size={14} /> ANALYZE
+                            </button>
+                            {optimizeTable && (
+                                <button onClick={() => runOptimize('reindex', optimizeTable)} className="bg-purple-700 hover:bg-purple-600 text-white px-4 py-2.5 rounded-lg font-bold flex items-center gap-1.5 transition-colors">
+                                    <RefreshCw size={14} /> REINDEX
+                                </button>
+                            )}
+                        </div>
+                    </div>
+
+                    {optimizeResult && (
+                        <div className="mb-4 px-4 py-2 bg-emerald-900/20 border border-emerald-700/40 rounded-lg text-emerald-300 text-sm">{optimizeResult}</div>
+                    )}
+
+                    {/* When to optimize guidance */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 text-sm">
+                        <div className="bg-slate-950/60 rounded-lg p-4 border border-slate-800">
+                            <h4 className="font-bold text-green-400 mb-1 flex items-center gap-1"><Zap size={13} /> VACUUM ANALYZE</h4>
+                            <p className="text-slate-400">Run when bloat % is above 10%, after bulk deletes/updates, or weekly as maintenance. Reclaims dead row space and updates query planner stats.</p>
+                        </div>
+                        <div className="bg-slate-950/60 rounded-lg p-4 border border-slate-800">
+                            <h4 className="font-bold text-yellow-400 mb-1 flex items-center gap-1"><TrendingDown size={13} /> ANALYZE</h4>
+                            <p className="text-slate-400">Run after large inserts or schema changes to update statistics. Faster than VACUUM — safe to run anytime queries feel slow.</p>
+                        </div>
+                        <div className="bg-slate-950/60 rounded-lg p-4 border border-slate-800">
+                            <h4 className="font-bold text-purple-400 mb-1 flex items-center gap-1"><RefreshCw size={13} /> REINDEX</h4>
+                            <p className="text-slate-400">Run when index bloat is high or after crash recovery. Acquires an exclusive lock — run during low-traffic periods only.</p>
+                        </div>
+                    </div>
+
+                    {optimizeStats && (
+                        <>
+                            <div className="mb-3 flex items-center gap-3">
+                                <span className="text-slate-400 text-sm">Total DB size:</span>
+                                <span className="text-white font-bold">{optimizeStats.dbSize?.size}</span>
+                            </div>
+                            <div className="overflow-x-auto rounded-lg border border-slate-800">
+                                <table className="w-full text-sm text-left text-slate-400">
+                                    <thead className="bg-slate-950 text-slate-300 uppercase font-bold text-xs">
+                                        <tr>
+                                            <th className="px-4 py-3 border-b border-r border-slate-800">Table</th>
+                                            <th className="px-4 py-3 border-b border-r border-slate-800">Size</th>
+                                            <th className="px-4 py-3 border-b border-r border-slate-800">Live Rows</th>
+                                            <th className="px-4 py-3 border-b border-r border-slate-800">Dead Rows</th>
+                                            <th className="px-4 py-3 border-b border-r border-slate-800">Bloat %</th>
+                                            <th className="px-4 py-3 border-b border-r border-slate-800">Last Vacuum</th>
+                                            <th className="px-4 py-3 border-b border-slate-800">Last Analyze</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-800">
+                                        {optimizeStats.tableStats?.map((t: any) => {
+                                            const needsVacuum = parseFloat(t.bloat_pct) > 10;
+                                            const neverVacuumed = !t.last_vacuum && !t.last_autovacuum;
+                                            return (
+                                                <tr key={t.table_name} className={`hover:bg-slate-800/50 ${needsVacuum || neverVacuumed ? 'bg-yellow-900/10' : ''}`}>
+                                                    <td className="px-4 py-3 border-r border-slate-800 font-mono text-white">{t.table_name}</td>
+                                                    <td className="px-4 py-3 border-r border-slate-800">{t.total_size}</td>
+                                                    <td className="px-4 py-3 border-r border-slate-800">{Number(t.live_rows).toLocaleString()}</td>
+                                                    <td className="px-4 py-3 border-r border-slate-800">{Number(t.dead_rows).toLocaleString()}</td>
+                                                    <td className="px-4 py-3 border-r border-slate-800">
+                                                        <span className={`font-bold ${parseFloat(t.bloat_pct) > 20 ? 'text-red-400' : parseFloat(t.bloat_pct) > 10 ? 'text-yellow-400' : 'text-green-400'}`}>
+                                                            {t.bloat_pct}%
+                                                        </span>
+                                                        {(needsVacuum || neverVacuumed) && (
+                                                            <span className="ml-2 text-xs text-yellow-500">⚠ needs vacuum</span>
+                                                        )}
+                                                    </td>
+                                                    <td className="px-4 py-3 border-r border-slate-800 flex items-center gap-1">
+                                                        <Clock size={12} className="text-slate-600" />
+                                                        {t.last_vacuum ? new Date(t.last_vacuum).toLocaleDateString() : t.last_autovacuum ? `auto ${new Date(t.last_autovacuum).toLocaleDateString()}` : <span className="text-yellow-500">never</span>}
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        {t.last_analyze ? new Date(t.last_analyze).toLocaleDateString() : t.last_autoanalyze ? `auto ${new Date(t.last_autoanalyze).toLocaleDateString()}` : <span className="text-slate-600">never</span>}
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </>
+                    )}
+
+                    {!optimizeStats && (
+                        <div className="text-center py-12 text-slate-600 italic">Click "Analyze Tables" to see table health stats</div>
+                    )}
                 </div>
             )}
 

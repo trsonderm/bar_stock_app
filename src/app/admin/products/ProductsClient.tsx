@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import styles from '../admin.module.css';
 import CsvMappingModal from './CsvMappingModal';
@@ -60,6 +60,12 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
     // State for Modal
     const [showModal, setShowModal] = useState(false);
     const [editingId, setEditingId] = useState<number | null>(null);
+
+    // Global product typeahead
+    const [globalSuggestions, setGlobalSuggestions] = useState<any[]>([]);
+    const [showSuggestions, setShowSuggestions] = useState(false);
+    const suggestTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const suggestRef = useRef<HTMLDivElement>(null);
 
     // Unified Form State
     const [formData, setFormData] = useState({
@@ -402,6 +408,23 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
 
         setModalTab('basic');
         setShowModal(true);
+    };
+
+    const fetchGlobalSuggestions = useCallback(async (name: string) => {
+        if (name.length < 2) { setGlobalSuggestions([]); setShowSuggestions(false); return; }
+        const res = await fetch(`/api/admin/products/global-suggest?q=${encodeURIComponent(name)}`);
+        const data = await res.json();
+        setGlobalSuggestions(data.results || []);
+        setShowSuggestions((data.results || []).length > 0);
+    }, []);
+
+    const applyGlobalSuggestion = (s: any) => {
+        setFormData(prev => ({
+            ...prev,
+            name: s.name,
+            order_size: Array.isArray(s.order_size) && s.order_size.length > 0 ? s.order_size : prev.order_size,
+        }));
+        setShowSuggestions(false);
     };
 
     const handleSave = async (e: React.FormEvent) => {
@@ -903,7 +926,7 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                         {modalTab === 'basic' && (<div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
 
                             {/* Name */}
-                            <div>
+                            <div style={{ position: 'relative' }} ref={suggestRef}>
                                 <label className={styles.statLabel} style={{ display: 'flex', alignItems: 'center' }}>
                                     Product Name <span style={{ color: '#ef4444', marginLeft: 2 }}>*</span>
                                     <Tip text="The display name used in inventory lists, reports, and the stock view." />
@@ -912,11 +935,42 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                                     style={{ width: '100%', minHeight: '44px' }}
                                     className={styles.input}
                                     value={formData.name}
-                                    onChange={e => setFormData({ ...formData, name: e.target.value })}
+                                    onChange={e => {
+                                        setFormData({ ...formData, name: e.target.value });
+                                        if (suggestTimeout.current) clearTimeout(suggestTimeout.current);
+                                        suggestTimeout.current = setTimeout(() => fetchGlobalSuggestions(e.target.value), 220);
+                                    }}
+                                    onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+                                    onFocus={() => { if (globalSuggestions.length > 0) setShowSuggestions(true); }}
                                     required
                                     autoFocus
                                     placeholder="e.g. Tito's Vodka 750ml"
                                 />
+                                {showSuggestions && globalSuggestions.length > 0 && (
+                                    <div style={{
+                                        position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 9999,
+                                        background: '#1f2937', border: '1px solid #374151', borderRadius: '6px',
+                                        maxHeight: '220px', overflowY: 'auto', boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+                                    }}>
+                                        {globalSuggestions.map((s: any) => (
+                                            <div
+                                                key={s.id}
+                                                onMouseDown={() => applyGlobalSuggestion(s)}
+                                                style={{
+                                                    padding: '0.5rem 0.75rem', cursor: 'pointer', borderBottom: '1px solid #374151',
+                                                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                                }}
+                                                onMouseEnter={e => (e.currentTarget.style.background = '#374151')}
+                                                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                                            >
+                                                <span style={{ color: 'white', fontSize: '0.875rem' }}>{s.name}</span>
+                                                {s.category_name && (
+                                                    <span style={{ color: '#9ca3af', fontSize: '0.75rem' }}>{s.category_name}</span>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
 
                             {/* Category + Sub-Category */}

@@ -50,16 +50,20 @@ export async function POST(req: NextRequest) {
             const userId = adminRes.id;
 
             // 4. Seed Categories
-            const defaults = {
-                'Liquor': JSON.stringify([1]),
-                'Beer': JSON.stringify([1, 6, 24]),
-                'Seltzer': JSON.stringify([1, 4, 8]),
-                'Wine': JSON.stringify([1]),
-                'THC': JSON.stringify([1]),
+            const defaults: Record<string, string> = {
+                'Liquor':    JSON.stringify([1]),
+                'Beer':      JSON.stringify([1, 6, 24]),
+                'Seltzer':   JSON.stringify([1, 4, 8]),
+                'Wine':      JSON.stringify([1]),
+                'THC':       JSON.stringify([1]),
+                'Soda':      JSON.stringify([1]),
+                'Mixers':    JSON.stringify([1]),
+                'Fruit':     JSON.stringify([1]),
+                'Supplies':  JSON.stringify([1]),
             };
 
             for (const [name, options] of Object.entries(defaults)) {
-                await db.execute('INSERT INTO categories (name, stock_options, organization_id) VALUES ($1, $2, $3)', [name, options, orgId]);
+                await db.execute('INSERT INTO categories (name, stock_options, organization_id) VALUES ($1, $2, $3) ON CONFLICT (name, organization_id) DO NOTHING', [name, options, orgId]);
             }
 
             // 5. Log

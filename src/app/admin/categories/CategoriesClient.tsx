@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { Trash2 } from 'lucide-react';
 import styles from '../admin.module.css';
 
 interface Category {
@@ -378,15 +379,17 @@ export default function CategoriesClient() {
                                     <button
                                         onClick={() => handleDelete(cat.id)}
                                         style={{
-                                            background: '#ef4444',
-                                            color: 'white',
+                                            background: 'none',
+                                            color: '#ef4444',
                                             border: 'none',
-                                            padding: '4px 8px',
-                                            borderRadius: '4px',
-                                            cursor: 'pointer'
+                                            padding: '4px 6px',
+                                            cursor: 'pointer',
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
                                         }}
+                                        title="Delete"
                                     >
-                                        Delete
+                                        <Trash2 size={16} />
                                     </button>
                                 </td>
                             </tr>

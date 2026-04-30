@@ -698,3 +698,37 @@ EXCEPTION WHEN duplicate_column THEN NULL; END $$;
 DO $$ BEGIN
   ALTER TABLE user_schedules ADD COLUMN location_id INTEGER REFERENCES locations(id) ON DELETE SET NULL;
 EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
+-- =========================================================
+-- 37. Global products and categories master tables
+-- =========================================================
+CREATE TABLE IF NOT EXISTS global_categories (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS global_products (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL,
+    category_name TEXT,
+    order_size JSONB DEFAULT '[{"label":"Unit","amount":1}]',
+    barcodes JSONB DEFAULT '[]',
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(name)
+);
+
+-- =========================================================
+-- 38. Server alerts configuration
+-- =========================================================
+CREATE TABLE IF NOT EXISTS server_alert_configs (
+    id SERIAL PRIMARY KEY,
+    alert_type TEXT NOT NULL,
+    enabled BOOLEAN DEFAULT TRUE,
+    threshold_value NUMERIC,
+    threshold_unit TEXT,
+    recipients_json JSONB DEFAULT '[]',
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(alert_type)
+);

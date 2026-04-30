@@ -20,6 +20,9 @@ import {
     Shield,
     Mail,
     CreditCard,
+    Globe,
+    Bell,
+    ShieldCheck,
 } from 'lucide-react';
 
 export default function SuperAdminNav() {
@@ -44,6 +47,9 @@ export default function SuperAdminNav() {
         { name: 'Help Editor', href: '/super-admin/help-editor', icon: HelpCircle },
         { name: 'Mail Accounts', href: '/super-admin/mail-accounts', icon: Settings },
         { name: 'Email Queue', href: '/super-admin/mail-queue', icon: Mail },
+        { name: 'Global Database', href: '/super-admin/global-database', icon: Globe },
+        { name: 'Super Admins', href: '/super-admin/super-admins', icon: ShieldCheck },
+        { name: 'Server Alerts', href: '/super-admin/server-alerts', icon: Bell },
         { name: 'Report Builder', href: '/super-admin/reports/custom', icon: FileBarChart },
         { name: 'System Logs', href: '/super-admin/system-logs', icon: Activity },
         { name: 'Device Tokens', href: '/super-admin/devices', icon: Smartphone },

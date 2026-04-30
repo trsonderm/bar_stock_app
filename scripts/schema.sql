@@ -329,3 +329,31 @@ CREATE INDEX IF NOT EXISTS email_log_org_idx     ON email_log(organization_id);
 CREATE INDEX IF NOT EXISTS email_log_sent_at_idx ON email_log(sent_at DESC);
 CREATE INDEX IF NOT EXISTS email_log_status_idx  ON email_log(status);
 CREATE INDEX IF NOT EXISTS email_log_type_idx    ON email_log(email_type);
+
+CREATE TABLE IF NOT EXISTS global_categories (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS server_alert_configs (
+    id SERIAL PRIMARY KEY,
+    alert_type TEXT NOT NULL,
+    enabled BOOLEAN DEFAULT TRUE,
+    threshold_value NUMERIC,
+    threshold_unit TEXT,
+    recipients_json JSONB DEFAULT '[]',
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(alert_type)
+);
+
+CREATE TABLE IF NOT EXISTS global_products (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL,
+    category_name TEXT,
+    order_size JSONB DEFAULT '[{"label":"Unit","amount":1}]',
+    barcodes JSONB DEFAULT '[]',
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(name)
+);
