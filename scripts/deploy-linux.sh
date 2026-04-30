@@ -3,12 +3,18 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BACKUP_DIR="/opt/topshelf/backups"
+MANIFEST_DIR="$BACKUP_DIR/manifests"
 
 echo "Starting Bar Stock App Deployment (Linux/Docker)..."
 
 # Ensure persistent backup directory exists and is writable by container user (uid 1001)
-mkdir -p "$BACKUP_DIR"
-chmod 777 "$BACKUP_DIR"
+mkdir -p "$BACKUP_DIR" "$MANIFEST_DIR"
+chmod 777 "$BACKUP_DIR" "$MANIFEST_DIR"
+
+# Capture pre-pull git state (for rollback manifest)
+PRE_DEPLOY_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
+PRE_DEPLOY_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+PRE_DEPLOY_MSG=$(git log -1 --pretty=format:"%s" 2>/dev/null || echo "unknown")
 
 # 1. Pull Latest Code
 echo "Pulling latest changes from git..."
@@ -17,7 +23,29 @@ git pull
 # 2. Backup database BEFORE taking containers down
 echo ""
 echo "=== Pre-deploy database backup ==="
+DEPLOY_TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+BACKUP_FILE="$BACKUP_DIR/topshelf_${DEPLOY_TIMESTAMP}.sql.gz"
 bash "$SCRIPT_DIR/backup-db.sh" "$BACKUP_DIR" || echo "WARNING: Backup failed — proceeding anyway. Check $BACKUP_DIR."
+# Resolve the actual backup file created (backup-db.sh uses its own timestamp; grab most recent)
+ACTUAL_BACKUP=$(find "$BACKUP_DIR" -maxdepth 1 -name "topshelf_*.sql.gz" 2>/dev/null | sort | tail -1 || echo "")
+echo ""
+
+# Write deploy manifest (records what to restore when rolling back THIS deploy)
+MANIFEST_FILE="$MANIFEST_DIR/deploy_${DEPLOY_TIMESTAMP}.json"
+POST_DEPLOY_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
+POST_DEPLOY_MSG=$(git log -1 --pretty=format:"%s" 2>/dev/null || echo "unknown")
+cat > "$MANIFEST_FILE" <<MANIFEST
+{
+  "deploy_timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+  "pre_deploy_commit": "$PRE_DEPLOY_COMMIT",
+  "pre_deploy_branch": "$PRE_DEPLOY_BRANCH",
+  "pre_deploy_message": "$PRE_DEPLOY_MSG",
+  "post_deploy_commit": "$POST_DEPLOY_COMMIT",
+  "post_deploy_message": "$POST_DEPLOY_MSG",
+  "backup_file": "$(basename "$ACTUAL_BACKUP")"
+}
+MANIFEST
+echo "Deploy manifest saved: $MANIFEST_FILE"
 echo ""
 
 # 3. Cleanup Existing Sessions / Ports
