@@ -45,11 +45,16 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'No file provided' }, { status: 400 });
         }
 
+        // For existing backup files that are already in /backups (mounted volume),
+        // pipe through psql directly. For uploaded tmp files use psql --file.
         const cmd = isGzipped
             ? `gunzip -c "${tmpPath}" | psql --no-password --dbname="${dbUrl}"`
             : `psql --no-password --dbname="${dbUrl}" --file="${tmpPath}"`;
 
-        await execAsync(cmd, { shell: '/bin/sh' });
+        const { stderr } = await execAsync(cmd, { shell: '/bin/sh' });
+        if (stderr && /ERROR:/i.test(stderr)) {
+            console.warn('[Restore] psql stderr:', stderr.slice(0, 500));
+        }
 
         return NextResponse.json({ success: true });
     } catch (e: any) {

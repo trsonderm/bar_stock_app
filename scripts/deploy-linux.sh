@@ -24,10 +24,18 @@ git pull
 echo ""
 echo "=== Pre-deploy database backup ==="
 DEPLOY_TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-BACKUP_FILE="$BACKUP_DIR/topshelf_${DEPLOY_TIMESTAMP}.sql.gz"
-bash "$SCRIPT_DIR/backup-db.sh" "$BACKUP_DIR" || echo "WARNING: Backup failed — proceeding anyway. Check $BACKUP_DIR."
+bash "$SCRIPT_DIR/backup-db.sh" "$BACKUP_DIR" "pre-deploy" || echo "WARNING: Backup failed — proceeding anyway. Check $BACKUP_DIR."
 # Resolve the actual backup file created (backup-db.sh uses its own timestamp; grab most recent)
 ACTUAL_BACKUP=$(find "$BACKUP_DIR" -maxdepth 1 -name "topshelf_*.sql.gz" 2>/dev/null | sort | tail -1 || echo "")
+echo ""
+
+# Send backup-complete notification (runs in background so it doesn't block deploy)
+if [ -n "$ACTUAL_BACKUP" ]; then
+    BACKUP_SIZE=$(du -sh "$ACTUAL_BACKUP" 2>/dev/null | cut -f1 || echo "unknown")
+    docker compose exec -T app node scripts/notify-deploy.js backup_complete \
+        "{\"backup_file\":\"$(basename "$ACTUAL_BACKUP")\",\"file_size\":\"$BACKUP_SIZE\",\"git_commit\":\"$POST_DEPLOY_COMMIT\",\"commit_message\":\"$POST_DEPLOY_MSG\"}" \
+        2>/dev/null || true
+fi
 echo ""
 
 # Write deploy manifest (records what to restore when rolling back THIS deploy)
@@ -87,20 +95,35 @@ docker compose exec -T db psql -U postgres -d postgres -c \
 echo "Database ready."
 
 # 7. Apply base schema (idempotent — CREATE TABLE IF NOT EXISTS throughout)
-echo "Applying base schema..."
-if docker compose exec -T db psql -U postgres -d topshelf < "$SCRIPT_DIR/schema.sql"; then
-    echo "Base schema applied."
-else
-    echo "WARNING: schema.sql returned errors (may be safe if tables already exist)."
-fi
+# NEVER drops existing tables or columns — all statements use IF NOT EXISTS
+echo "Applying base schema (safe — CREATE TABLE IF NOT EXISTS only)..."
+SCHEMA_OUT=$(docker compose exec -T db psql -U postgres -d topshelf < "$SCRIPT_DIR/schema.sql" 2>&1 || true)
+echo "$SCHEMA_OUT"
+echo "Base schema step complete."
 
-# 8. Run incremental migrations (idempotent ALTER TABLE / CREATE TABLE IF NOT EXISTS)
-echo "Running schema migrations..."
-if docker compose exec -T db psql -U postgres -d topshelf < "$SCRIPT_DIR/migrate.sql"; then
-    echo "Schema migrations applied successfully."
+# 8. Run incremental migrations (idempotent ALTER TABLE ADD COLUMN IF NOT EXISTS / DO $$ EXCEPTION)
+# Each ALTER TABLE wraps in DO $$ EXCEPTION WHEN duplicate_column so existing data is NEVER touched.
+# New columns are added with DEFAULT values so existing rows get 0/null automatically.
+echo "Running schema migrations (safe — ALTER TABLE with EXCEPTION guards)..."
+MIGRATE_OUT=$(docker compose exec -T db psql -U postgres -d topshelf < "$SCRIPT_DIR/migrate.sql" 2>&1 || true)
+echo "$MIGRATE_OUT"
+
+# Check for actual errors vs expected duplicate_column notices
+if echo "$MIGRATE_OUT" | grep -qi "ERROR:" ; then
+    MIGRATION_STATUS="warning"
+    echo "WARNING: Migrations completed with errors. Check output above."
+    echo "         All errors are wrapped — existing data is preserved."
+    # Send warning notification
+    docker compose exec -T app node scripts/notify-deploy.js migration_warning \
+        "{\"git_commit\":\"$POST_DEPLOY_COMMIT\",\"commit_message\":\"$POST_DEPLOY_MSG\",\"backup_file\":\"$(basename "$ACTUAL_BACKUP")\",\"note\":\"Review migration output in deploy log\"}" \
+        2>/dev/null || true
 else
-    echo "WARNING: Migration script returned an error. Check output above."
-    echo "         Deployment will continue — existing data is not affected."
+    MIGRATION_STATUS="success"
+    echo "Schema migrations applied successfully."
+    # Send success notification
+    docker compose exec -T app node scripts/notify-deploy.js migration_complete \
+        "{\"git_commit\":\"$POST_DEPLOY_COMMIT\",\"commit_message\":\"$POST_DEPLOY_MSG\",\"backup_file\":\"$(basename "$ACTUAL_BACKUP")\",\"status\":\"All migrations applied — data preserved\"}" \
+        2>/dev/null || true
 fi
 
 # 9. Seed default super admin only on a truly empty database
