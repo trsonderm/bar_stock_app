@@ -75,11 +75,13 @@ else
     echo "         Deployment will continue — existing data is not affected."
 fi
 
-# 9. Seed default super admin if database is empty
+# 9. Seed default super admin only on a truly empty database
 echo "Checking for existing users..."
-USER_COUNT=$(docker compose exec -T db psql -U postgres -d topshelf -tAc "SELECT COUNT(*) FROM users" 2>/dev/null | tr -d '[:space:]' || echo "0")
+USER_COUNT=$(docker compose exec -T db psql -U postgres -d topshelf -tAc "SELECT COUNT(*) FROM users" 2>/dev/null | tr -d '[:space:]')
+
+# Only seed if we got a clean numeric 0 back — any error or non-zero value skips this
 if [ "$USER_COUNT" = "0" ]; then
-    echo "No users found. Creating default super admin..."
+    echo "No users found (fresh database). Creating default super admin..."
     DEFAULT_PASS="TopShelf$(date +%Y)!"
     if docker compose exec -T app node scripts/create_super_admin.js admin@topshelf.app "$DEFAULT_PASS"; then
         echo ""
@@ -94,8 +96,10 @@ if [ "$USER_COUNT" = "0" ]; then
         echo "WARNING: Failed to create default super admin. Run manually:"
         echo "  docker compose exec app node scripts/create_super_admin.js <email> <password>"
     fi
+elif [ -z "$USER_COUNT" ]; then
+    echo "Could not query user count (DB may not be ready). Skipping super admin seed."
 else
-    echo "Users already exist ($USER_COUNT found). Skipping seed."
+    echo "Users already exist ($USER_COUNT found). Skipping super admin seed."
 fi
 
 echo ""
