@@ -49,6 +49,8 @@ import ScheduleIcon from '@mui/icons-material/Schedule';
 import AutoGraphIcon from '@mui/icons-material/AutoGraph';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
+import SecurityIcon from '@mui/icons-material/Security';
+import PhoneAndroidIcon from '@mui/icons-material/PhoneAndroid';
 
 const drawerWidth = 260;
 
@@ -266,6 +268,7 @@ export default function AdminNav({ user, children }: { user: NavUser, children: 
 
                 <DrawerItem text="Activity Search" icon={<SearchIcon />} href="/admin/query" />
                 <DrawerItem text="Stock View" icon={<StoreIcon />} href="/inventory" />
+                <DrawerItem text="Security" icon={<SecurityIcon />} href="/admin/security" />
 
                 {/* ORDER FOLDER */}
                 <ListItem disablePadding sx={{ display: 'block' }}>
@@ -331,6 +334,7 @@ export default function AdminNav({ user, children }: { user: NavUser, children: 
                         <DrawerItem text="Suppliers" icon={<LocalShippingIcon fontSize="small" />} href="/admin/suppliers" isSub />
                         <DrawerItem text="Locations" icon={<LocationOnIcon fontSize="small" />} href="/admin/settings/locations" isSub />
                         <DrawerItem text="Shift Calculator" icon={<ReceiptLongIcon fontSize="small" />} href="/admin/settings/shift-calculator" isSub />
+                        <DrawerItem text="Mobile API" icon={<PhoneAndroidIcon fontSize="small" />} href="/admin/mobile-api" isSub />
                     </List>
                 </Collapse>
 

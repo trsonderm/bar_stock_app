@@ -767,3 +767,32 @@ CREATE TABLE IF NOT EXISTS messages (
 );
 CREATE INDEX IF NOT EXISTS messages_recipient_idx ON messages(recipient_id, is_read);
 CREATE INDEX IF NOT EXISTS messages_org_idx ON messages(organization_id);
+
+-- =========================================================
+-- 40. Security: barred persons and incident reports
+-- =========================================================
+CREATE TABLE IF NOT EXISTS security_barred (
+    id SERIAL PRIMARY KEY,
+    organization_id INTEGER REFERENCES organizations(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    aliases JSONB DEFAULT '[]',
+    photo TEXT,
+    description TEXT,
+    barred_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    barred_by_name TEXT,
+    trespassed BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS security_barred_org_idx ON security_barred(organization_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS security_incidents (
+    id SERIAL PRIMARY KEY,
+    organization_id INTEGER REFERENCES organizations(id) ON DELETE CASCADE,
+    barred_person_id INTEGER REFERENCES security_barred(id) ON DELETE SET NULL,
+    person_name TEXT,
+    description TEXT NOT NULL,
+    submitted_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    submitted_by_name TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS security_incidents_org_idx ON security_incidents(organization_id, created_at DESC);

@@ -35,6 +35,9 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
     const [canAudit, setCanAudit] = useState(false);
     const [canViewReports, setCanViewReports] = useState(false);
     const [canManageProducts, setCanManageProducts] = useState(false);
+    const [canAddBarred, setCanAddBarred] = useState(false);
+    const [canDeleteBarred, setCanDeleteBarred] = useState(false);
+    const [canAddIncident, setCanAddIncident] = useState(false);
     const [isAdmin, setIsAdmin] = useState(false);
     const [hideFromScheduler, setHideFromScheduler] = useState(false);
     const [submitting, setSubmitting] = useState(false);
@@ -114,6 +117,9 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
         if (canAudit) permissions.push('audit');
         if (canViewReports) permissions.push('view_reports');
         if (canManageProducts) permissions.push('manage_products');
+        if (canAddBarred) permissions.push('add_barred');
+        if (canDeleteBarred) permissions.push('delete_barred');
+        if (canAddIncident) permissions.push('add_incident');
 
         const role = isAdmin ? 'admin' : 'user';
 
@@ -175,6 +181,9 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
         setCanAudit(false);
         setCanViewReports(false);
         setCanManageProducts(false);
+        setCanAddBarred(false);
+        setCanDeleteBarred(false);
+        setCanAddIncident(false);
         setIsAdmin(false);
         setHideFromScheduler(false);
         setEditingId(null);
@@ -213,7 +222,7 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
             if (!Array.isArray(p)) return '';
 
             if (p.includes('all')) return 'Full Admin';
-            const map: any = { 'add_stock': 'Add Stock', 'subtract_stock': 'Subtract Stock', 'add_item_name': 'Add Items', 'audit': 'Audit', 'view_reports': 'View Reports', 'manage_products': 'Manage Products' };
+            const map: any = { 'add_stock': 'Add Stock', 'subtract_stock': 'Subtract Stock', 'add_item_name': 'Add Items', 'audit': 'Audit', 'view_reports': 'View Reports', 'manage_products': 'Manage Products', 'add_barred': 'Add Barred', 'delete_barred': 'Remove Barred', 'add_incident': 'Add Incident' };
             return p.map((perm: string) => map[perm] || perm).join(', ');
         } catch (e) {
             console.error('parsePerms fatal:', e);
@@ -247,6 +256,9 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
         setCanAudit(perms.includes('audit') || perms.includes('all'));
         setCanViewReports(perms.includes('view_reports') || perms.includes('all'));
         setCanManageProducts(perms.includes('manage_products') || perms.includes('all'));
+        setCanAddBarred(perms.includes('add_barred') || perms.includes('all'));
+        setCanDeleteBarred(perms.includes('delete_barred') || perms.includes('all'));
+        setCanAddIncident(perms.includes('add_incident') || perms.includes('all'));
         setIsAdmin(u.role === 'admin');
         setHideFromScheduler(u.hide_from_scheduler || false);
         setAssignedLocations(u.assigned_locations || []);
@@ -424,6 +436,36 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
                                     }}>
                                     <input type="checkbox" checked={canManageProducts} readOnly style={{ width: '18px', height: '18px', accentColor: 'white', cursor: 'pointer' }} />
                                     <span style={{ fontWeight: 500 }}>Manage Products</span>
+                                </div>
+                                <div
+                                    onClick={() => setCanAddBarred(!canAddBarred)}
+                                    style={{
+                                        background: canAddBarred ? '#7c3aed' : '#374151', color: 'white',
+                                        padding: '0.75rem', borderRadius: '0.5rem', cursor: 'pointer',
+                                        display: 'flex', alignItems: 'center', gap: '0.75rem', transition: 'all 0.2s', border: '1px solid #4b5563'
+                                    }}>
+                                    <input type="checkbox" checked={canAddBarred} readOnly style={{ width: '18px', height: '18px', accentColor: 'white', cursor: 'pointer' }} />
+                                    <span style={{ fontWeight: 500 }}>Add to Barred List</span>
+                                </div>
+                                <div
+                                    onClick={() => setCanDeleteBarred(!canDeleteBarred)}
+                                    style={{
+                                        background: canDeleteBarred ? '#7c3aed' : '#374151', color: 'white',
+                                        padding: '0.75rem', borderRadius: '0.5rem', cursor: 'pointer',
+                                        display: 'flex', alignItems: 'center', gap: '0.75rem', transition: 'all 0.2s', border: '1px solid #4b5563'
+                                    }}>
+                                    <input type="checkbox" checked={canDeleteBarred} readOnly style={{ width: '18px', height: '18px', accentColor: 'white', cursor: 'pointer' }} />
+                                    <span style={{ fontWeight: 500 }}>Remove from Barred List</span>
+                                </div>
+                                <div
+                                    onClick={() => setCanAddIncident(!canAddIncident)}
+                                    style={{
+                                        background: canAddIncident ? '#7c3aed' : '#374151', color: 'white',
+                                        padding: '0.75rem', borderRadius: '0.5rem', cursor: 'pointer',
+                                        display: 'flex', alignItems: 'center', gap: '0.75rem', transition: 'all 0.2s', border: '1px solid #4b5563'
+                                    }}>
+                                    <input type="checkbox" checked={canAddIncident} readOnly style={{ width: '18px', height: '18px', accentColor: 'white', cursor: 'pointer' }} />
+                                    <span style={{ fontWeight: 500 }}>Add Incident Report</span>
                                 </div>
                                 <div
                                     onClick={() => setIsAdmin(!isAdmin)}
