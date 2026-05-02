@@ -24,9 +24,17 @@ git pull
 echo ""
 echo "=== Pre-deploy database backup ==="
 DEPLOY_TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-bash "$SCRIPT_DIR/backup-db.sh" "$BACKUP_DIR" "pre-deploy" || echo "WARNING: Backup failed — proceeding anyway. Check $BACKUP_DIR."
+if ! bash "$SCRIPT_DIR/backup-db.sh" "$BACKUP_DIR" "pre-deploy"; then
+    echo "ERROR: Pre-deploy backup failed. Aborting deployment to protect existing data."
+    echo "       Fix the backup issue before deploying, or restore from an existing backup."
+    exit 1
+fi
 # Resolve the actual backup file created (backup-db.sh uses its own timestamp; grab most recent)
 ACTUAL_BACKUP=$(find "$BACKUP_DIR" -maxdepth 1 -name "topshelf_*.sql.gz" 2>/dev/null | sort | tail -1 || echo "")
+if [ -z "$ACTUAL_BACKUP" ]; then
+    echo "ERROR: Backup script succeeded but no backup file found in $BACKUP_DIR. Aborting."
+    exit 1
+fi
 echo ""
 
 # Send backup-complete notification (runs in background so it doesn't block deploy)
@@ -104,11 +112,55 @@ echo "Base schema step complete."
 # 8. Run incremental migrations (idempotent ALTER TABLE ADD COLUMN IF NOT EXISTS / DO $$ EXCEPTION)
 # Each ALTER TABLE wraps in DO $$ EXCEPTION WHEN duplicate_column so existing data is NEVER touched.
 # New columns are added with DEFAULT values so existing rows get 0/null automatically.
-echo "Running schema migrations (safe — ALTER TABLE with EXCEPTION guards)..."
+
+# Capture row counts BEFORE migration to verify nothing is lost
+echo "Capturing pre-migration row counts..."
+PRE_ORGS=$(docker compose exec -T db psql -U postgres -d topshelf -tAc "SELECT COUNT(*) FROM organizations" 2>/dev/null | tr -d '[:space:]' || echo "0")
+PRE_USERS=$(docker compose exec -T db psql -U postgres -d topshelf -tAc "SELECT COUNT(*) FROM users" 2>/dev/null | tr -d '[:space:]' || echo "0")
+PRE_ITEMS=$(docker compose exec -T db psql -U postgres -d topshelf -tAc "SELECT COUNT(*) FROM items" 2>/dev/null | tr -d '[:space:]' || echo "0")
+PRE_INVENTORY=$(docker compose exec -T db psql -U postgres -d topshelf -tAc "SELECT COUNT(*) FROM inventory" 2>/dev/null | tr -d '[:space:]' || echo "0")
+PRE_CATEGORIES=$(docker compose exec -T db psql -U postgres -d topshelf -tAc "SELECT COUNT(*) FROM categories" 2>/dev/null | tr -d '[:space:]' || echo "0")
+echo "  Pre-migration: orgs=$PRE_ORGS users=$PRE_USERS items=$PRE_ITEMS inventory=$PRE_INVENTORY categories=$PRE_CATEGORIES"
+
+echo "Running schema migrations (safe — ALTER TABLE with EXCEPTION guards, wrapped in BEGIN/COMMIT)..."
 MIGRATE_OUT=$(docker compose exec -T db psql -U postgres -d topshelf < "$SCRIPT_DIR/migrate.sql" 2>&1 || true)
 echo "$MIGRATE_OUT"
 
-# Check for actual errors vs expected duplicate_column notices
+# Capture row counts AFTER migration
+POST_ORGS=$(docker compose exec -T db psql -U postgres -d topshelf -tAc "SELECT COUNT(*) FROM organizations" 2>/dev/null | tr -d '[:space:]' || echo "0")
+POST_USERS=$(docker compose exec -T db psql -U postgres -d topshelf -tAc "SELECT COUNT(*) FROM users" 2>/dev/null | tr -d '[:space:]' || echo "0")
+POST_ITEMS=$(docker compose exec -T db psql -U postgres -d topshelf -tAc "SELECT COUNT(*) FROM items" 2>/dev/null | tr -d '[:space:]' || echo "0")
+POST_INVENTORY=$(docker compose exec -T db psql -U postgres -d topshelf -tAc "SELECT COUNT(*) FROM inventory" 2>/dev/null | tr -d '[:space:]' || echo "0")
+POST_CATEGORIES=$(docker compose exec -T db psql -U postgres -d topshelf -tAc "SELECT COUNT(*) FROM categories" 2>/dev/null | tr -d '[:space:]' || echo "0")
+echo "  Post-migration: orgs=$POST_ORGS users=$POST_USERS items=$POST_ITEMS inventory=$POST_INVENTORY categories=$POST_CATEGORIES"
+
+# Verify no rows were lost
+DATA_LOSS=false
+for TABLE_CHECK in "organizations:$PRE_ORGS:$POST_ORGS" "users:$PRE_USERS:$POST_USERS" "items:$PRE_ITEMS:$POST_ITEMS" "inventory:$PRE_INVENTORY:$POST_INVENTORY" "categories:$PRE_CATEGORIES:$POST_CATEGORIES"; do
+    TBL=$(echo "$TABLE_CHECK" | cut -d: -f1)
+    PRE=$(echo "$TABLE_CHECK" | cut -d: -f2)
+    POST=$(echo "$TABLE_CHECK" | cut -d: -f3)
+    if [ -n "$PRE" ] && [ -n "$POST" ] && [ "$PRE" -gt 0 ] && [ "$POST" -lt "$PRE" ] 2>/dev/null; then
+        echo "CRITICAL: Table '$TBL' lost rows! Before=$PRE After=$POST"
+        DATA_LOSS=true
+    fi
+done
+
+if [ "$DATA_LOSS" = "true" ]; then
+    echo ""
+    echo "================================================================"
+    echo "  CRITICAL: DATA LOSS DETECTED AFTER MIGRATION"
+    echo "  The migration transaction should have rolled back automatically."
+    echo "  To restore from the pre-deploy backup:"
+    echo "    bash $SCRIPT_DIR/restore-db.sh $(basename "$ACTUAL_BACKUP")"
+    echo "================================================================"
+    docker compose exec -T app node scripts/notify-deploy.js migration_warning \
+        "{\"git_commit\":\"$POST_DEPLOY_COMMIT\",\"commit_message\":\"$POST_DEPLOY_MSG\",\"backup_file\":\"$(basename "$ACTUAL_BACKUP")\",\"note\":\"DATA LOSS DETECTED — immediate restore may be required\"}" \
+        2>/dev/null || true
+    exit 1
+fi
+
+# Check for SQL errors vs expected duplicate_column notices
 if echo "$MIGRATE_OUT" | grep -qi "ERROR:" ; then
     MIGRATION_STATUS="warning"
     echo "WARNING: Migrations completed with errors. Check output above."

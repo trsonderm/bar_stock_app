@@ -1,4 +1,7 @@
 -- Postgres Schema
+-- Wrapped in a transaction so a fresh-install failure rolls back cleanly.
+
+BEGIN;
 
 CREATE TABLE IF NOT EXISTS organizations (
     id SERIAL PRIMARY KEY,
@@ -426,3 +429,5 @@ CREATE TABLE IF NOT EXISTS user_invitations (
 );
 CREATE INDEX IF NOT EXISTS user_invitations_token_idx ON user_invitations(token);
 CREATE INDEX IF NOT EXISTS user_invitations_org_idx ON user_invitations(organization_id);
+
+COMMIT;

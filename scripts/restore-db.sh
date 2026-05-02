@@ -120,10 +120,19 @@ docker compose exec -T db psql -U postgres -d postgres -c \
 # ── Restore ───────────────────────────────────────────────────────────────────
 
 echo "Restoring from backup..."
-# Run gunzip + psql entirely inside the container where /backups is mounted.
-# Piping host-side gunzip through docker compose exec -T is unreliable.
-CONTAINER_BACKUP="/backups/$(basename "$BACKUP_FILE")"
-docker compose exec -T db bash -c "gunzip -c '$CONTAINER_BACKUP' | psql -U postgres -d topshelf"
+# Gunzip on the host and pipe into psql inside the container.
+# The db container does not mount the backups directory, so running gunzip inside
+# the container would find no file. This mirrors how backup-db.sh pipes pg_dump out.
+gunzip -c "$BACKUP_FILE" | docker compose exec -T db psql -U postgres -d topshelf
+
+# Verify restore produced data
+RESTORED_ORGS=$(docker compose exec -T db psql -U postgres -d topshelf -tAc "SELECT COUNT(*) FROM organizations" 2>/dev/null | tr -d '[:space:]' || echo "0")
+RESTORED_USERS=$(docker compose exec -T db psql -U postgres -d topshelf -tAc "SELECT COUNT(*) FROM users" 2>/dev/null | tr -d '[:space:]' || echo "0")
+echo "Restore verification: organizations=$RESTORED_ORGS  users=$RESTORED_USERS"
+if [ "${RESTORED_ORGS:-0}" = "0" ] && [ "${RESTORED_USERS:-0}" = "0" ]; then
+    echo "WARNING: Restore completed but tables appear empty — backup file may be corrupt."
+    echo "  Safety backup (pre-restore state): $SAFETY_FILE"
+fi
 
 echo ""
 echo "============================================================"

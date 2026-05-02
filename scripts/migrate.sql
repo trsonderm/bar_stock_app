@@ -1,5 +1,8 @@
 -- Safe migration script: adds new columns and tables without breaking existing data
 -- All statements use IF NOT EXISTS or DO $$ EXCEPTION WHEN duplicate_column THEN NULL END $$
+-- Wrapped in a transaction: if any unhandled error occurs the entire migration rolls back.
+
+BEGIN;
 
 -- =========================================================
 -- 1. Items table additions
@@ -592,30 +595,38 @@ CREATE TABLE IF NOT EXISTS sub_categories (
 CREATE INDEX IF NOT EXISTS sub_categories_category_idx ON sub_categories(category_id);
 CREATE INDEX IF NOT EXISTS sub_categories_org_idx      ON sub_categories(organization_id);
 
--- Migrate existing JSONB data into the new table
+-- Migrate existing JSONB data into the new table (safe on re-runs: column may be gone)
 DO $$
 DECLARE
-    cat      RECORD;
-    sub_name TEXT;
-    ord      INTEGER;
+    col_exists BOOLEAN;
+    cat        RECORD;
+    sub_name   TEXT;
+    ord        INTEGER;
 BEGIN
-    FOR cat IN
-        SELECT id, organization_id, sub_categories
-        FROM categories
-        WHERE sub_categories IS NOT NULL
-          AND jsonb_typeof(sub_categories) = 'array'
-          AND jsonb_array_length(sub_categories) > 0
-    LOOP
-        ord := 0;
-        FOR sub_name IN
-            SELECT jsonb_array_elements_text(cat.sub_categories)
+    SELECT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'categories' AND column_name = 'sub_categories'
+    ) INTO col_exists;
+
+    IF col_exists THEN
+        FOR cat IN
+            SELECT id, organization_id, sub_categories
+            FROM categories
+            WHERE sub_categories IS NOT NULL
+              AND jsonb_typeof(sub_categories) = 'array'
+              AND jsonb_array_length(sub_categories) > 0
         LOOP
-            INSERT INTO sub_categories (category_id, organization_id, name, display_order)
-            VALUES (cat.id, cat.organization_id, sub_name, ord)
-            ON CONFLICT (category_id, name) DO NOTHING;
-            ord := ord + 1;
+            ord := 0;
+            FOR sub_name IN
+                SELECT jsonb_array_elements_text(cat.sub_categories)
+            LOOP
+                INSERT INTO sub_categories (category_id, organization_id, name, display_order)
+                VALUES (cat.id, cat.organization_id, sub_name, ord)
+                ON CONFLICT (category_id, name) DO NOTHING;
+                ord := ord + 1;
+            END LOOP;
         END LOOP;
-    END LOOP;
+    END IF;
 END $$;
 
 -- Drop the now-redundant JSONB column
@@ -816,3 +827,5 @@ CREATE TABLE IF NOT EXISTS user_invitations (
 );
 CREATE INDEX IF NOT EXISTS user_invitations_token_idx ON user_invitations(token);
 CREATE INDEX IF NOT EXISTS user_invitations_org_idx ON user_invitations(organization_id);
+
+COMMIT;
