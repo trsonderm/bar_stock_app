@@ -64,6 +64,31 @@ MANIFEST
 echo "Deploy manifest saved: $MANIFEST_FILE"
 echo ""
 
+# Show current database snapshot and require confirmation before any destructive step
+echo "=================================================="
+echo "  CURRENT DATABASE SNAPSHOT (before deploy)"
+echo "=================================================="
+SNAP_ORGS=$(docker compose exec -T db psql -U postgres -d topshelf -tAc "SELECT COUNT(*) FROM organizations" 2>/dev/null | tr -d '[:space:]' || echo "?")
+SNAP_USERS=$(docker compose exec -T db psql -U postgres -d topshelf -tAc "SELECT COUNT(*) FROM users" 2>/dev/null | tr -d '[:space:]' || echo "?")
+SNAP_ITEMS=$(docker compose exec -T db psql -U postgres -d topshelf -tAc "SELECT COUNT(*) FROM items" 2>/dev/null | tr -d '[:space:]' || echo "?")
+SNAP_INVENTORY=$(docker compose exec -T db psql -U postgres -d topshelf -tAc "SELECT COUNT(*) FROM inventory" 2>/dev/null | tr -d '[:space:]' || echo "?")
+SNAP_LOGS=$(docker compose exec -T db psql -U postgres -d topshelf -tAc "SELECT COUNT(*) FROM activity_logs" 2>/dev/null | tr -d '[:space:]' || echo "?")
+echo "  Organizations : $SNAP_ORGS"
+echo "  Users         : $SNAP_USERS"
+echo "  Items         : $SNAP_ITEMS"
+echo "  Inventory rows: $SNAP_INVENTORY"
+echo "  Activity logs : $SNAP_LOGS"
+echo "  Backup saved  : $(basename "$ACTUAL_BACKUP")"
+echo "=================================================="
+echo ""
+printf "  Proceed with deploy? (yes/no): "
+read -r DEPLOY_CONFIRM
+if [ "$DEPLOY_CONFIRM" != "yes" ]; then
+    echo "Deploy cancelled. Database and containers are unchanged."
+    exit 0
+fi
+echo ""
+
 # 3. Cleanup Existing Sessions / Ports
 echo "Cleaning up existing sessions..."
 for PORT in 6050 3000; do
