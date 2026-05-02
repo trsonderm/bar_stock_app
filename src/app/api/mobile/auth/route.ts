@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
         if (email && password) {
             const users = await db.query(
                 `SELECT id, first_name, last_name, email, role, permissions, password_hash
-                 FROM users WHERE email = $1 AND organization_id = $2 AND is_active = TRUE AND is_archived = FALSE`,
+                 FROM users WHERE LOWER(email) = $1 AND organization_id = $2 AND is_active = TRUE AND is_archived = FALSE`,
                 [email.toLowerCase().trim(), org.id]
             );
             if (users.length === 0) return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });

@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
 
         // 1. Email/Password Login (Admin / Multi-tenant)
         if (email && password) {
-            const user = await db.one('SELECT * FROM users WHERE email = $1', [email]);
+            const user = await db.one('SELECT * FROM users WHERE LOWER(email) = $1', [email.toLowerCase().trim()]);
             if (user && user.password_hash && verifyPassword(password, user.password_hash)) {
                 matchedUser = user;
             }
