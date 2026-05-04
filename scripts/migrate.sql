@@ -1,6 +1,21 @@
--- Safe migration script: adds new columns and tables without breaking existing data
--- All statements use IF NOT EXISTS or DO $$ EXCEPTION WHEN duplicate_column THEN NULL END $$
--- Wrapped in a transaction: if any unhandled error occurs the entire migration rolls back.
+-- ============================================================
+-- MIGRATION POLICY — READ BEFORE EDITING
+-- ============================================================
+-- ONLY additive changes are permitted in this file:
+--   ✓  ALTER TABLE ... ADD COLUMN IF NOT EXISTS
+--   ✓  CREATE TABLE IF NOT EXISTS
+--   ✓  INSERT ... ON CONFLICT DO NOTHING
+--   ✓  UPDATE ... WHERE (backfills only, never destructive)
+--   ✗  DROP TABLE / DROP COLUMN / TRUNCATE / DELETE — FORBIDDEN
+--   ✗  Any statement that removes or overwrites existing rows
+--
+-- All ALTER TABLE statements MUST be wrapped in:
+--   DO $$ BEGIN ... EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+-- so that re-running this file on an existing database is safe.
+--
+-- New columns MUST declare a DEFAULT or be nullable so that existing
+-- rows continue to work without any data being written or cleared.
+-- ============================================================
 
 BEGIN;
 
@@ -629,10 +644,9 @@ BEGIN
     END IF;
 END $$;
 
--- Drop the now-redundant JSONB column
-DO $$ BEGIN
-  ALTER TABLE categories DROP COLUMN sub_categories;
-EXCEPTION WHEN undefined_column THEN NULL; END $$;
+-- NOTE: sub_categories JSONB column intentionally kept on categories table.
+-- Data has been migrated to the sub_categories table above but the column
+-- is preserved to ensure no data is ever lost. Policy: never DROP columns.
 DO $$ BEGIN
   ALTER TABLE shifts ADD COLUMN location_id INTEGER REFERENCES locations(id) ON DELETE CASCADE;
 EXCEPTION WHEN duplicate_column THEN NULL; END $$;

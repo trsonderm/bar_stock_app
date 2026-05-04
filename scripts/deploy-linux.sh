@@ -20,6 +20,45 @@ PRE_DEPLOY_MSG=$(git log -1 --pretty=format:"%s" 2>/dev/null || echo "unknown")
 echo "Pulling latest changes from git..."
 git pull
 
+# ── Safety scan: block deploy if migration files contain destructive SQL ──────
+echo ""
+echo "=== Scanning migration files for destructive SQL ==="
+DANGEROUS_FOUND=false
+
+scan_file() {
+    local FILE="$1"
+    local LABEL="$2"
+    # Look for DROP TABLE / TRUNCATE / bare DELETE (not inside a comment or FK definition)
+    # We allow: ON DELETE CASCADE/SET NULL (FK definitions) and DROP DEFAULT (safe)
+    # We forbid: DROP TABLE, DROP COLUMN, TRUNCATE, DELETE FROM
+    local HITS
+    HITS=$(grep -inE "^\s*(DROP\s+TABLE|DROP\s+COLUMN|TRUNCATE\s+TABLE|TRUNCATE\s+|DELETE\s+FROM)" "$FILE" 2>/dev/null | \
+           grep -v "^\s*--" || true)
+    if [ -n "$HITS" ]; then
+        echo ""
+        echo "BLOCKED: $LABEL contains destructive SQL statements:"
+        echo "$HITS"
+        echo ""
+        echo "Policy: migration files must NEVER drop tables, drop columns, truncate, or delete rows."
+        echo "Remove the destructive statement before deploying."
+        DANGEROUS_FOUND=true
+    else
+        echo "  $LABEL — OK (no destructive statements)"
+    fi
+}
+
+scan_file "$SCRIPT_DIR/schema.sql"  "schema.sql"
+scan_file "$SCRIPT_DIR/migrate.sql" "migrate.sql"
+
+if [ "$DANGEROUS_FOUND" = "true" ]; then
+    echo ""
+    echo "================================================================"
+    echo "  DEPLOY ABORTED: Fix destructive SQL before deploying."
+    echo "================================================================"
+    exit 1
+fi
+echo ""
+
 # 2. Backup database BEFORE taking containers down
 echo ""
 echo "=== Pre-deploy database backup ==="
@@ -35,6 +74,16 @@ if [ -z "$ACTUAL_BACKUP" ]; then
     echo "ERROR: Backup script succeeded but no backup file found in $BACKUP_DIR. Aborting."
     exit 1
 fi
+
+# Validate backup is not empty/corrupt (a valid pg_dump of any real database is > 5KB compressed)
+BACKUP_BYTES=$(stat -c%s "$ACTUAL_BACKUP" 2>/dev/null || stat -f%z "$ACTUAL_BACKUP" 2>/dev/null || echo "0")
+if [ "${BACKUP_BYTES:-0}" -lt 5120 ]; then
+    echo "ERROR: Backup file is only ${BACKUP_BYTES} bytes — this looks empty or corrupt."
+    echo "       A valid backup should be at least 5KB. Aborting deploy to protect your data."
+    echo "       Backup file: $ACTUAL_BACKUP"
+    exit 1
+fi
+echo "  Backup validated: $ACTUAL_BACKUP (${BACKUP_BYTES} bytes)"
 echo ""
 
 # Send backup-complete notification (runs in background so it doesn't block deploy)

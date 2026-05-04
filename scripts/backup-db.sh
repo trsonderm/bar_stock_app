@@ -72,34 +72,3 @@ REMOVED=$(find "$BACKUP_DIR" -maxdepth 1 \( -name "topshelf_*.sql.gz" -o -name "
 TOTAL=$(find "$BACKUP_DIR" -maxdepth 1 -name "topshelf_*.sql.gz" 2>/dev/null | wc -l | tr -d '[:space:]')
 OLDEST=$(find "$BACKUP_DIR" -maxdepth 1 -name "topshelf_*.sql.gz" 2>/dev/null | sort | head -1 | xargs -I{} basename {} 2>/dev/null || echo "none")
 echo "Backup inventory: $TOTAL file(s), oldest: $OLDEST"
-
-# ── Optional: upload to S3 if configured ─────────────────────────────────────
-S3_SETTINGS_FILE="/opt/topshelf/s3-backup.env"
-if [ -f "$S3_SETTINGS_FILE" ]; then
-    # shellcheck disable=SC1090
-    source "$S3_SETTINGS_FILE"
-fi
-
-if [ -n "$TOPSHELF_S3_BUCKET" ] && [ -n "$TOPSHELF_S3_REGION" ]; then
-    if command -v aws >/dev/null 2>&1; then
-        S3_KEY="backups/$(basename "$BACKUP_FILE")"
-        echo "Uploading to s3://$TOPSHELF_S3_BUCKET/$S3_KEY ..."
-        if aws s3 cp "$BACKUP_FILE" "s3://$TOPSHELF_S3_BUCKET/$S3_KEY" \
-            --region "$TOPSHELF_S3_REGION" \
-            --storage-class STANDARD_IA \
-            --metadata "triggered_by=$TRIGGERED_BY,git_commit=$GIT_COMMIT" \
-            2>&1; then
-            echo "S3 upload complete: s3://$TOPSHELF_S3_BUCKET/$S3_KEY"
-            # Also upload metadata
-            aws s3 cp "$META_FILE" "s3://$TOPSHELF_S3_BUCKET/backups/$(basename "$META_FILE")" \
-                --region "$TOPSHELF_S3_REGION" 2>/dev/null || true
-        else
-            echo "WARNING: S3 upload failed — local backup is still intact."
-        fi
-    else
-        echo "WARNING: S3 bucket configured but 'aws' CLI not installed. Skipping S3 upload."
-        echo "         Install with: curl https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip -o /tmp/awscliv2.zip && unzip /tmp/awscliv2.zip -d /tmp && sudo /tmp/aws/install"
-    fi
-else
-    echo "(S3 backup not configured — local backup only)"
-fi
