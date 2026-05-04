@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
         const hideSchedulerFilter = filterLocationId ? `AND COALESCE(u.hide_from_scheduler, false) = false` : '';
 
         const users = await db.query(`
-            SELECT u.id, u.first_name, u.last_name, u.email, u.role, u.permissions, u.pin_hash, u.created_at, u.phone, u.bio, u.notes,
+            SELECT u.id, u.first_name, u.last_name, u.email, u.role, u.permissions, u.pin_hash, u.created_at, u.phone, u.bio, u.notes, u.position,
             COALESCE(u.hide_from_scheduler, false) as hide_from_scheduler,
             json_agg(DISTINCT ul.location_id) as assigned_locations,
             (
@@ -79,7 +79,7 @@ export async function POST(req: NextRequest) {
             organizationId = parseInt(searchParams.get('orgId') as string, 10);
         }
         const body = await req.json();
-        const { firstName, lastName, pin, email, password, permissions = [], role = 'user', phone, bio, notes, assignedLocations = [], hideFromScheduler = false } = body;
+        const { firstName, lastName, pin, email, password, permissions = [], role = 'user', phone, bio, notes, position, assignedLocations = [], hideFromScheduler = false } = body;
 
         if (!firstName || !lastName) {
             return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
@@ -99,10 +99,10 @@ export async function POST(req: NextRequest) {
         const passwordHash = password ? hashPassword(password) : null;
 
         const res = await db.one(`
-            INSERT INTO users (first_name, last_name, pin_hash, email, password_hash, role, permissions, organization_id, phone, bio, notes, hide_from_scheduler)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+            INSERT INTO users (first_name, last_name, pin_hash, email, password_hash, role, permissions, organization_id, phone, bio, notes, position, hide_from_scheduler)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
             RETURNING id
-        `, [firstName, lastName, pinHash, email || null, passwordHash, finalRole, JSON.stringify(permissions), organizationId, phone || null, bio || null, notes || null, hideFromScheduler]);
+        `, [firstName, lastName, pinHash, email || null, passwordHash, finalRole, JSON.stringify(permissions), organizationId, phone || null, bio || null, notes || null, position || null, hideFromScheduler]);
 
         const userId = res.id;
 
@@ -165,7 +165,7 @@ export async function PUT(req: NextRequest) {
             organizationId = parseInt(searchParams.get('orgId') as string, 10);
         }
         const body = await req.json(); // Read once
-        const { id, firstName, lastName, pin, email, password, permissions = [], role = 'user', phone, bio, notes, assignedLocations, hideFromScheduler } = body;
+        const { id, firstName, lastName, pin, email, password, permissions = [], role = 'user', phone, bio, notes, position, assignedLocations, hideFromScheduler } = body;
 
         if (!id || !firstName || !lastName) {
             return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
@@ -200,6 +200,9 @@ export async function PUT(req: NextRequest) {
         }
         if (notes !== undefined) {
             updates.push(`notes = $${pIdx++}`); params.push(notes || null);
+        }
+        if (position !== undefined) {
+            updates.push(`position = $${pIdx++}`); params.push(position || null);
         }
         if (hideFromScheduler !== undefined) {
             updates.push(`hide_from_scheduler = $${pIdx++}`); params.push(Boolean(hideFromScheduler));

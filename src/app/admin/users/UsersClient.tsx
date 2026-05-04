@@ -12,6 +12,7 @@ interface User {
     role: string;
     permissions: string; // JSON string from DB
     pin_hash: string;
+    position?: string;
 }
 
 export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number }) {
@@ -28,6 +29,7 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
     const [phone, setPhone] = useState('');
     const [bio, setBio] = useState('');
     const [notes, setNotes] = useState('');
+    const [position, setPosition] = useState('');
 
     const [canAddStock, setCanAddStock] = useState(false);
     const [canSubtractStock, setCanSubtractStock] = useState(false);
@@ -182,6 +184,7 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
                 phone,
                 bio,
                 notes,
+                position,
                 organizationId: overrideOrgId, // Pass explicit org if override
                 assignedLocations,
                 assignedShifts,
@@ -218,6 +221,7 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
         setPhone('');
         setBio('');
         setNotes('');
+        setPosition('');
         setCanAddStock(false);
         setCanSubtractStock(false);
         setCanAddItem(false);
@@ -283,6 +287,7 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
         setPhone(u.phone || '');
         setBio(u.bio || '');
         setNotes(u.notes || '');
+        setPosition(u.position || '');
 
         const perms: string[] = [];
         try {
@@ -340,6 +345,11 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
                         <div style={{ marginBottom: '1rem' }}>
                             <label className={styles.statLabel}>PIN (4 digits - Optional if Email set)</label>
                             <input className={styles.table} type="text" maxLength={4} style={{ background: '#1f2937', color: 'white', padding: '0.5rem', border: '1px solid #374151', borderRadius: '0.25rem', width: '100%' }} value={pin} onChange={e => setPin(e.target.value)} />
+                        </div>
+
+                        <div style={{ marginBottom: '1rem' }}>
+                            <label className={styles.statLabel}>Position / Job Title (Optional)</label>
+                            <input className={styles.table} style={{ background: '#1f2937', color: 'white', padding: '0.5rem', border: '1px solid #374151', borderRadius: '0.25rem', width: '100%' }} placeholder="e.g. Bartender, Manager, Server" value={position} onChange={e => setPosition(e.target.value)} />
                         </div>
 
                         <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
@@ -610,6 +620,7 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
                             <thead>
                                 <tr>
                                     <th>Name</th>
+                                    <th>Position</th>
                                     <th>Email</th>
                                     <th>PIN</th>
                                     <th>Role</th>
@@ -621,6 +632,7 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
                                 {users.map(u => (
                                     <tr key={u.id}>
                                         <td>{u.first_name} {u.last_name}</td>
+                                        <td style={{ color: u.position ? '#93c5fd' : '#4b5563', fontSize: '0.85rem' }}>{u.position || '—'}</td>
                                         <td>{u.email || '-'}</td>
                                         <td style={{ fontFamily: 'monospace', color: '#fbbf24' }}>{u.pin_hash}</td>
                                         <td>{u.role}</td>

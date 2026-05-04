@@ -11,6 +11,7 @@ interface User {
     first_name: string;
     last_name: string;
     email?: string;
+    position?: string;
 }
 
 interface Shift {
@@ -777,8 +778,9 @@ export default function UserSchedulerClient() {
                                 {/* EMPLOYEE VIEW */}
                                 {viewMode === 'employees' && users.map(user => (
                                     <tr key={user.id} className="hover:bg-gray-800/50 transition-colors print:hover:bg-transparent">
-                                        <td className="p-4 border-b border-gray-800 bg-gray-900 sticky left-0 font-medium text-white border-r border-gray-700 print:bg-white print:text-black print:border-black">
-                                            {user.first_name} {user.last_name}
+                                        <td className="p-4 border-b border-gray-800 bg-gray-900 sticky left-0 border-r border-gray-700 print:bg-white print:border-black">
+                                            <div className="font-medium text-white print:text-black">{user.first_name} {user.last_name}</div>
+                                            {user.position && <div style={{ color: '#60a5fa', fontSize: '0.75rem' }}>{user.position}</div>}
                                         </td>
                                         {weekDays.map(d => {
                                             const dateStr = formatLocalDate(d);
@@ -1027,8 +1029,8 @@ export default function UserSchedulerClient() {
                                                 style={{ width: '160px' }}
                                             >
                                                 <div>
-                                                    <div className="text-white text-sm font-medium leading-tight">{user.first_name}</div>
-                                                    <div className="text-gray-500 text-xs">{user.last_name}</div>
+                                                    <div className="text-white text-sm font-medium leading-tight">{user.first_name} {user.last_name}</div>
+                                                    {user.position && <div className="text-blue-400 text-xs leading-tight">{user.position}</div>}
                                                 </div>
                                             </div>
                                             {weekDays.map((day, di) => {
@@ -1168,8 +1170,11 @@ export default function UserSchedulerClient() {
                                 if (userSchedules.length === 0) return null;
 
                                 return (
-                                    <div key={user.id} className="relative h-12 flex items-center bg-gray-800/50 rounded p-2 print:bg-white print:border print:border-gray-200">
-                                        <div className="w-40 font-bold text-white print:text-black z-10 shrink-0">{user.first_name} {user.last_name}</div>
+                                    <div key={user.id} className="relative h-14 flex items-center bg-gray-800/50 rounded p-2 print:bg-white print:border print:border-gray-200">
+                                        <div className="w-40 z-10 shrink-0">
+                                            <div className="font-bold text-white print:text-black text-sm leading-tight">{user.first_name} {user.last_name}</div>
+                                            {user.position && <div className="text-blue-400 text-xs">{user.position}</div>}
+                                        </div>
 
                                         {/* Track Background */}
                                         <div className="absolute left-40 right-4 top-2 bottom-2 bg-gray-800 rounded opacity-50 print:hidden"></div>

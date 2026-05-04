@@ -864,4 +864,11 @@ DO $$ BEGIN
   ALTER TABLE security_incidents ADD COLUMN media JSONB DEFAULT '[]';
 EXCEPTION WHEN duplicate_column THEN NULL; END $$;
 
+-- =========================================================
+-- 44. User position / job title (shows on schedule)
+-- =========================================================
+DO $$ BEGIN
+  ALTER TABLE users ADD COLUMN position TEXT;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
 COMMIT;
