@@ -29,13 +29,16 @@ export async function GET(req: NextRequest) {
                    p.user_id,
                    COALESCE(u.display_name, u.first_name || ' ' || u.last_name) AS author_name,
                    u.profile_picture AS author_avatar,
-                   u.first_name, u.last_name
+                   u.first_name, u.last_name,
+                   (SELECT COUNT(*) FROM post_likes l WHERE l.post_id = p.id) AS like_count,
+                   (SELECT COUNT(*) FROM post_comments c WHERE c.post_id = p.id) AS comment_count,
+                   EXISTS(SELECT 1 FROM post_likes l WHERE l.post_id = p.id AND l.user_id = $${idx}) AS liked_by_me
             FROM org_posts p
             LEFT JOIN users u ON p.user_id = u.id
             WHERE ${where}
             ORDER BY p.created_at DESC
-            LIMIT $${idx} OFFSET $${idx + 1}
-        `, [...params, PAGE_SIZE, offset]),
+            LIMIT $${idx + 1} OFFSET $${idx + 2}
+        `, [...params, session.id, PAGE_SIZE, offset]),
         db.one(`SELECT COUNT(*) AS total FROM org_posts p WHERE ${where}`, params),
         db.query(`
             SELECT id, first_name, last_name, COALESCE(display_name, first_name || ' ' || last_name) AS display_name, profile_picture

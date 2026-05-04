@@ -1,12 +1,21 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Image as ImageIcon, Search, Trash2, AtSign, ChevronDown, RefreshCw, Send } from 'lucide-react';
+import { Image as ImageIcon, Search, Trash2, AtSign, ChevronDown, RefreshCw, Send, Heart, MessageCircle } from 'lucide-react';
 
 interface FeedUser {
     id: number;
     display_name: string;
     profile_picture: string | null;
+}
+
+interface Comment {
+    id: number;
+    content: string;
+    created_at: string;
+    user_id: number;
+    author_name: string;
+    author_avatar: string | null;
 }
 
 interface Post {
@@ -20,6 +29,9 @@ interface Post {
     author_avatar: string | null;
     first_name: string;
     last_name: string;
+    like_count: number;
+    comment_count: number;
+    liked_by_me: boolean;
 }
 
 function Avatar({ name, src, size = 38 }: { name: string; src?: string | null; size?: number }) {
@@ -37,6 +49,175 @@ function timeAgo(iso: string) {
     if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
     if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
     return `${Math.floor(diff / 86400)}d ago`;
+}
+
+function PostCard({
+    post, users, me, onDelete, onLikeToggle,
+}: {
+    post: Post;
+    users: FeedUser[];
+    me: { id: number; name: string; avatar: string | null } | null;
+    onDelete: (id: number) => void;
+    onLikeToggle: (id: number, liked: boolean, count: number) => void;
+}) {
+    const [showComments, setShowComments] = useState(false);
+    const [comments, setComments] = useState<Comment[]>([]);
+    const [commentsLoaded, setCommentsLoaded] = useState(false);
+    const [commentText, setCommentText] = useState('');
+    const [submittingComment, setSubmittingComment] = useState(false);
+    const [localCommentCount, setLocalCommentCount] = useState(post.comment_count);
+    const [likePending, setLikePending] = useState(false);
+
+    const loadComments = async () => {
+        const res = await fetch(`/api/admin/feed/comments?postId=${post.id}`);
+        const data = await res.json();
+        setComments(data.comments || []);
+        setCommentsLoaded(true);
+    };
+
+    const toggleComments = async () => {
+        if (!showComments && !commentsLoaded) await loadComments();
+        setShowComments(s => !s);
+    };
+
+    const submitComment = async () => {
+        if (!commentText.trim() || submittingComment) return;
+        setSubmittingComment(true);
+        const res = await fetch(`/api/admin/feed/comments?postId=${post.id}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content: commentText.trim() }),
+        });
+        const data = await res.json();
+        if (res.ok) {
+            setComments(prev => [...prev, data.comment]);
+            setLocalCommentCount(c => c + 1);
+            setCommentText('');
+        }
+        setSubmittingComment(false);
+    };
+
+    const deleteComment = async (commentId: number) => {
+        await fetch(`/api/admin/feed/comments?id=${commentId}`, { method: 'DELETE' });
+        setComments(prev => prev.filter(c => c.id !== commentId));
+        setLocalCommentCount(c => c - 1);
+    };
+
+    const toggleLike = async () => {
+        if (likePending) return;
+        setLikePending(true);
+        const res = await fetch(`/api/admin/feed/like?id=${post.id}`, { method: 'POST' });
+        const data = await res.json();
+        if (res.ok) onLikeToggle(post.id, data.liked, data.count);
+        setLikePending(false);
+    };
+
+    return (
+        <div style={{ background: '#1f2937', border: '1px solid #374151', borderRadius: '12px', marginBottom: '0.85rem', overflow: 'hidden' }}>
+            {/* Post header + body */}
+            <div style={{ padding: '1rem', display: 'flex', gap: '0.75rem', alignItems: 'flex-start' }}>
+                <Avatar name={post.author_name} src={post.author_avatar} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', flexWrap: 'wrap' as const }}>
+                        <span style={{ fontWeight: 700, color: 'white', fontSize: '0.925rem' }}>{post.author_name}</span>
+                        <span style={{ color: '#6b7280', fontSize: '0.8rem' }}>{timeAgo(post.created_at)}</span>
+                    </div>
+                    {post.content && (
+                        <p style={{ margin: '0.4rem 0 0', color: '#e5e7eb', fontSize: '0.9rem', lineHeight: 1.55, whiteSpace: 'pre-wrap' as const }}>{post.content}</p>
+                    )}
+                    {post.tagged_user_ids?.length > 0 && (
+                        <div style={{ marginTop: '0.4rem', display: 'flex', flexWrap: 'wrap' as const, gap: '0.3rem' }}>
+                            {post.tagged_user_ids.map((uid: number) => {
+                                const u = users.find(x => x.id === uid);
+                                return u ? <span key={uid} style={{ color: '#60a5fa', fontSize: '0.8rem' }}>@{u.display_name}</span> : null;
+                            })}
+                        </div>
+                    )}
+                </div>
+                {post.user_id === me?.id && (
+                    <button onClick={() => onDelete(post.id)}
+                        style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', padding: '4px', borderRadius: '4px', flexShrink: 0 }}>
+                        <Trash2 size={15} />
+                    </button>
+                )}
+            </div>
+
+            {/* Images */}
+            {post.images?.length > 0 && (
+                <div style={{ display: 'grid', gridTemplateColumns: post.images.length === 1 ? '1fr' : 'repeat(2, 1fr)', gap: '2px' }}>
+                    {post.images.map((img, i) => (
+                        <img key={i} src={img} alt="" style={{ width: '100%', maxHeight: post.images.length === 1 ? '400px' : '200px', objectFit: 'cover', display: 'block' }} />
+                    ))}
+                </div>
+            )}
+
+            {/* Like + Comment action bar */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.5rem 1rem', borderTop: '1px solid #374151' }}>
+                <button onClick={toggleLike} disabled={likePending}
+                    style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', background: 'none', border: 'none', cursor: 'pointer', color: post.liked_by_me ? '#ef4444' : '#6b7280', padding: '0.4rem 0.6rem', borderRadius: '6px', fontSize: '0.85rem', fontWeight: post.liked_by_me ? 700 : 400, transition: 'color 0.15s' }}
+                    onMouseEnter={e => { if (!post.liked_by_me) (e.currentTarget as HTMLElement).style.color = '#d1d5db'; }}
+                    onMouseLeave={e => { if (!post.liked_by_me) (e.currentTarget as HTMLElement).style.color = '#6b7280'; }}>
+                    <Heart size={16} fill={post.liked_by_me ? '#ef4444' : 'none'} />
+                    {post.like_count > 0 && <span>{post.like_count}</span>}
+                </button>
+
+                <button onClick={toggleComments}
+                    style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', background: 'none', border: 'none', cursor: 'pointer', color: showComments ? '#60a5fa' : '#6b7280', padding: '0.4rem 0.6rem', borderRadius: '6px', fontSize: '0.85rem', transition: 'color 0.15s' }}
+                    onMouseEnter={e => { if (!showComments) (e.currentTarget as HTMLElement).style.color = '#d1d5db'; }}
+                    onMouseLeave={e => { if (!showComments) (e.currentTarget as HTMLElement).style.color = '#6b7280'; }}>
+                    <MessageCircle size={16} />
+                    {localCommentCount > 0 && <span>{localCommentCount} {localCommentCount === 1 ? 'comment' : 'comments'}</span>}
+                    {localCommentCount === 0 && <span>Comment</span>}
+                </button>
+            </div>
+
+            {/* Comments section */}
+            {showComments && (
+                <div style={{ borderTop: '1px solid #374151', padding: '0.75rem 1rem', background: '#111827' }}>
+                    {/* Existing comments */}
+                    {comments.map(c => (
+                        <div key={c.id} style={{ display: 'flex', gap: '0.6rem', marginBottom: '0.6rem', alignItems: 'flex-start' }}>
+                            <Avatar name={c.author_name} src={c.author_avatar} size={28} />
+                            <div style={{ flex: 1, background: '#1f2937', borderRadius: '8px', padding: '0.45rem 0.75rem' }}>
+                                <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', justifyContent: 'space-between' }}>
+                                    <span style={{ fontWeight: 700, color: 'white', fontSize: '0.8rem' }}>{c.author_name}</span>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                        <span style={{ color: '#6b7280', fontSize: '0.72rem' }}>{timeAgo(c.created_at)}</span>
+                                        {(c.user_id === me?.id || true) && (
+                                            <button onClick={() => deleteComment(c.id)}
+                                                style={{ background: 'none', border: 'none', color: '#4b5563', cursor: 'pointer', padding: 0, display: 'flex', lineHeight: 1 }}
+                                                title="Delete comment">
+                                                <Trash2 size={11} />
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                                <p style={{ margin: '2px 0 0', color: '#d1d5db', fontSize: '0.85rem', lineHeight: 1.45, whiteSpace: 'pre-wrap' as const }}>{c.content}</p>
+                            </div>
+                        </div>
+                    ))}
+
+                    {/* Comment input */}
+                    <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'flex-start', marginTop: comments.length > 0 ? '0.5rem' : 0 }}>
+                        {me && <Avatar name={me.name} src={me.avatar} size={28} />}
+                        <div style={{ flex: 1, display: 'flex', gap: '0.4rem' }}>
+                            <input
+                                value={commentText}
+                                onChange={e => setCommentText(e.target.value)}
+                                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitComment(); } }}
+                                placeholder="Write a comment…"
+                                style={{ flex: 1, background: '#1f2937', border: '1px solid #374151', borderRadius: '20px', color: 'white', padding: '0.4rem 0.85rem', fontSize: '0.85rem', outline: 'none' }}
+                            />
+                            <button onClick={submitComment} disabled={submittingComment || !commentText.trim()}
+                                style={{ background: '#1d4ed8', color: 'white', border: 'none', borderRadius: '50%', width: 32, height: 32, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, opacity: (submittingComment || !commentText.trim()) ? 0.5 : 1 }}>
+                                <Send size={13} />
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
 }
 
 export default function AdminDashboardClient({ subscriptionPlan }: { subscriptionPlan: string }) {
@@ -72,7 +253,6 @@ export default function AdminDashboardClient({ subscriptionPlan }: { subscriptio
 
     useEffect(() => { loadFeed(1, true); }, [loadFeed]);
 
-    // Get my profile
     useEffect(() => {
         fetch('/api/admin/profile').then(r => r.json()).then(d => {
             if (d.user) setMe({
@@ -112,11 +292,14 @@ export default function AdminDashboardClient({ subscriptionPlan }: { subscriptio
         setPosts(prev => prev.filter(p => p.id !== id));
     };
 
+    const handleLikeToggle = (postId: number, liked: boolean, count: number) => {
+        setPosts(prev => prev.map(p => p.id === postId ? { ...p, liked_by_me: liked, like_count: count } : p));
+    };
+
     const toggleTag = (uid: number) => {
         setTaggedIds(prev => prev.includes(uid) ? prev.filter(i => i !== uid) : [...prev, uid]);
     };
 
-    const PAGE_SIZE = 20;
     const hasMore = posts.length < total;
 
     return (
@@ -131,15 +314,10 @@ export default function AdminDashboardClient({ subscriptionPlan }: { subscriptio
                             value={content}
                             onChange={e => setContent(e.target.value)}
                             placeholder="Share an update with your team…"
-                            style={{
-                                width: '100%', background: '#111827', border: '1px solid #374151', borderRadius: '8px',
-                                color: 'white', padding: '0.65rem 0.9rem', fontSize: '0.9rem', resize: 'vertical' as const,
-                                minHeight: '72px', outline: 'none', fontFamily: 'inherit',
-                            }}
+                            style={{ width: '100%', background: '#111827', border: '1px solid #374151', borderRadius: '8px', color: 'white', padding: '0.65rem 0.9rem', fontSize: '0.9rem', resize: 'vertical' as const, minHeight: '72px', outline: 'none', fontFamily: 'inherit' }}
                             onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) submitPost(); }}
                         />
 
-                        {/* Image previews */}
                         {images.length > 0 && (
                             <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' as const, marginTop: '0.5rem' }}>
                                 {images.map((img, i) => (
@@ -152,7 +330,6 @@ export default function AdminDashboardClient({ subscriptionPlan }: { subscriptio
                             </div>
                         )}
 
-                        {/* Tagged users */}
                         {taggedIds.length > 0 && (
                             <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' as const, marginTop: '0.4rem' }}>
                                 {taggedIds.map(uid => {
@@ -230,43 +407,14 @@ export default function AdminDashboardClient({ subscriptionPlan }: { subscriptio
                 </div>
             ) : (
                 posts.map(post => (
-                    <div key={post.id} style={{ background: '#1f2937', border: '1px solid #374151', borderRadius: '12px', marginBottom: '0.85rem', overflow: 'hidden' }}>
-                        <div style={{ padding: '1rem', display: 'flex', gap: '0.75rem', alignItems: 'flex-start' }}>
-                            <Avatar name={post.author_name} src={post.author_avatar} />
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', flexWrap: 'wrap' as const }}>
-                                    <span style={{ fontWeight: 700, color: 'white', fontSize: '0.925rem' }}>{post.author_name}</span>
-                                    <span style={{ color: '#6b7280', fontSize: '0.8rem' }}>{timeAgo(post.created_at)}</span>
-                                </div>
-                                {post.content && (
-                                    <p style={{ margin: '0.4rem 0 0', color: '#e5e7eb', fontSize: '0.9rem', lineHeight: 1.55, whiteSpace: 'pre-wrap' as const }}>{post.content}</p>
-                                )}
-                                {/* Tagged users */}
-                                {post.tagged_user_ids?.length > 0 && (
-                                    <div style={{ marginTop: '0.4rem', display: 'flex', flexWrap: 'wrap' as const, gap: '0.3rem' }}>
-                                        {post.tagged_user_ids.map((uid: number) => {
-                                            const u = users.find(x => x.id === uid);
-                                            return u ? <span key={uid} style={{ color: '#60a5fa', fontSize: '0.8rem' }}>@{u.display_name}</span> : null;
-                                        })}
-                                    </div>
-                                )}
-                            </div>
-                            {(post.user_id === me?.id) && (
-                                <button onClick={() => deletePost(post.id)}
-                                    style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', padding: '4px', borderRadius: '4px', flexShrink: 0 }}
-                                    title="Delete post">
-                                    <Trash2 size={15} />
-                                </button>
-                            )}
-                        </div>
-                        {post.images?.length > 0 && (
-                            <div style={{ display: 'grid', gridTemplateColumns: post.images.length === 1 ? '1fr' : 'repeat(2, 1fr)', gap: '2px' }}>
-                                {post.images.map((img, i) => (
-                                    <img key={i} src={img} alt="" style={{ width: '100%', maxHeight: post.images.length === 1 ? '400px' : '200px', objectFit: 'cover', display: 'block' }} />
-                                ))}
-                            </div>
-                        )}
-                    </div>
+                    <PostCard
+                        key={post.id}
+                        post={post}
+                        users={users}
+                        me={me}
+                        onDelete={deletePost}
+                        onLikeToggle={handleLikeToggle}
+                    />
                 ))
             )}
 
