@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { AlertTriangle, Trash2, Plus, X, User, FileText } from 'lucide-react';
+import { AlertTriangle, Trash2, Plus, X, User, ArchiveRestore, Clock } from 'lucide-react';
 
 interface BarredPerson {
     id: number;
@@ -12,7 +12,16 @@ interface BarredPerson {
     barred_by_name: string | null;
     barred_by_display: string | null;
     trespassed: boolean;
+    barred_until: string | null;
+    is_archived: boolean;
+    archived_at: string | null;
     created_at: string;
+}
+
+interface MediaItem {
+    type: 'image' | 'video';
+    data: string;
+    name: string;
 }
 
 interface Incident {
@@ -23,7 +32,36 @@ interface Incident {
     person_name: string | null;
     description: string;
     submitted_by_name: string;
+    media: MediaItem[];
     created_at: string;
+}
+
+type Duration = 'permanent' | '1week' | '30days' | 'custom';
+
+function computeBarredUntil(duration: Duration, customDate: string): string | null {
+    if (duration === 'permanent') return null;
+    if (duration === '1week') {
+        const d = new Date();
+        d.setDate(d.getDate() + 7);
+        return d.toISOString();
+    }
+    if (duration === '30days') {
+        const d = new Date();
+        d.setDate(d.getDate() + 30);
+        return d.toISOString();
+    }
+    return customDate ? new Date(customDate).toISOString() : null;
+}
+
+function formatUntil(iso: string | null): string {
+    if (!iso) return 'Permanent';
+    const d = new Date(iso);
+    const diff = d.getTime() - Date.now();
+    if (diff <= 0) return 'Expired';
+    const days = Math.ceil(diff / 86400000);
+    if (days === 1) return 'Expires tomorrow';
+    if (days < 30) return `Expires in ${days}d`;
+    return `Until ${d.toLocaleDateString()}`;
 }
 
 function Avatar({ name, src, size = 48 }: { name: string; src?: string | null; size?: number }) {
@@ -42,6 +80,37 @@ function timeAgo(iso: string) {
     if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
     if (diff < 86400 * 30) return `${Math.floor(diff / 86400)}d ago`;
     return new Date(iso).toLocaleDateString();
+}
+
+function DurationPicker({ value, onChange, customDate, onCustomDate }: {
+    value: Duration;
+    onChange: (d: Duration) => void;
+    customDate: string;
+    onCustomDate: (v: string) => void;
+}) {
+    const options: { key: Duration; label: string }[] = [
+        { key: 'permanent', label: 'Permanent' },
+        { key: '1week', label: '1 Week' },
+        { key: '30days', label: '30 Days' },
+        { key: 'custom', label: 'Custom' },
+    ];
+    return (
+        <div>
+            <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                {options.map(o => (
+                    <button key={o.key} onClick={() => onChange(o.key)} type="button"
+                        style={{ padding: '0.4rem 0.85rem', borderRadius: '6px', border: `1px solid ${value === o.key ? '#3b82f6' : '#374151'}`, background: value === o.key ? '#1d4ed8' : '#1f2937', color: value === o.key ? 'white' : '#9ca3af', cursor: 'pointer', fontSize: '0.8rem', fontWeight: value === o.key ? 700 : 400 }}>
+                        {o.label}
+                    </button>
+                ))}
+            </div>
+            {value === 'custom' && (
+                <input type="date" value={customDate} onChange={e => onCustomDate(e.target.value)}
+                    min={new Date().toISOString().split('T')[0]}
+                    style={{ marginTop: '0.5rem', background: '#111827', border: '1px solid #374151', borderRadius: '8px', color: 'white', padding: '0.5rem 0.75rem', fontSize: '0.875rem', outline: 'none', width: '100%' }} />
+            )}
+        </div>
+    );
 }
 
 // ── Canvas circle cropper ──────────────────────────────────────────────────
@@ -114,7 +183,9 @@ export default function SecurityClient({
     canAddIncident: boolean;
 }) {
     const [tab, setTab] = useState<'barred' | 'incidents'>('barred');
+    const [barredTab, setBarredTab] = useState<'active' | 'archived'>('active');
     const [barred, setBarred] = useState<BarredPerson[]>([]);
+    const [archivedBarred, setArchivedBarred] = useState<BarredPerson[]>([]);
     const [incidents, setIncidents] = useState<Incident[]>([]);
     const [loading, setLoading] = useState(true);
 
@@ -127,15 +198,25 @@ export default function SecurityClient({
     const [bTrespassed, setBTrespassed] = useState(false);
     const [bPhoto, setBPhoto] = useState<string | null>(null);
     const [bCropSrc, setBCropSrc] = useState<string | null>(null);
+    const [bDuration, setBDuration] = useState<Duration>('permanent');
+    const [bCustomDate, setBCustomDate] = useState('');
     const [bSaving, setBSaving] = useState(false);
     const bFileRef = useRef<HTMLInputElement>(null);
+
+    // Restore modal
+    const [restorePerson, setRestorePerson] = useState<BarredPerson | null>(null);
+    const [rDuration, setRDuration] = useState<Duration>('permanent');
+    const [rCustomDate, setRCustomDate] = useState('');
+    const [rSaving, setRSaving] = useState(false);
 
     // Add incident modal
     const [showAddIncident, setShowAddIncident] = useState(false);
     const [iPersonId, setIPersonId] = useState('');
     const [iPersonName, setIPersonName] = useState('');
     const [iDescription, setIDescription] = useState('');
+    const [iMedia, setIMedia] = useState<MediaItem[]>([]);
     const [iSaving, setISaving] = useState(false);
+    const iMediaRef = useRef<HTMLInputElement>(null);
 
     // Trespass notification banner
     const [showTrespassBanner, setShowTrespassBanner] = useState(false);
@@ -143,18 +224,19 @@ export default function SecurityClient({
 
     const load = useCallback(async () => {
         setLoading(true);
-        const [bRes, iRes] = await Promise.all([
+        const [bRes, bArchRes, iRes] = await Promise.all([
             fetch('/api/admin/security/barred').then(r => r.json()),
+            fetch('/api/admin/security/barred?archived=true').then(r => r.json()),
             fetch('/api/admin/security/incidents').then(r => r.json()),
         ]);
         setBarred(bRes.barred || []);
+        setArchivedBarred(bArchRes.barred || []);
         setIncidents(iRes.incidents || []);
         setLoading(false);
     }, []);
 
     useEffect(() => { load(); }, [load]);
 
-    // Check for trespassed persons and show banner
     useEffect(() => {
         const trespassed = barred.filter(p => p.trespassed);
         if (trespassed.length > 0) {
@@ -172,25 +254,58 @@ export default function SecurityClient({
         e.target.value = '';
     };
 
+    const handleMediaChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = Array.from(e.target.files || []);
+        files.forEach(file => {
+            if (file.size > 50 * 1024 * 1024) { alert(`${file.name} exceeds 50MB limit`); return; }
+            const reader = new FileReader();
+            reader.onload = ev => {
+                const data = ev.target?.result as string;
+                const type = file.type.startsWith('video/') ? 'video' : 'image';
+                setIMedia(prev => [...prev, { type, data, name: file.name }]);
+            };
+            reader.readAsDataURL(file);
+        });
+        e.target.value = '';
+    };
+
     const saveBarred = async () => {
         if (!bName.trim()) return;
         setBSaving(true);
+        const barred_until = computeBarredUntil(bDuration, bCustomDate);
         const res = await fetch('/api/admin/security/barred', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: bName.trim(), aliases: bAliases, photo: bPhoto, description: bDescription, trespassed: bTrespassed }),
+            body: JSON.stringify({ name: bName.trim(), aliases: bAliases, photo: bPhoto, description: bDescription, trespassed: bTrespassed, barred_until }),
         });
         setBSaving(false);
         if (res.ok) {
             setShowAddBarred(false);
             setBName(''); setBAliases([]); setBDescription(''); setBTrespassed(false); setBPhoto(null);
+            setBDuration('permanent'); setBCustomDate('');
             load();
         }
     };
 
     const deleteBarred = async (id: number, name: string) => {
-        if (!confirm(`Remove ${name} from barred list?`)) return;
+        if (!confirm(`Permanently delete ${name} from barred list?`)) return;
         await fetch(`/api/admin/security/barred?id=${id}`, { method: 'DELETE' });
+        load();
+    };
+
+    const restoreBarred = async () => {
+        if (!restorePerson) return;
+        setRSaving(true);
+        const barred_until = computeBarredUntil(rDuration, rCustomDate);
+        await fetch('/api/admin/security/barred', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: restorePerson.id, barred_until }),
+        });
+        setRSaving(false);
+        setRestorePerson(null);
+        setRDuration('permanent');
+        setRCustomDate('');
         load();
     };
 
@@ -204,12 +319,13 @@ export default function SecurityClient({
                 barred_person_id: iPersonId ? parseInt(iPersonId) : null,
                 person_name: iPersonName || null,
                 description: iDescription,
+                media: iMedia,
             }),
         });
         setISaving(false);
         if (res.ok) {
             setShowAddIncident(false);
-            setIPersonId(''); setIPersonName(''); setIDescription('');
+            setIPersonId(''); setIPersonName(''); setIDescription(''); setIMedia([]);
             load();
         }
     };
@@ -224,6 +340,8 @@ export default function SecurityClient({
     const inp: React.CSSProperties = { width: '100%', background: '#111827', border: '1px solid #374151', borderRadius: '8px', color: 'white', padding: '0.6rem 0.9rem', fontSize: '0.9rem', outline: 'none' };
     const lbl: React.CSSProperties = { color: '#9ca3af', fontSize: '0.8rem', fontWeight: 600, display: 'block', marginBottom: '0.4rem' };
 
+    const activeBarred = barred;
+
     return (
         <div style={{ maxWidth: '860px', margin: '0 auto', padding: '1.5rem 1rem', color: 'white' }}>
             {bCropSrc && <CircleCropper src={bCropSrc} onSave={url => { setBPhoto(url); setBCropSrc(null); }} onCancel={() => setBCropSrc(null)} />}
@@ -231,7 +349,6 @@ export default function SecurityClient({
             <h1 style={{ fontSize: '1.5rem', fontWeight: 700, marginBottom: '0.25rem' }}>Security</h1>
             <p style={{ color: '#6b7280', fontSize: '0.875rem', marginBottom: '1.25rem' }}>Manage barred persons and incident reports for your venue.</p>
 
-            {/* Trespass notification banner */}
             {showTrespassBanner && (
                 <div style={{ background: '#7f1d1d', border: '2px solid #ef4444', borderRadius: '10px', padding: '0.9rem 1.1rem', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                     <AlertTriangle size={22} color="#fca5a5" style={{ flexShrink: 0 }} />
@@ -247,7 +364,7 @@ export default function SecurityClient({
                 </div>
             )}
 
-            {/* Tabs + action buttons */}
+            {/* Main tabs */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.25rem', flexWrap: 'wrap' }}>
                 <div style={{ display: 'flex', background: '#111827', borderRadius: '8px', border: '1px solid #374151', overflow: 'hidden', flex: 1, minWidth: '200px' }}>
                     {(['barred', 'incidents'] as const).map(t => (
@@ -256,7 +373,7 @@ export default function SecurityClient({
                             background: tab === t ? '#1d4ed8' : 'transparent', color: tab === t ? 'white' : '#9ca3af',
                             cursor: 'pointer', fontSize: '0.875rem', textTransform: 'capitalize',
                         }}>
-                            {t === 'barred' ? `🚫 Barred List (${barred.length})` : `📋 Incidents (${incidents.length})`}
+                            {t === 'barred' ? `🚫 Barred List (${activeBarred.length})` : `📋 Incidents (${incidents.length})`}
                         </button>
                     ))}
                 </div>
@@ -278,51 +395,108 @@ export default function SecurityClient({
                 <div style={{ textAlign: 'center', color: '#6b7280', padding: '3rem' }}>Loading…</div>
             ) : tab === 'barred' ? (
                 <>
-                    {barred.length === 0 ? (
-                        <div style={{ textAlign: 'center', color: '#6b7280', padding: '3rem', border: '2px dashed #374151', borderRadius: '12px' }}>
-                            No persons on the barred list.
-                        </div>
-                    ) : barred.map(person => (
-                        <div key={person.id} style={{ ...card, display: 'flex', gap: '1rem', alignItems: 'flex-start' }}>
-                            <div style={{ position: 'relative', flexShrink: 0 }}>
-                                <Avatar name={person.name} src={person.photo} size={72} />
-                                {person.trespassed && (
-                                    <div style={{ position: 'absolute', bottom: -4, left: '50%', transform: 'translateX(-50%)', background: '#dc2626', color: 'white', fontSize: '0.6rem', fontWeight: 700, padding: '1px 6px', borderRadius: '999px', whiteSpace: 'nowrap' }}>
-                                        TRESPASS
-                                    </div>
-                                )}
+                    {/* Active / Archived sub-tabs */}
+                    <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+                        {(['active', 'archived'] as const).map(st => (
+                            <button key={st} onClick={() => setBarredTab(st)} style={{
+                                padding: '0.4rem 1rem', borderRadius: '6px', border: `1px solid ${barredTab === st ? '#374151' : 'transparent'}`,
+                                background: barredTab === st ? '#374151' : 'transparent', color: barredTab === st ? 'white' : '#6b7280',
+                                cursor: 'pointer', fontSize: '0.8rem', fontWeight: barredTab === st ? 700 : 400,
+                            }}>
+                                {st === 'active' ? `Active (${activeBarred.length})` : `Archived (${archivedBarred.length})`}
+                            </button>
+                        ))}
+                    </div>
+
+                    {barredTab === 'active' ? (
+                        activeBarred.length === 0 ? (
+                            <div style={{ textAlign: 'center', color: '#6b7280', padding: '3rem', border: '2px dashed #374151', borderRadius: '12px' }}>
+                                No persons on the barred list.
                             </div>
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '0.5rem', flexWrap: 'wrap' }}>
-                                    <div>
-                                        <span style={{ fontWeight: 700, fontSize: '1rem', color: 'white' }}>{person.name}</span>
-                                        {person.trespassed && (
-                                            <span style={{ background: '#7f1d1d', color: '#fca5a5', fontSize: '0.72rem', fontWeight: 700, padding: '2px 8px', borderRadius: '999px', marginLeft: '0.5rem', border: '1px solid #dc2626' }}>
-                                                ⚠ TRESPASSED
+                        ) : activeBarred.map(person => (
+                            <div key={person.id} style={{ ...card, display: 'flex', gap: '1rem', alignItems: 'flex-start' }}>
+                                <div style={{ position: 'relative', flexShrink: 0 }}>
+                                    <Avatar name={person.name} src={person.photo} size={72} />
+                                    {person.trespassed && (
+                                        <div style={{ position: 'absolute', bottom: -4, left: '50%', transform: 'translateX(-50%)', background: '#dc2626', color: 'white', fontSize: '0.6rem', fontWeight: 700, padding: '1px 6px', borderRadius: '999px', whiteSpace: 'nowrap' }}>
+                                            TRESPASS
+                                        </div>
+                                    )}
+                                </div>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                        <div>
+                                            <span style={{ fontWeight: 700, fontSize: '1rem', color: 'white' }}>{person.name}</span>
+                                            {person.trespassed && (
+                                                <span style={{ background: '#7f1d1d', color: '#fca5a5', fontSize: '0.72rem', fontWeight: 700, padding: '2px 8px', borderRadius: '999px', marginLeft: '0.5rem', border: '1px solid #dc2626' }}>
+                                                    ⚠ TRESPASSED
+                                                </span>
+                                            )}
+                                        </div>
+                                        {canDeleteBarred && (
+                                            <button onClick={() => deleteBarred(person.id, person.name)}
+                                                style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', padding: '4px', flexShrink: 0 }}>
+                                                <Trash2 size={16} />
+                                            </button>
+                                        )}
+                                    </div>
+                                    {person.aliases?.length > 0 && (
+                                        <div style={{ color: '#9ca3af', fontSize: '0.8rem', marginTop: '3px' }}>
+                                            Also known as: {person.aliases.join(', ')}
+                                        </div>
+                                    )}
+                                    {person.description && (
+                                        <p style={{ color: '#d1d5db', fontSize: '0.875rem', margin: '0.4rem 0 0', lineHeight: 1.5 }}>{person.description}</p>
+                                    )}
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginTop: '0.4rem', flexWrap: 'wrap' }}>
+                                        <span style={{ color: '#6b7280', fontSize: '0.75rem' }}>
+                                            Barred by {person.barred_by_display || person.barred_by_name || 'Unknown'} · {timeAgo(person.created_at)}
+                                        </span>
+                                        {person.barred_until && (
+                                            <span style={{ display: 'flex', alignItems: 'center', gap: '3px', color: '#f59e0b', fontSize: '0.72rem', fontWeight: 600 }}>
+                                                <Clock size={11} /> {formatUntil(person.barred_until)}
                                             </span>
                                         )}
                                     </div>
-                                    {canDeleteBarred && (
-                                        <button onClick={() => deleteBarred(person.id, person.name)}
-                                            style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', padding: '4px', flexShrink: 0 }}>
-                                            <Trash2 size={16} />
-                                        </button>
-                                    )}
-                                </div>
-                                {person.aliases?.length > 0 && (
-                                    <div style={{ color: '#9ca3af', fontSize: '0.8rem', marginTop: '3px' }}>
-                                        Also known as: {person.aliases.join(', ')}
-                                    </div>
-                                )}
-                                {person.description && (
-                                    <p style={{ color: '#d1d5db', fontSize: '0.875rem', margin: '0.4rem 0 0', lineHeight: 1.5 }}>{person.description}</p>
-                                )}
-                                <div style={{ color: '#6b7280', fontSize: '0.75rem', marginTop: '0.4rem' }}>
-                                    Barred by {person.barred_by_display || person.barred_by_name || 'Unknown'} · {timeAgo(person.created_at)}
                                 </div>
                             </div>
-                        </div>
-                    ))}
+                        ))
+                    ) : (
+                        archivedBarred.length === 0 ? (
+                            <div style={{ textAlign: 'center', color: '#6b7280', padding: '3rem', border: '2px dashed #374151', borderRadius: '12px' }}>
+                                No archived persons.
+                            </div>
+                        ) : archivedBarred.map(person => (
+                            <div key={person.id} style={{ ...card, display: 'flex', gap: '1rem', alignItems: 'flex-start', opacity: 0.8 }}>
+                                <Avatar name={person.name} src={person.photo} size={60} />
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                        <span style={{ fontWeight: 700, fontSize: '0.95rem', color: '#9ca3af' }}>{person.name}</span>
+                                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                            {canAddBarred && (
+                                                <button onClick={() => { setRestorePerson(person); setRDuration('permanent'); setRCustomDate(''); }}
+                                                    style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#1d4ed8', color: 'white', border: 'none', borderRadius: '6px', padding: '4px 10px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600 }}>
+                                                    <ArchiveRestore size={13} /> Restore
+                                                </button>
+                                            )}
+                                            {canDeleteBarred && (
+                                                <button onClick={() => deleteBarred(person.id, person.name)}
+                                                    style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', padding: '4px' }}>
+                                                    <Trash2 size={15} />
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                    {person.description && (
+                                        <p style={{ color: '#6b7280', fontSize: '0.8rem', margin: '0.3rem 0 0', lineHeight: 1.4 }}>{person.description}</p>
+                                    )}
+                                    <div style={{ color: '#4b5563', fontSize: '0.72rem', marginTop: '0.3rem' }}>
+                                        Archived {person.archived_at ? timeAgo(person.archived_at) : ''} · Barred by {person.barred_by_display || person.barred_by_name || 'Unknown'}
+                                    </div>
+                                </div>
+                            </div>
+                        ))
+                    )}
                 </>
             ) : (
                 <>
@@ -351,6 +525,19 @@ export default function SecurityClient({
                                     </button>
                                 </div>
                                 <p style={{ color: '#d1d5db', fontSize: '0.875rem', margin: '0.35rem 0 0', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{inc.description}</p>
+                                {inc.media && inc.media.length > 0 && (
+                                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.6rem' }}>
+                                        {inc.media.map((m, i) => (
+                                            m.type === 'image' ? (
+                                                <a key={i} href={m.data} target="_blank" rel="noreferrer">
+                                                    <img src={m.data} alt={m.name} style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: '6px', border: '1px solid #374151', cursor: 'pointer' }} />
+                                                </a>
+                                            ) : (
+                                                <video key={i} src={m.data} controls style={{ width: 160, maxHeight: 120, borderRadius: '6px', border: '1px solid #374151' }} />
+                                            )
+                                        ))}
+                                    </div>
+                                )}
                                 <div style={{ color: '#6b7280', fontSize: '0.75rem', marginTop: '0.4rem' }}>
                                     Reported by {inc.submitted_by_name} · {timeAgo(inc.created_at)}
                                 </div>
@@ -436,7 +623,13 @@ export default function SecurityClient({
                                 <label style={lbl}>Description / Reason Barred</label>
                                 <textarea value={bDescription} onChange={e => setBDescription(e.target.value)}
                                     placeholder="Describe what happened and why this person is barred…"
-                                    style={{ ...inp, minHeight: '90px', resize: 'vertical' as const }} />
+                                    style={{ ...inp, minHeight: '80px', resize: 'vertical' as const }} />
+                            </div>
+
+                            {/* Duration */}
+                            <div>
+                                <label style={lbl}>Ban Duration</label>
+                                <DurationPicker value={bDuration} onChange={setBDuration} customDate={bCustomDate} onCustomDate={setBCustomDate} />
                             </div>
 
                             {/* Trespass checkbox */}
@@ -465,15 +658,43 @@ export default function SecurityClient({
                 </div>
             )}
 
+            {/* ── Restore Modal ─────────────────────────────────────────────────── */}
+            {restorePerson && (
+                <div style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+                    <div style={{ background: '#111827', border: '1px solid #374151', borderRadius: '12px', width: '100%', maxWidth: '420px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1rem 1.25rem', borderBottom: '1px solid #1f2937' }}>
+                            <h2 style={{ margin: 0, color: 'white', fontSize: '1.05rem', fontWeight: 700 }}>Restore to Active List</h2>
+                            <button onClick={() => setRestorePerson(null)} style={{ background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: '1.3rem', lineHeight: 1 }}>×</button>
+                        </div>
+                        <div style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                            <p style={{ color: '#d1d5db', margin: 0, fontSize: '0.9rem' }}>
+                                Restore <strong>{restorePerson.name}</strong> to the active barred list. Set a new ban duration:
+                            </p>
+                            <DurationPicker value={rDuration} onChange={setRDuration} customDate={rCustomDate} onCustomDate={setRCustomDate} />
+                        </div>
+                        <div style={{ padding: '1rem 1.25rem', borderTop: '1px solid #1f2937', display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+                            <button onClick={() => setRestorePerson(null)}
+                                style={{ background: 'none', border: '1px solid #374151', color: '#9ca3af', padding: '0.6rem 1rem', borderRadius: '8px', cursor: 'pointer' }}>
+                                Cancel
+                            </button>
+                            <button onClick={restoreBarred} disabled={rSaving}
+                                style={{ background: '#1d4ed8', color: 'white', border: 'none', padding: '0.6rem 1.25rem', borderRadius: '8px', fontWeight: 700, cursor: 'pointer', opacity: rSaving ? 0.5 : 1 }}>
+                                {rSaving ? 'Restoring…' : 'Restore'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* ── Add Incident Modal ─────────────────────────────────────────────── */}
             {showAddIncident && (
                 <div style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
-                    <div style={{ background: '#111827', border: '1px solid #374151', borderRadius: '12px', width: '100%', maxWidth: '480px', display: 'flex', flexDirection: 'column' }}>
+                    <div style={{ background: '#111827', border: '1px solid #374151', borderRadius: '12px', width: '100%', maxWidth: '500px', maxHeight: '92vh', display: 'flex', flexDirection: 'column' }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1rem 1.25rem', borderBottom: '1px solid #1f2937' }}>
                             <h2 style={{ margin: 0, color: 'white', fontSize: '1.05rem', fontWeight: 700 }}>Add Incident Report</h2>
                             <button onClick={() => setShowAddIncident(false)} style={{ background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: '1.3rem', lineHeight: 1 }}>×</button>
                         </div>
-                        <div style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                        <div style={{ padding: '1.25rem', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
 
                             {/* Link to barred person or free text */}
                             <div>
@@ -481,7 +702,7 @@ export default function SecurityClient({
                                 <select value={iPersonId} onChange={e => { setIPersonId(e.target.value); if (e.target.value) setIPersonName(''); }}
                                     style={{ ...inp, marginBottom: '0.5rem' }}>
                                     <option value="">— Select from barred list (optional) —</option>
-                                    {barred.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                    {activeBarred.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                                 </select>
                                 {!iPersonId && (
                                     <input value={iPersonName} onChange={e => setIPersonName(e.target.value)}
@@ -494,8 +715,37 @@ export default function SecurityClient({
                                 <label style={lbl}>Incident Description *</label>
                                 <textarea value={iDescription} onChange={e => setIDescription(e.target.value)}
                                     placeholder="Describe what happened, date/time, actions taken…"
-                                    style={{ ...inp, minHeight: '110px', resize: 'vertical' as const }}
+                                    style={{ ...inp, minHeight: '100px', resize: 'vertical' as const }}
                                     autoFocus />
+                            </div>
+
+                            {/* Media upload */}
+                            <div>
+                                <label style={lbl}>Photos / Videos (max 50MB each)</label>
+                                <button onClick={() => iMediaRef.current?.click()} type="button"
+                                    style={{ background: '#374151', color: '#d1d5db', border: '1px dashed #4b5563', borderRadius: '8px', padding: '0.6rem 1rem', cursor: 'pointer', fontSize: '0.85rem', width: '100%' }}>
+                                    + Attach Photos or Videos
+                                </button>
+                                <input ref={iMediaRef} type="file" accept="image/*,video/*" multiple style={{ display: 'none' }} onChange={handleMediaChange} />
+                                {iMedia.length > 0 && (
+                                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.5rem' }}>
+                                        {iMedia.map((m, i) => (
+                                            <div key={i} style={{ position: 'relative' }}>
+                                                {m.type === 'image' ? (
+                                                    <img src={m.data} alt={m.name} style={{ width: 70, height: 70, objectFit: 'cover', borderRadius: '6px', border: '1px solid #374151' }} />
+                                                ) : (
+                                                    <div style={{ width: 70, height: 70, background: '#1f2937', borderRadius: '6px', border: '1px solid #374151', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem', color: '#9ca3af', textAlign: 'center', padding: '4px' }}>
+                                                        🎬 {m.name.slice(0, 12)}
+                                                    </div>
+                                                )}
+                                                <button onClick={() => setIMedia(prev => prev.filter((_, j) => j !== i))}
+                                                    style={{ position: 'absolute', top: -6, right: -6, background: '#ef4444', border: 'none', borderRadius: '50%', width: 18, height: 18, color: 'white', cursor: 'pointer', fontSize: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>
+                                                    ×
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
 
                             <div style={{ background: '#1f2937', borderRadius: '6px', padding: '0.6rem 0.8rem' }}>

@@ -828,4 +828,26 @@ CREATE TABLE IF NOT EXISTS user_invitations (
 CREATE INDEX IF NOT EXISTS user_invitations_token_idx ON user_invitations(token);
 CREATE INDEX IF NOT EXISTS user_invitations_org_idx ON user_invitations(organization_id);
 
+-- =========================================================
+-- 42. Barred persons — duration and archive support
+-- =========================================================
+DO $$ BEGIN
+  ALTER TABLE security_barred ADD COLUMN barred_until TIMESTAMPTZ;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE security_barred ADD COLUMN is_archived BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE security_barred ADD COLUMN archived_at TIMESTAMPTZ;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
+-- =========================================================
+-- 43. Security incidents — media attachments (photos/video)
+-- =========================================================
+DO $$ BEGIN
+  ALTER TABLE security_incidents ADD COLUMN media JSONB DEFAULT '[]';
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
 COMMIT;

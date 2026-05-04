@@ -23,16 +23,18 @@ export async function POST(req: NextRequest) {
 
     const perms: string[] = session.permissions || [];
     const isAdmin = session.role === 'admin';
-    const canAdd = isAdmin || perms.includes('all') || perms.includes('add_incident');
-    if (!canAdd) return NextResponse.json({ error: 'Permission denied' }, { status: 403 });
+    if (!isAdmin && !perms.includes('all') && !perms.includes('add_incident')) {
+        return NextResponse.json({ error: 'Permission denied' }, { status: 403 });
+    }
 
-    const { barred_person_id, person_name, description } = await req.json();
+    const { barred_person_id, person_name, description, media } = await req.json();
     if (!description?.trim()) return NextResponse.json({ error: 'Description is required' }, { status: 400 });
 
     const submittedByName = `${session.firstName} ${session.lastName}`;
     const rows = await db.query(
-        `INSERT INTO security_incidents (organization_id, barred_person_id, person_name, description, submitted_by_user_id, submitted_by_name)
-         VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+        `INSERT INTO security_incidents
+            (organization_id, barred_person_id, person_name, description, submitted_by_user_id, submitted_by_name, media)
+         VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
         [
             session.organizationId,
             barred_person_id || null,
@@ -40,6 +42,7 @@ export async function POST(req: NextRequest) {
             description.trim(),
             session.id,
             submittedByName,
+            JSON.stringify(Array.isArray(media) ? media : []),
         ]
     );
     return NextResponse.json({ incident: rows[0] });
@@ -54,13 +57,9 @@ export async function DELETE(req: NextRequest) {
         return NextResponse.json({ error: 'Permission denied' }, { status: 403 });
     }
 
-    const { searchParams } = req.nextUrl;
-    const id = parseInt(searchParams.get('id') || '0');
+    const id = parseInt(req.nextUrl.searchParams.get('id') || '0');
     if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 });
 
-    await db.query(
-        'DELETE FROM security_incidents WHERE id = $1 AND organization_id = $2',
-        [id, session.organizationId]
-    );
+    await db.execute('DELETE FROM security_incidents WHERE id = $1 AND organization_id = $2', [id, session.organizationId]);
     return NextResponse.json({ ok: true });
 }
