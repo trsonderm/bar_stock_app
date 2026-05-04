@@ -47,13 +47,16 @@ export async function GET(req: NextRequest) {
             db.query(
                 `SELECT p.id, p.content, p.images, p.tagged_user_ids, p.created_at, p.user_id,
                         COALESCE(u.display_name, u.first_name || ' ' || u.last_name) AS author_name,
-                        u.profile_picture AS author_avatar
+                        u.profile_picture AS author_avatar,
+                        (SELECT COUNT(*) FROM post_likes pl WHERE pl.post_id = p.id) AS like_count,
+                        (SELECT COUNT(*) FROM post_comments pc WHERE pc.post_id = p.id) AS comment_count,
+                        EXISTS(SELECT 1 FROM post_likes pl WHERE pl.post_id = p.id AND pl.user_id = $4) AS liked_by_me
                  FROM org_posts p
                  LEFT JOIN users u ON u.id = p.user_id
                  WHERE p.organization_id = $1
                  ORDER BY p.created_at DESC
                  LIMIT $2 OFFSET $3`,
-                [session.organizationId, limit, offset]
+                [session.organizationId, limit, offset, session.id]
             ),
             db.query('SELECT COUNT(*) AS count FROM org_posts WHERE organization_id = $1', [session.organizationId]),
             db.query(

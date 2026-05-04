@@ -154,13 +154,77 @@ API calls. The user is automatically assigned to all locations in the org.
 
 
 ────────────────────────────────────────────────────────────────────────────────
-3. DASHBOARD FEED — Organization activity posts
+3. DEVICE TOKENS — Push notification registration
+────────────────────────────────────────────────────────────────────────────────
+
+Call these after login and whenever the FCM/APNs token refreshes.
+Push notifications require Firebase FCM to be configured on the server.
+If not configured, push is silently disabled but all other API calls work normally.
+
+POST /api/mobile/device-token
+
+REQUEST BODY:
+{
+  "token": "fcm-or-apns-token-string",
+  "platform": "ios"    ← or "android"
+}
+
+RESPONSE (200 OK):
+  { "ok": true }
+
+── Unregister on logout ─────────────────────────────────────────────────────────
+
+DELETE /api/mobile/device-token
+
+REQUEST BODY:
+  { "token": "specific-token" }    ← omit to remove ALL tokens for this user
+
+RESPONSE (200 OK):
+  { "ok": true }
+
+
+────────────────────────────────────────────────────────────────────────────────
+4. NOTIFICATIONS — In-app notification inbox
+────────────────────────────────────────────────────────────────────────────────
+
+GET /api/mobile/notifications
+
+QUERY PARAMETERS (all optional):
+  ?unread_only=true    Only return unread notifications
+  ?limit=30            Max to return (default: 30, max: 100)
+
+RESPONSE (200 OK):
+{
+  "notifications": [
+    {
+      "id": 10,
+      "type": "swap_request",
+      "title": "🔄 Shift Swap Request",
+      "message": "Alex Smith wants to swap shifts with you on 2026-05-10",
+      "data": { "swap_id": "42", "type": "swap_request" },
+      "is_read": false,
+      "created_at": "2026-05-04T18:00:00Z"
+    }
+  ],
+  "unread_count": 3
+}
+
+── Mark as read ─────────────────────────────────────────────────────────────────
+
+PATCH /api/mobile/notifications
+
+REQUEST BODY:
+  { "id": 10 }    ← omit id to mark ALL notifications as read
+
+RESPONSE (200 OK):
+  { "ok": true }
+
+
+────────────────────────────────────────────────────────────────────────────────
+5. DASHBOARD FEED — Organization activity posts
 ────────────────────────────────────────────────────────────────────────────────
 
 GET /api/mobile/feed
-
-HEADERS:
-  Authorization: Bearer <token>
 
 QUERY PARAMETERS (all optional):
   ?page=1        Page number (default: 1)
@@ -172,48 +236,103 @@ RESPONSE (200 OK):
     {
       "id": 101,
       "content": "Counted the liquor shelf — all good!",
-      "images": [
-        "data:image/jpeg;base64,/9j/4AAQSkZJRgAB..."
-      ],
+      "images": ["data:image/jpeg;base64,/9j/4AAQ..."],
       "tagged_user_ids": [3, 8],
       "created_at": "2026-04-30T14:22:00Z",
       "user_id": 5,
       "author_name": "Alex Smith",
-      "author_avatar": "data:image/jpeg;base64,..."   ← null if no photo set
+      "author_avatar": "data:image/jpeg;base64,...",
+      "like_count": 4,
+      "comment_count": 2,
+      "liked_by_me": false
     }
   ],
   "total": 84,
   "page": 1,
   "users": [
-    {
-      "id": 3,
-      "display_name": "Jamie Lee",
-      "profile_picture": null
-    },
-    {
-      "id": 8,
-      "display_name": "Morgan D.",
-      "profile_picture": "data:image/jpeg;base64,..."
-    }
+    { "id": 3, "display_name": "Jamie Lee", "profile_picture": null },
+    { "id": 8, "display_name": "Morgan D.", "profile_picture": "data:image/jpeg;base64,..." }
   ]
 }
 
 NOTES:
 - "images" is an array of base64 data-URL strings. Decode and display directly.
 - "tagged_user_ids" references IDs in the "users" array returned alongside posts.
-- "author_avatar" and "profile_picture" are base64 data-URLs or null.
+- "like_count" / "comment_count" / "liked_by_me" are pre-computed for the feed.
 - Posts are returned newest-first. Paginate with ?page=2, ?page=3, etc.
-- total tells you how many posts exist; stop paginating when posts.length >= total.
+
+── Create a post ────────────────────────────────────────────────────────────────
+
+POST /api/mobile/feed
+
+REQUEST BODY:
+{
+  "content": "Just finished the audit!",   ← at least one of content or images required
+  "images": ["data:image/jpeg;base64,..."],
+  "tagged_user_ids": [3, 8]
+}
+
+RESPONSE (200 OK):
+  { "ok": true, "id": 102, "created_at": "2026-05-04T19:00:00Z" }
+
+── Like / Unlike a post ─────────────────────────────────────────────────────────
+
+POST /api/mobile/feed/like?id=<postId>
+
+No request body needed.
+
+RESPONSE (200 OK):
+  { "liked": true, "count": 5 }   ← "liked" is the new state after toggle
+
+── Comments ─────────────────────────────────────────────────────────────────────
+
+GET /api/mobile/feed/comments?postId=<id>
+
+RESPONSE (200 OK):
+{
+  "comments": [
+    {
+      "id": 7,
+      "content": "Great work!",
+      "created_at": "2026-05-04T19:10:00Z",
+      "user_id": 3,
+      "author_name": "Jamie Lee",
+      "author_avatar": null
+    }
+  ]
+}
+
+POST /api/mobile/feed/comments?postId=<id>
+
+REQUEST BODY:
+  { "content": "Looks good!" }
+
+RESPONSE (200 OK):
+{
+  "ok": true,
+  "comment": {
+    "id": 8,
+    "content": "Looks good!",
+    "created_at": "2026-05-04T19:15:00Z",
+    "user_id": 42,
+    "author_name": "Alex Smith",
+    "author_avatar": null
+  }
+}
+
+DELETE /api/mobile/feed/comments?id=<commentId>
+
+Can only delete your own comments. Admins can delete any comment.
+
+RESPONSE (200 OK):
+  { "ok": true }
 
 
 ────────────────────────────────────────────────────────────────────────────────
-4. BARRED LIST — Persons barred from the venue
+6. BARRED LIST — Persons barred from the venue
 ────────────────────────────────────────────────────────────────────────────────
 
 GET /api/mobile/barred
-
-HEADERS:
-  Authorization: Bearer <token>
 
 QUERY PARAMETERS (all optional):
   ?trespassed_only=true    Only return persons with a formal trespass order
@@ -225,46 +344,48 @@ RESPONSE (200 OK):
       "id": 1,
       "name": "John Doe",
       "aliases": ["Johnny D", "JD"],
-      "photo": "data:image/jpeg;base64,...",   ← null if no photo
-      "description": "Involved in assault incident on 2026-03-12. Banned indefinitely.",
+      "photo": "data:image/jpeg;base64,...",
+      "description": "Involved in assault incident on 2026-03-12.",
       "barred_by_name": "Alex Smith",
       "trespassed": true,
+      "barred_until": null,
       "created_at": "2026-03-12T20:00:00Z"
-    },
-    {
-      "id": 2,
-      "name": "Jane Roe",
-      "aliases": [],
-      "photo": null,
-      "description": "Repeatedly attempted to re-enter after warnings.",
-      "barred_by_name": "Morgan Davis",
-      "trespassed": false,
-      "created_at": "2026-04-01T21:30:00Z"
     }
   ],
-  "total": 2
+  "total": 1
 }
 
-⚠ IMPORTANT: If "trespassed" is true, display a prominent warning in your UI.
-  This person has a formal trespass order and must not be admitted under any
-  circumstances. Highlight trespassed entries in red / with an alert banner.
+NOTE: "barred_until" is null for permanent bans. Expired bans are auto-archived
+and will not appear in this list.
 
-DISPLAY RECOMMENDATION:
-  - Show photo (or placeholder silhouette if null)
-  - Name in bold, aliases below in smaller text
-  - Red "TRESPASS" badge if trespassed = true
-  - Description and "Barred by" attribution
-  - Sort trespassed entries to the top
+⚠ If "trespassed" is true, display a prominent warning — this person has a
+  formal trespass order and must not be admitted under any circumstances.
+
+── Add a barred person from mobile ──────────────────────────────────────────────
+
+POST /api/mobile/barred
+
+Requires admin role OR the 'add_barred' permission.
+
+REQUEST BODY:
+{
+  "name": "John Doe",               ← required
+  "aliases": ["Johnny D"],          ← optional
+  "photo": "data:image/jpeg;...",   ← optional, base64 image (max 50MB)
+  "description": "Details...",      ← optional
+  "trespassed": true,               ← optional, default false
+  "barred_until": "2026-08-01T00:00:00Z"  ← optional, null = permanent
+}
+
+RESPONSE (200 OK):
+  { "barred": { ...full barred person row } }
 
 
 ────────────────────────────────────────────────────────────────────────────────
-5. OUT-OF-STOCK / LOW STOCK ITEMS
+7. OUT-OF-STOCK / LOW STOCK ITEMS
 ────────────────────────────────────────────────────────────────────────────────
 
 GET /api/mobile/out-of-stock
-
-HEADERS:
-  Authorization: Bearer <token>
 
 QUERY PARAMETERS (all optional):
   ?location_id=2    Filter to a specific location ID
@@ -281,16 +402,6 @@ RESPONSE (200 OK):
       "low_stock_threshold": 3,
       "order_size": [{ "label": "Case", "amount": 12 }],
       "supplier": "Southern Glazers"
-    },
-    {
-      "id": 44,
-      "name": "Heineken 12pk",
-      "type": "Beer",
-      "secondary_type": "Lager",
-      "quantity": 2,
-      "low_stock_threshold": 4,
-      "order_size": [{ "label": "Case", "amount": 24 }],
-      "supplier": "Reyes Beverage"
     }
   ],
   "total": 12,
@@ -302,12 +413,247 @@ NOTES:
 - "out_of_stock" = items with quantity exactly 0
 - "low_stock" = items with quantity > 0 but <= low_stock_threshold
 - Items sorted by quantity ascending (most urgent first)
-- "order_size" is an array; each entry has a label and an amount (unit count)
-- If "low_stock_threshold" is null, only quantity = 0 items are included
 
 
 ────────────────────────────────────────────────────────────────────────────────
-6. ERROR HANDLING — Standard error responses
+8. SCHEDULE — View the org schedule
+────────────────────────────────────────────────────────────────────────────────
+
+GET /api/mobile/schedule
+
+QUERY PARAMETERS (all optional):
+  ?view=week|month         View mode (default: week)
+  ?start=YYYY-MM-DD        Range start (default: start of current week/month)
+  ?end=YYYY-MM-DD          Range end (default: same as start)
+  ?location_id=2           Filter to a specific location
+
+RESPONSE (200 OK):
+{
+  "schedules": [
+    {
+      "id": 301,
+      "date": "2026-05-05",
+      "user_id": 42,
+      "shift_id": 5,
+      "recurring_group_id": null,
+      "shift_name": "Evening",
+      "start_time": "17:00",
+      "end_time": "23:00",
+      "color": "#1d4ed8",
+      "user_name": "Alex Smith",
+      "user_avatar": null,
+      "position": "Head Bartender",
+      "is_mine": true
+    }
+  ],
+  "pending_swaps": [ ...swap objects (see Shift Swaps section) ],
+  "start": "2026-05-05",
+  "end": "2026-05-11",
+  "view": "week"
+}
+
+NOTES:
+- "is_mine" flags shifts belonging to the authenticated user.
+- "pending_swaps" lists any open swap requests involving this user, for
+  displaying badges or alerts without a separate API call.
+
+
+────────────────────────────────────────────────────────────────────────────────
+9. SHIFT SWAPS — Request and manage shift swaps
+────────────────────────────────────────────────────────────────────────────────
+
+Status machine:
+  pending_employee → (target accepts) → pending_manager → (manager approves) → approved
+                   → (target declines) → declined
+                                       → (manager declines) → declined
+
+── List my swap requests ────────────────────────────────────────────────────────
+
+GET /api/mobile/schedule/swap
+
+QUERY PARAMETERS (all optional):
+  ?status=pending_employee|pending_manager|approved|declined
+
+RESPONSE (200 OK):
+{
+  "swaps": [
+    {
+      "id": 10,
+      "status": "pending_manager",
+      "message": "Can we swap? I have a family thing.",
+      "decline_reason": null,
+      "requester_id": 42,
+      "target_id": 55,
+      "employee_responded_at": "2026-05-04T20:00:00Z",
+      "manager_responded_at": null,
+      "created_at": "2026-05-04T18:00:00Z",
+      "requester_name": "Alex Smith",
+      "requester_avatar": null,
+      "target_name": "Jamie Lee",
+      "target_avatar": null,
+      "requester_date": "2026-05-10",
+      "requester_shift": "Evening",
+      "requester_start": "17:00",
+      "requester_end": "23:00",
+      "target_date": "2026-05-11",
+      "target_shift": "Morning",
+      "target_start": "09:00",
+      "target_end": "15:00",
+      "status_detail": "Jamie Lee accepted! Waiting for a manager to approve."
+    }
+  ]
+}
+
+status_detail examples (vary by who is viewing):
+  "Jane wants to swap shifts with you. Waiting for your response."
+  "Waiting for Jane to accept or decline your swap request."
+  "Jane accepted! Waiting for a manager to approve."
+  "You accepted. Waiting for a manager to approve the swap."
+  "Swap approved! Alice and Bob have swapped shifts."
+  "Swap declined: Manager was unable to accommodate."
+
+── Create a swap request ────────────────────────────────────────────────────────
+
+POST /api/mobile/schedule/swap
+
+REQUEST BODY:
+{
+  "my_schedule_id": 301,       ← your user_schedules.id
+  "their_schedule_id": 402,    ← the other employee's user_schedules.id
+  "target_user_id": 55,        ← the other employee's user id
+  "message": "Can we swap?"    ← optional note
+}
+
+RESPONSE (200 OK):
+  { "ok": true, "swap_id": 10 }
+
+Side effect: push notification sent to the target employee.
+
+ERROR RESPONSES:
+  404 { "error": "Your schedule entry not found" }
+  404 { "error": "Target schedule entry not found" }
+  409 { "error": "A pending swap request already exists for that shift" }
+
+── Respond to a swap request (target employee only) ─────────────────────────────
+
+PATCH /api/mobile/schedule/swap
+
+REQUEST BODY:
+{
+  "swap_id": 10,
+  "action": "accept",           ← or "decline"
+  "decline_reason": "..."       ← optional, only used when action = "decline"
+}
+
+RESPONSE (200 OK):
+  { "ok": true }
+
+Side effects:
+  - accept: notifies requester ("accepted, waiting for manager") + all admins
+  - decline: notifies requester with decline message
+
+
+────────────────────────────────────────────────────────────────────────────────
+10. TIME-OFF REQUESTS
+────────────────────────────────────────────────────────────────────────────────
+
+── List my time-off requests ────────────────────────────────────────────────────
+
+GET /api/mobile/schedule/time-off
+
+QUERY PARAMETERS (all optional):
+  ?status=pending|approved|declined
+
+RESPONSE (200 OK):
+{
+  "requests": [
+    {
+      "id": 5,
+      "start_date": "2026-06-01",
+      "end_date": "2026-06-03",
+      "reason": "Family vacation",
+      "status": "pending",
+      "created_at": "2026-05-04T18:00:00Z",
+      "reviewed_at": null,
+      "reviewed_by_name": null
+    }
+  ]
+}
+
+── Submit a time-off request ────────────────────────────────────────────────────
+
+POST /api/mobile/schedule/time-off
+
+REQUEST BODY:
+{
+  "start_date": "2026-06-01",   ← YYYY-MM-DD, required
+  "end_date": "2026-06-03",     ← YYYY-MM-DD, required (>= start_date)
+  "reason": "Family vacation"   ← optional
+}
+
+RESPONSE (200 OK):
+  { "ok": true, "id": 5 }
+
+Side effect: push notification sent to all admins.
+
+── Approve or decline a request (admin only) ────────────────────────────────────
+
+PATCH /api/mobile/schedule/time-off
+
+REQUEST BODY:
+{
+  "id": 5,
+  "action": "approve",          ← or "decline"
+  "decline_reason": "..."       ← optional, only used when action = "decline"
+}
+
+RESPONSE (200 OK):
+  { "ok": true }
+
+Side effect: push notification sent to the requesting employee.
+
+ERROR RESPONSES:
+  403 { "error": "Admin access required" }
+  404 { "error": "Request not found" }
+  409 { "error": "Request has already been reviewed" }
+
+
+────────────────────────────────────────────────────────────────────────────────
+11. PUSH NOTIFICATION TYPES
+────────────────────────────────────────────────────────────────────────────────
+
+Each push notification (and in-app notification) includes a "type" field:
+
+  swap_request            — new swap request targeting you
+  swap_accepted_employee  — your swap request was accepted by the other employee
+  swap_declined           — your swap request was declined by the other employee
+  swap_pending_approval   — (admin) both employees agreed, needs manager action
+  swap_approved           — swap fully approved by manager
+  swap_manager_declined   — swap declined by manager
+  time_off_request        — (admin) employee submitted a time-off request
+  time_off_approved       — your time-off request was approved
+  time_off_declined       — your time-off request was declined
+
+Use the "type" to deep-link into the appropriate screen when the user taps
+a push notification.
+
+── Server setup for push notifications ──────────────────────────────────────────
+
+Set these environment variables on the server:
+
+  FIREBASE_PROJECT_ID=your-firebase-project-id
+  FIREBASE_SERVICE_ACCOUNT_JSON=<contents of serviceAccountKey.json, single line>
+
+Push is silently disabled when these vars are not set.
+
+On the mobile client:
+  1. Get an FCM/APNs device token from the platform SDK after login.
+  2. POST /api/mobile/device-token with { token, platform: 'ios'|'android' }.
+  3. On logout, DELETE /api/mobile/device-token to unregister.
+
+
+────────────────────────────────────────────────────────────────────────────────
+12. ERROR HANDLING — Standard error responses
 ────────────────────────────────────────────────────────────────────────────────
 
 All endpoints use standard HTTP status codes.
@@ -319,479 +665,51 @@ Status  Meaning
 401     Unauthorized — missing, expired, or invalid Bearer token
 403     Forbidden — authenticated but insufficient permissions
 404     Not found — resource or org does not exist
-409     Conflict — e.g. email already registered
+409     Conflict — wrong state, duplicate, etc.
 410     Gone — invite token already used or expired
 500     Internal server error
 
 Error response body always follows this format:
-{
-  "error": "Human-readable description of what went wrong"
-}
+  { "error": "Human-readable description of what went wrong" }
 
 TOKEN EXPIRY HANDLING:
   When you receive a 401, the token has expired (7-day lifetime).
   Re-authenticate by calling POST /api/mobile/auth again and save the new token.
-  Recommended: store the login credentials securely so you can auto-refresh.
 
 
 ────────────────────────────────────────────────────────────────────────────────
-7. COMPLETE IMPLEMENTATION EXAMPLE — React Native / Expo
+13. ENDPOINT QUICK REFERENCE
 ────────────────────────────────────────────────────────────────────────────────
 
-The following is a complete working implementation using fetch() and
-expo-secure-store for secure token storage.
-
-── api.js ───────────────────────────────────────────────────────────────────────
-
-import * as SecureStore from 'expo-secure-store';
-
-const BASE = 'https://www.topshelfInventory.com';
-const TOKEN_KEY = 'topshelf_token';
-
-// ── Token helpers ─────────────────────────────────────────────────────────────
-
-async function saveToken(token) {
-  await SecureStore.setItemAsync(TOKEN_KEY, token);
-}
-
-async function getToken() {
-  return await SecureStore.getItemAsync(TOKEN_KEY);
-}
-
-async function clearToken() {
-  await SecureStore.deleteItemAsync(TOKEN_KEY);
-}
-
-// ── Core fetch wrapper — attaches Bearer token automatically ──────────────────
-
-async function apiFetch(path, options = {}) {
-  const token = await getToken();
-  const headers = {
-    'Content-Type': 'application/json',
-    ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
-    ...(options.headers || {}),
-  };
-
-  const res = await fetch(`${BASE}${path}`, { ...options, headers });
-
-  if (res.status === 401) {
-    // Token expired — clear it and redirect to login
-    await clearToken();
-    throw new Error('SESSION_EXPIRED');
-  }
-
-  const data = await res.json();
-
-  if (!res.ok) {
-    throw new Error(data.error || `Request failed: ${res.status}`);
-  }
-
-  return data;
-}
-
-// ── Auth ──────────────────────────────────────────────────────────────────────
-
-export async function login(subdomain, email, password) {
-  const data = await apiFetch('/api/mobile/auth', {
-    method: 'POST',
-    body: JSON.stringify({
-      organization_subdomain: subdomain,
-      email,
-      password,
-    }),
-  });
-  await saveToken(data.token);
-  return data; // { token, user, organization }
-}
-
-export async function loginWithPin(subdomain, pin) {
-  const data = await apiFetch('/api/mobile/auth', {
-    method: 'POST',
-    body: JSON.stringify({
-      organization_subdomain: subdomain,
-      pin,
-    }),
-  });
-  await saveToken(data.token);
-  return data;
-}
-
-export async function logout() {
-  await clearToken();
-}
-
-// ── Registration via invite ───────────────────────────────────────────────────
-
-export async function validateInviteToken(token) {
-  // No auth header needed
-  const res = await fetch(`${BASE}/api/mobile/register?token=${token}`);
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error);
-  return data; // { valid, org_name, email, role }
-}
-
-export async function registerWithInvite({ token, firstName, lastName,
-  displayName, email, phone, password, pin }) {
-  const res = await fetch(`${BASE}/api/mobile/register`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ token, firstName, lastName, displayName,
-      email, phone, password, pin }),
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error);
-  await saveToken(data.token); // log the user in immediately
-  return data; // { token, user, organization }
-}
-
-// ── Dashboard Feed ────────────────────────────────────────────────────────────
-
-export async function getFeed(page = 1, limit = 20) {
-  return apiFetch(`/api/mobile/feed?page=${page}&limit=${limit}`);
-  // Returns: { posts, total, page, users }
-}
-
-// ── Barred List ───────────────────────────────────────────────────────────────
-
-export async function getBarredList(trespassedOnly = false) {
-  const qs = trespassedOnly ? '?trespassed_only=true' : '';
-  return apiFetch(`/api/mobile/barred${qs}`);
-  // Returns: { barred, total }
-}
-
-// ── Out-of-Stock / Low Stock ──────────────────────────────────────────────────
-
-export async function getOutOfStock(locationId = null) {
-  const qs = locationId ? `?location_id=${locationId}` : '';
-  return apiFetch(`/api/mobile/out-of-stock${qs}`);
-  // Returns: { items, total, out_of_stock, low_stock }
-}
-
-── Example usage in a React Native screen ───────────────────────────────────────
-
-import React, { useEffect, useState } from 'react';
-import { View, Text, FlatList, Image, StyleSheet, Alert } from 'react-native';
-import { login, getFeed, getBarredList, getOutOfStock } from './api';
-
-// ── LoginScreen ───────────────────────────────────────────────────────────────
-
-export function LoginScreen({ navigation }) {
-  const [subdomain, setSubdomain] = useState('');
-  const [email, setEmail]         = useState('');
-  const [password, setPassword]   = useState('');
-
-  const handleLogin = async () => {
-    try {
-      const { user, organization } = await login(subdomain, email, password);
-      Alert.alert('Welcome', `Logged in to ${organization.name} as ${user.first_name}`);
-      navigation.replace('Dashboard');
-    } catch (err) {
-      Alert.alert('Login Failed', err.message);
-    }
-  };
-
-  // ... render TextInput fields and a Login button that calls handleLogin
-}
-
-// ── RegisterScreen (via invite link / deep link) ──────────────────────────────
-
-export function RegisterScreen({ route, navigation }) {
-  // Assumes the invite token was parsed from a deep link URL:
-  //   topshelf://register?token=abc123
-  // or passed as a route param after scanning a QR code
-  const { token } = route.params;
-
-  const [orgName, setOrgName]           = useState('');
-  const [prefillEmail, setPrefillEmail] = useState('');
-  const [firstName, setFirstName]       = useState('');
-  const [lastName, setLastName]         = useState('');
-  const [email, setEmail]               = useState('');
-  const [password, setPassword]         = useState('');
-  const [pin, setPin]                   = useState('');
-
-  useEffect(() => {
-    validateInviteToken(token)
-      .then(({ org_name, email: pre }) => {
-        setOrgName(org_name);
-        if (pre) { setPrefillEmail(pre); setEmail(pre); }
-      })
-      .catch(err => Alert.alert('Invalid Invite', err.message));
-  }, [token]);
-
-  const handleRegister = async () => {
-    try {
-      const { user } = await registerWithInvite({
-        token, firstName, lastName, email, password, pin,
-      });
-      Alert.alert('Welcome!', `Account created for ${user.first_name}`);
-      navigation.replace('Dashboard');
-    } catch (err) {
-      Alert.alert('Registration Failed', err.message);
-    }
-  };
-
-  // ... render form with org name header and fields, call handleRegister on submit
-}
-
-// ── FeedScreen ────────────────────────────────────────────────────────────────
-
-export function FeedScreen() {
-  const [posts, setPosts]   = useState([]);
-  const [users, setUsers]   = useState({});  // id → user object map
-  const [page, setPage]     = useState(1);
-  const [total, setTotal]   = useState(0);
-  const [loading, setLoading] = useState(false);
-
-  const loadPosts = async (nextPage = 1) => {
-    setLoading(true);
-    try {
-      const data = await getFeed(nextPage);
-      // Build a lookup map for tagged users
-      const userMap = {};
-      data.users.forEach(u => { userMap[u.id] = u; });
-      setUsers(userMap);
-      setPosts(prev => nextPage === 1 ? data.posts : [...prev, ...data.posts]);
-      setTotal(data.total);
-      setPage(nextPage);
-    } catch (err) {
-      if (err.message === 'SESSION_EXPIRED') { /* navigate to login */ }
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => { loadPosts(1); }, []);
-
-  const renderPost = ({ item: post }) => (
-    <View style={styles.postCard}>
-      {/* Author avatar */}
-      {post.author_avatar
-        ? <Image source={{ uri: post.author_avatar }} style={styles.avatar} />
-        : <View style={[styles.avatar, styles.avatarPlaceholder]}>
-            <Text style={styles.avatarInitial}>{post.author_name[0]}</Text>
-          </View>
-      }
-      <View style={{ flex: 1 }}>
-        <Text style={styles.authorName}>{post.author_name}</Text>
-        <Text style={styles.postContent}>{post.content}</Text>
-
-        {/* Tagged users */}
-        {post.tagged_user_ids?.length > 0 && (
-          <Text style={styles.tags}>
-            {post.tagged_user_ids
-              .map(id => users[id] ? `@${users[id].display_name}` : '')
-              .filter(Boolean)
-              .join(' ')}
-          </Text>
-        )}
-
-        {/* Post images */}
-        {post.images?.map((img, i) => (
-          <Image key={i} source={{ uri: img }} style={styles.postImage} />
-        ))}
-
-        <Text style={styles.timestamp}>
-          {new Date(post.created_at).toLocaleString()}
-        </Text>
-      </View>
-    </View>
-  );
-
-  return (
-    <FlatList
-      data={posts}
-      keyExtractor={p => String(p.id)}
-      renderItem={renderPost}
-      onEndReached={() => { if (posts.length < total) loadPosts(page + 1); }}
-      onEndReachedThreshold={0.3}
-      onRefresh={() => loadPosts(1)}
-      refreshing={loading && page === 1}
-    />
-  );
-}
-
-// ── BarredListScreen ──────────────────────────────────────────────────────────
-
-export function BarredListScreen() {
-  const [barred, setBarred] = useState([]);
-
-  useEffect(() => {
-    getBarredList().then(data => setBarred(data.barred));
-  }, []);
-
-  const renderPerson = ({ item }) => (
-    <View style={[styles.personCard, item.trespassed && styles.trespassCard]}>
-      {item.trespassed && (
-        <View style={styles.trespassBanner}>
-          <Text style={styles.trespassText}>⚠ TRESPASS ORDER — DO NOT ADMIT</Text>
-        </View>
-      )}
-      {item.photo
-        ? <Image source={{ uri: item.photo }} style={styles.personPhoto} />
-        : <View style={[styles.personPhoto, styles.personPhotoPlaceholder]} />
-      }
-      <Text style={styles.personName}>{item.name}</Text>
-      {item.aliases?.length > 0 && (
-        <Text style={styles.aliases}>AKA: {item.aliases.join(', ')}</Text>
-      )}
-      {item.description && (
-        <Text style={styles.description}>{item.description}</Text>
-      )}
-      <Text style={styles.barredBy}>Barred by {item.barred_by_name}</Text>
-    </View>
-  );
-
-  return (
-    <FlatList
-      data={barred}
-      keyExtractor={p => String(p.id)}
-      renderItem={renderPerson}
-    />
-  );
-}
-
-// ── OutOfStockScreen ──────────────────────────────────────────────────────────
-
-export function OutOfStockScreen() {
-  const [items, setItems]     = useState([]);
-  const [summary, setSummary] = useState({ out_of_stock: 0, low_stock: 0 });
-
-  useEffect(() => {
-    getOutOfStock().then(data => {
-      setItems(data.items);
-      setSummary({ out_of_stock: data.out_of_stock, low_stock: data.low_stock });
-    });
-  }, []);
-
-  return (
-    <View style={{ flex: 1 }}>
-      {/* Summary header */}
-      <View style={styles.summaryRow}>
-        <Text style={styles.summaryBadgeRed}>{summary.out_of_stock} OUT OF STOCK</Text>
-        <Text style={styles.summaryBadgeAmber}>{summary.low_stock} LOW STOCK</Text>
-      </View>
-
-      <FlatList
-        data={items}
-        keyExtractor={i => String(i.id)}
-        renderItem={({ item }) => (
-          <View style={styles.itemRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.itemName}>{item.name}</Text>
-              <Text style={styles.itemCategory}>{item.type}{item.secondary_type ? ` · ${item.secondary_type}` : ''}</Text>
-              {item.supplier && <Text style={styles.itemSupplier}>{item.supplier}</Text>}
-            </View>
-            <View style={styles.qtyBox}>
-              <Text style={[styles.qty, item.quantity === 0 ? styles.qtyZero : styles.qtyLow]}>
-                {item.quantity}
-              </Text>
-              <Text style={styles.qtyLabel}>in stock</Text>
-            </View>
-          </View>
-        )}
-      />
-    </View>
-  );
-}
-
-// ── Shared styles ─────────────────────────────────────────────────────────────
-
-const styles = StyleSheet.create({
-  postCard:            { flexDirection: 'row', padding: 12, borderBottomWidth: 1, borderColor: '#374151', gap: 10 },
-  avatar:              { width: 40, height: 40, borderRadius: 20 },
-  avatarPlaceholder:   { backgroundColor: '#1d4ed8', alignItems: 'center', justifyContent: 'center' },
-  avatarInitial:       { color: 'white', fontWeight: '700' },
-  authorName:          { color: 'white', fontWeight: '700', fontSize: 14 },
-  postContent:         { color: '#d1d5db', fontSize: 14, marginTop: 4, lineHeight: 20 },
-  tags:                { color: '#60a5fa', fontSize: 13, marginTop: 4 },
-  postImage:           { width: '100%', height: 200, borderRadius: 8, marginTop: 8 },
-  timestamp:           { color: '#6b7280', fontSize: 11, marginTop: 6 },
-
-  personCard:          { margin: 8, borderRadius: 12, backgroundColor: '#1f2937', overflow: 'hidden' },
-  trespassCard:        { borderWidth: 2, borderColor: '#ef4444' },
-  trespassBanner:      { backgroundColor: '#7f1d1d', padding: 8 },
-  trespassText:        { color: '#fca5a5', fontWeight: '800', textAlign: 'center', fontSize: 13 },
-  personPhoto:         { width: 80, height: 80, borderRadius: 40, margin: 12, alignSelf: 'center' },
-  personPhotoPlaceholder: { backgroundColor: '#374151' },
-  personName:          { color: 'white', fontWeight: '700', fontSize: 16, textAlign: 'center' },
-  aliases:             { color: '#9ca3af', fontSize: 13, textAlign: 'center', marginTop: 2 },
-  description:         { color: '#d1d5db', fontSize: 13, padding: 12, lineHeight: 19 },
-  barredBy:            { color: '#6b7280', fontSize: 12, textAlign: 'center', paddingBottom: 12 },
-
-  summaryRow:          { flexDirection: 'row', gap: 8, padding: 12 },
-  summaryBadgeRed:     { flex: 1, backgroundColor: '#7f1d1d', color: '#fca5a5', textAlign: 'center', padding: 10, borderRadius: 8, fontWeight: '700', fontSize: 13 },
-  summaryBadgeAmber:   { flex: 1, backgroundColor: '#78350f', color: '#fcd34d', textAlign: 'center', padding: 10, borderRadius: 8, fontWeight: '700', fontSize: 13 },
-  itemRow:             { flexDirection: 'row', padding: 12, borderBottomWidth: 1, borderColor: '#1f2937', alignItems: 'center' },
-  itemName:            { color: 'white', fontWeight: '600', fontSize: 14 },
-  itemCategory:        { color: '#9ca3af', fontSize: 12, marginTop: 2 },
-  itemSupplier:        { color: '#6b7280', fontSize: 11, marginTop: 2 },
-  qtyBox:              { alignItems: 'center', minWidth: 50 },
-  qty:                 { fontSize: 22, fontWeight: '800' },
-  qtyZero:             { color: '#ef4444' },
-  qtyLow:              { color: '#f59e0b' },
-  qtyLabel:            { color: '#6b7280', fontSize: 10 },
-});
+METHOD  PATH                                AUTH    DESCRIPTION
+──────  ──────────────────────────────────  ──────  ────────────────────────────────────────────
+POST    /api/mobile/auth                    No      Login → get Bearer token
+GET     /api/mobile/register?token=…        No      Validate invite token
+POST    /api/mobile/register                No      Complete registration
+POST    /api/mobile/device-token            Bearer  Register device for push notifications
+DELETE  /api/mobile/device-token            Bearer  Unregister device (logout)
+GET     /api/mobile/notifications           Bearer  List in-app notifications + unread count
+PATCH   /api/mobile/notifications           Bearer  Mark notification(s) as read
+GET     /api/mobile/feed                    Bearer  Dashboard feed with likes/comments
+POST    /api/mobile/feed                    Bearer  Create a post
+POST    /api/mobile/feed/like?id=…          Bearer  Toggle like on a post
+GET     /api/mobile/feed/comments?postId=…  Bearer  Load comments for a post
+POST    /api/mobile/feed/comments?postId=…  Bearer  Add a comment
+DELETE  /api/mobile/feed/comments?id=…      Bearer  Delete a comment
+GET     /api/mobile/barred                  Bearer  Barred persons list
+POST    /api/mobile/barred                  Bearer  Add a barred person (admin/permission)
+GET     /api/mobile/out-of-stock            Bearer  Low/out-of-stock inventory
+GET     /api/mobile/schedule               Bearer  Full org schedule with pending swaps
+GET     /api/mobile/schedule/swap           Bearer  List my shift swap requests
+POST    /api/mobile/schedule/swap           Bearer  Create a shift swap request
+PATCH   /api/mobile/schedule/swap           Bearer  Accept or decline a swap (target employee)
+GET     /api/mobile/schedule/time-off       Bearer  List my time-off requests
+POST    /api/mobile/schedule/time-off       Bearer  Submit a time-off request
+PATCH   /api/mobile/schedule/time-off       Bearer  Approve or decline a request (admin only)
 
 
 ────────────────────────────────────────────────────────────────────────────────
-8. DEEP LINK SETUP (optional — for invite links)
-────────────────────────────────────────────────────────────────────────────────
-
-To handle invite links automatically in your app, configure a deep link scheme.
-When the user taps their invite email on their phone, the OS opens your app
-directly instead of a browser.
-
-── app.json (Expo) ──────────────────────────────────────────────────────────────
-
-{
-  "expo": {
-    "scheme": "topshelf",
-    "android": { "intentFilters": [{
-      "action": "VIEW",
-      "data": [{ "scheme": "https", "host": "www.topshelfInventory.com" }],
-      "category": ["BROWSABLE", "DEFAULT"]
-    }]},
-    "ios": { "associatedDomains": ["applinks:www.topshelfInventory.com"] }
-  }
-}
-
-── Linking handler ───────────────────────────────────────────────────────────────
-
-import { Linking } from 'react-native';
-
-// On app start, check for incoming invite URL
-Linking.getInitialURL().then(url => {
-  if (url?.includes('/register/invite')) {
-    const token = new URL(url).searchParams.get('token');
-    if (token) navigation.navigate('Register', { token });
-  }
-});
-
-// Also listen while app is foregrounded
-Linking.addEventListener('url', ({ url }) => {
-  if (url?.includes('/register/invite')) {
-    const token = new URL(url).searchParams.get('token');
-    if (token) navigation.navigate('Register', { token });
-  }
-});
-
-
-────────────────────────────────────────────────────────────────────────────────
-9. ENDPOINT QUICK REFERENCE
-────────────────────────────────────────────────────────────────────────────────
-
-METHOD  PATH                           AUTH NEEDED   DESCRIPTION
-──────  ─────────────────────────────  ───────────   ────────────────────────────
-POST    /api/mobile/auth               No            Login → get Bearer token
-GET     /api/mobile/register?token=…   No            Validate invite token
-POST    /api/mobile/register           No            Complete registration
-GET     /api/mobile/feed               Bearer        Dashboard feed (paginated)
-GET     /api/mobile/barred             Bearer        Barred persons list
-GET     /api/mobile/out-of-stock       Bearer        Low/out-of-stock inventory
-
-
-────────────────────────────────────────────────────────────────────────────────
-10. SECURITY NOTES
+14. SECURITY NOTES
 ────────────────────────────────────────────────────────────────────────────────
 
 - Tokens are signed JWT (HS256). Never decode and trust the payload client-side
@@ -815,5 +733,5 @@ GET     /api/mobile/out-of-stock       Bearer        Low/out-of-stock inventory
 ================================================================================
   TopShelf Inventory — Mobile API Reference
   Server: https://www.topshelfInventory.com
-  API Version: 1.0  |  Last updated: 2026-04-30
+  API Version: 2.0  |  Last updated: 2026-05-04
 ================================================================================

@@ -1,4 +1,17 @@
 #!/bin/bash
+# ============================================================
+# deploy-linux.sh — TopShelf production deploy script
+#
+# CRITICAL RULES — DO NOT VIOLATE:
+#   ✓  Use: docker compose down --remove-orphans   (preserves volumes)
+#   ✗  NEVER: docker compose down -v               (DESTROYS DATABASE VOLUME)
+#   ✗  NEVER: docker volume rm db_data             (DESTROYS DATABASE)
+#   ✗  NEVER: docker system prune -a --volumes     (DESTROYS ALL VOLUMES)
+#
+# If the database appears empty after a deploy, check for backups:
+#   bash scripts/restore-db.sh --list
+#   bash scripts/restore-db.sh --latest
+# ============================================================
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -150,7 +163,22 @@ done
 
 # 4. Rebuild and Start Containers
 echo "Rebuilding and starting containers..."
+# NEVER use `docker compose down -v` — that destroys the db_data volume and wipes the database.
+# --remove-orphans only removes containers for services not in the compose file; volumes are preserved.
 docker compose down --remove-orphans
+
+# Verify the db_data volume still exists before bringing containers up
+if ! docker volume inspect bar_stock_app_pro_db_data > /dev/null 2>&1 && \
+   ! docker volume inspect topshelf_db_data > /dev/null 2>&1 && \
+   ! docker volume ls --format '{{.Name}}' | grep -q 'db_data'; then
+    echo ""
+    echo "WARNING: The db_data Docker volume was not found."
+    echo "  This may mean the database volume was deleted and data could be lost."
+    echo "  If you have a backup, restore it after the app starts:"
+    echo "    bash $SCRIPT_DIR/restore-db.sh --latest"
+    echo ""
+fi
+
 docker compose up -d --build
 
 # 5. Wait for PostgreSQL to accept connections (using default postgres db)

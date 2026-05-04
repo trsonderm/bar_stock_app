@@ -893,4 +893,68 @@ CREATE TABLE IF NOT EXISTS post_comments (
 );
 CREATE INDEX IF NOT EXISTS post_comments_post_idx ON post_comments(post_id);
 
+-- =========================================================
+-- 46. Mobile push notification device tokens
+-- =========================================================
+CREATE TABLE IF NOT EXISTS device_tokens (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    token TEXT NOT NULL,
+    platform TEXT NOT NULL CHECK(platform IN ('ios', 'android')),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(user_id, token)
+);
+CREATE INDEX IF NOT EXISTS device_tokens_user_idx ON device_tokens(user_id);
+
+-- =========================================================
+-- 47. Shift swap requests
+-- =========================================================
+-- Status flow:
+--   pending_employee  — requester sent, waiting for target employee to accept/decline
+--   pending_manager   — both employees agreed, waiting for manager approval
+--   approved          — manager approved, schedules swapped
+--   declined          — declined by target employee OR manager
+CREATE TABLE IF NOT EXISTS shift_swap_requests (
+    id SERIAL PRIMARY KEY,
+    organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    requester_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    target_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    requester_schedule_id INTEGER NOT NULL REFERENCES user_schedules(id) ON DELETE CASCADE,
+    target_schedule_id INTEGER NOT NULL REFERENCES user_schedules(id) ON DELETE CASCADE,
+    status TEXT NOT NULL DEFAULT 'pending_employee'
+        CHECK(status IN ('pending_employee','pending_manager','approved','declined')),
+    employee_responded_at TIMESTAMPTZ,
+    manager_responded_at TIMESTAMPTZ,
+    manager_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    decline_reason TEXT,
+    message TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS swap_requests_org_idx ON shift_swap_requests(organization_id, status);
+CREATE INDEX IF NOT EXISTS swap_requests_requester_idx ON shift_swap_requests(requester_id);
+CREATE INDEX IF NOT EXISTS swap_requests_target_idx ON shift_swap_requests(target_id);
+
+-- =========================================================
+-- 48. Time off requests
+-- =========================================================
+CREATE TABLE IF NOT EXISTS time_off_requests (
+    id SERIAL PRIMARY KEY,
+    organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    start_date DATE NOT NULL,
+    end_date DATE NOT NULL,
+    reason TEXT,
+    status TEXT NOT NULL DEFAULT 'pending'
+        CHECK(status IN ('pending','approved','declined')),
+    reviewed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    reviewed_at TIMESTAMPTZ,
+    decline_reason TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS time_off_org_idx ON time_off_requests(organization_id, status);
+CREATE INDEX IF NOT EXISTS time_off_user_idx ON time_off_requests(user_id);
+
 COMMIT;
