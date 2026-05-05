@@ -101,32 +101,37 @@ export async function GET(req: NextRequest) {
         });
 
         // Pending swap requests that involve this user (for badge/alert display)
-        const pendingSwaps = await db.query(
-            `SELECT ssr.id, ssr.status, ssr.message,
-                    ssr.requester_id, ssr.target_id,
-                    COALESCE(ru.display_name, ru.first_name || ' ' || ru.last_name) AS requester_name,
-                    COALESCE(tu.display_name, tu.first_name || ' ' || tu.last_name) AS target_name,
-                    rs.date AS requester_date, rs.shift_id AS requester_shift_id,
-                    rsh.label AS requester_shift_name, rsh.start_time AS requester_start, rsh.end_time AS requester_end,
-                    ts.date AS target_date, ts.shift_id AS target_shift_id,
-                    tsh.label AS target_shift_name, tsh.start_time AS target_start, tsh.end_time AS target_end
-             FROM shift_swap_requests ssr
-             JOIN users ru ON ru.id = ssr.requester_id
-             JOIN users tu ON tu.id = ssr.target_id
-             JOIN user_schedules rs ON rs.id = ssr.requester_schedule_id
-             JOIN user_schedules ts ON ts.id = ssr.target_schedule_id
-             JOIN shifts rsh ON rsh.id = rs.shift_id
-             JOIN shifts tsh ON tsh.id = ts.shift_id
-             WHERE ssr.organization_id = $1
-               AND (ssr.requester_id = $2 OR ssr.target_id = $2)
-               AND ssr.status IN ('pending_employee','pending_manager')
-             ORDER BY ssr.created_at DESC`,
-            [session.organizationId, session.id]
-        );
+        let pendingSwaps: any[] = [];
+        try {
+            pendingSwaps = await db.query(
+                `SELECT ssr.id, ssr.status, ssr.message,
+                        ssr.requester_id, ssr.target_id,
+                        COALESCE(ru.display_name, ru.first_name || ' ' || ru.last_name) AS requester_name,
+                        COALESCE(tu.display_name, tu.first_name || ' ' || tu.last_name) AS target_name,
+                        rs.date AS requester_date, rs.shift_id AS requester_shift_id,
+                        rsh.label AS requester_shift_name, rsh.start_time AS requester_start, rsh.end_time AS requester_end,
+                        ts.date AS target_date, ts.shift_id AS target_shift_id,
+                        tsh.label AS target_shift_name, tsh.start_time AS target_start, tsh.end_time AS target_end
+                 FROM shift_swap_requests ssr
+                 JOIN users ru ON ru.id = ssr.requester_id
+                 JOIN users tu ON tu.id = ssr.target_id
+                 JOIN user_schedules rs ON rs.id = ssr.requester_schedule_id
+                 JOIN user_schedules ts ON ts.id = ssr.target_schedule_id
+                 JOIN shifts rsh ON rsh.id = rs.shift_id
+                 JOIN shifts tsh ON tsh.id = ts.shift_id
+                 WHERE ssr.organization_id = $1
+                   AND (ssr.requester_id = $2 OR ssr.target_id = $2)
+                   AND ssr.status IN ('pending_employee','pending_manager')
+                 ORDER BY ssr.created_at DESC`,
+                [session.organizationId, session.id]
+            );
+        } catch (swapErr: any) {
+            console.warn('Mobile schedule: pending_swaps query failed (table may not exist):', swapErr?.message);
+        }
 
         return NextResponse.json({ schedules, pending_swaps: pendingSwaps, start, end, view });
-    } catch (err) {
-        console.error('Mobile schedule GET error:', err);
+    } catch (err: any) {
+        console.error('Mobile schedule GET error:', err?.message || err);
         return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
     }
 }
