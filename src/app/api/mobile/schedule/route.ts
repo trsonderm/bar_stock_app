@@ -70,25 +70,33 @@ export async function GET(req: NextRequest) {
 
         // Annotate entries with crosses_midnight and spillover flags
         const schedules = rawSchedules.map((s: any) => {
-            const [sh, sm] = s.start_time.split(':').map(Number);
-            const [eh, em] = s.end_time.split(':').map(Number);
+            // Normalize date to YYYY-MM-DD string regardless of how pg returns it
+            const dateStr: string = s.date instanceof Date
+                ? s.date.toISOString().split('T')[0]
+                : String(s.date).split('T')[0];
+
+            const startTime: string = String(s.start_time).slice(0, 5); // "HH:MM"
+            const endTime: string = String(s.end_time).slice(0, 5);
+            const [sh, sm] = startTime.split(':').map(Number);
+            const [eh, em] = endTime.split(':').map(Number);
             const crossesMidnight = (sh * 60 + sm) > (eh * 60 + em);
 
-            // Compute the spillover date (day after shift date)
+            // Compute the spillover date (day after shift date) using string math to avoid tz issues
             let spilloverDate: string | null = null;
             if (crossesMidnight) {
-                const d = new Date(s.date + 'T00:00:00');
-                d.setDate(d.getDate() + 1);
-                spilloverDate = d.toISOString().split('T')[0];
+                const [y, mo, d] = dateStr.split('-').map(Number);
+                const next = new Date(y, mo - 1, d + 1);
+                spilloverDate = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-${String(next.getDate()).padStart(2, '0')}`;
             }
 
             return {
                 ...s,
-                date: typeof s.date === 'string' ? s.date.split('T')[0] : s.date,
+                date: dateStr,
+                start_time: startTime,
+                end_time: endTime,
                 crosses_midnight: crossesMidnight,
                 spillover_date: spilloverDate,
-                // Mark if this entry was fetched only for spillover context (before requested range)
-                is_pre_range: s.date < start,
+                is_pre_range: dateStr < (start ?? ''),
             };
         });
 
