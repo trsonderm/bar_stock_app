@@ -34,9 +34,14 @@ export async function GET(req: NextRequest) {
         }
         if (!end) end = start;
 
+        // Expand fetch range 1 day earlier to capture overnight shifts that spill into range start
+        const fetchStart = new Date(start + 'T00:00:00');
+        fetchStart.setDate(fetchStart.getDate() - 1);
+        const fetchStartStr = fetchStart.toISOString().split('T')[0];
+
         // Build location filter
         let locationJoin = '';
-        const params: any[] = [session.organizationId, start, end];
+        const params: any[] = [session.organizationId, fetchStartStr, end];
         let idx = 4;
 
         if (locationId) {
@@ -45,7 +50,7 @@ export async function GET(req: NextRequest) {
             idx++;
         }
 
-        const schedules = await db.query(
+        const rawSchedules = await db.query(
             `SELECT us.id, us.date, us.user_id, us.shift_id, us.recurring_group_id,
                     s.label AS shift_name, s.start_time, s.end_time, s.color,
                     COALESCE(u.display_name, u.first_name || ' ' || u.last_name) AS user_name,
@@ -62,6 +67,30 @@ export async function GET(req: NextRequest) {
              ORDER BY us.date, s.start_time, u.first_name`,
             [...params, session.id]
         );
+
+        // Annotate entries with crosses_midnight and spillover flags
+        const schedules = rawSchedules.map((s: any) => {
+            const [sh, sm] = s.start_time.split(':').map(Number);
+            const [eh, em] = s.end_time.split(':').map(Number);
+            const crossesMidnight = (sh * 60 + sm) > (eh * 60 + em);
+
+            // Compute the spillover date (day after shift date)
+            let spilloverDate: string | null = null;
+            if (crossesMidnight) {
+                const d = new Date(s.date + 'T00:00:00');
+                d.setDate(d.getDate() + 1);
+                spilloverDate = d.toISOString().split('T')[0];
+            }
+
+            return {
+                ...s,
+                date: typeof s.date === 'string' ? s.date.split('T')[0] : s.date,
+                crosses_midnight: crossesMidnight,
+                spillover_date: spilloverDate,
+                // Mark if this entry was fetched only for spillover context (before requested range)
+                is_pre_range: s.date < start,
+            };
+        });
 
         // Pending swap requests that involve this user (for badge/alert display)
         const pendingSwaps = await db.query(

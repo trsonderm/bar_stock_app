@@ -421,41 +421,127 @@ NOTES:
 
 GET /api/mobile/schedule
 
-QUERY PARAMETERS (all optional):
-  ?view=week|month         View mode (default: week)
-  ?start=YYYY-MM-DD        Range start (default: start of current week/month)
-  ?end=YYYY-MM-DD          Range end (default: same as start)
-  ?location_id=2           Filter to a specific location
+All results are automatically scoped to the authenticated user's organization.
+You cannot retrieve another organization's schedule.
 
-RESPONSE (200 OK):
+QUERY PARAMETERS (all optional):
+  ?view=week|month         View mode hint (default: week — affects default range)
+  ?start=YYYY-MM-DD        Range start date (inclusive)
+  ?end=YYYY-MM-DD          Range end date (inclusive, defaults to start if omitted)
+  ?location_id=<id>        Filter to a specific location ID
+
+SCOPE: Every response only returns users who belong to the authenticated user's
+organization. The "is_mine" flag marks shifts belonging to the current user.
+
+── REQUEST VARIATIONS ───────────────────────────────────────────────────────────
+
+Single day (today's schedule):
+  GET /api/mobile/schedule?start=2026-05-04&end=2026-05-04
+
+Single day (any specific date):
+  GET /api/mobile/schedule?start=2026-05-10&end=2026-05-10
+
+Single day filtered by location:
+  GET /api/mobile/schedule?start=2026-05-04&end=2026-05-04&location_id=2
+
+Current week (Mon–Sun, auto-computed by server):
+  GET /api/mobile/schedule
+  GET /api/mobile/schedule?view=week
+
+Explicit week range:
+  GET /api/mobile/schedule?start=2026-05-04&end=2026-05-10
+  GET /api/mobile/schedule?view=week&start=2026-05-04&end=2026-05-10
+
+Week filtered by location:
+  GET /api/mobile/schedule?start=2026-05-04&end=2026-05-10&location_id=2
+
+Current month (auto-computed by server):
+  GET /api/mobile/schedule?view=month
+
+Explicit month range:
+  GET /api/mobile/schedule?start=2026-05-01&end=2026-05-31
+  GET /api/mobile/schedule?view=month&start=2026-05-01&end=2026-05-31
+
+Month filtered by location:
+  GET /api/mobile/schedule?view=month&start=2026-05-01&end=2026-05-31&location_id=2
+
+Multi-week or arbitrary range (any start/end you need):
+  GET /api/mobile/schedule?start=2026-05-01&end=2026-05-21
+
+Note: The server internally fetches one additional day before "start" to capture
+overnight shifts that spill into the range start date. Those entries have
+"is_pre_range": true so the client can filter them from display if needed.
+
+── RESPONSE (200 OK) ────────────────────────────────────────────────────────────
+
 {
   "schedules": [
     {
       "id": 301,
-      "date": "2026-05-05",
+      "date": "2026-05-05",           ← always YYYY-MM-DD (local date, no timezone shift)
       "user_id": 42,
       "shift_id": 5,
       "recurring_group_id": null,
       "shift_name": "Evening",
-      "start_time": "17:00",
+      "start_time": "17:00",          ← HH:MM 24-hour format
       "end_time": "23:00",
       "color": "#1d4ed8",
       "user_name": "Alex Smith",
-      "user_avatar": null,
+      "user_avatar": null,            ← base64 data-URL or null
       "position": "Head Bartender",
-      "is_mine": true
+      "is_mine": true,                ← true only for the authenticated user's shifts
+      "crosses_midnight": false,      ← true when start_time > end_time (overnight shift)
+      "spillover_date": null,         ← YYYY-MM-DD of next day if crosses_midnight, else null
+      "is_pre_range": false           ← true if this entry was from the day before requested start
+    },
+    {
+      "id": 302,
+      "date": "2026-05-05",
+      "shift_name": "Closing",
+      "start_time": "22:00",
+      "end_time": "02:00",            ← end < start = overnight shift
+      "crosses_midnight": true,
+      "spillover_date": "2026-05-06", ← this shift continues into May 6
+      "is_pre_range": false,
+      ...
     }
   ],
   "pending_swaps": [ ...swap objects (see Shift Swaps section) ],
-  "start": "2026-05-05",
-  "end": "2026-05-11",
+  "start": "2026-05-05",             ← the start date you requested
+  "end": "2026-05-11",               ← the end date used
   "view": "week"
 }
 
-NOTES:
-- "is_mine" flags shifts belonging to the authenticated user.
-- "pending_swaps" lists any open swap requests involving this user, for
-  displaying badges or alerts without a separate API call.
+── OVERNIGHT SHIFTS ─────────────────────────────────────────────────────────────
+
+When "crosses_midnight" is true, the shift starts on "date" and ends on
+"spillover_date". The end_time is on the following calendar day.
+
+To show overnight continuation in a day view:
+  1. Display the shift normally on its "date" (show start_time, note "+1" on end_time)
+  2. On "spillover_date", show a continuation entry using the same record:
+       filter: schedules.filter(s => s.crosses_midnight && s.spillover_date === targetDate)
+       display: "until <end_time>" with an "↩ overnight" badge
+
+To check if a day has overnight continuation from the previous day:
+  spillovers = schedules.filter(s => s.crosses_midnight && s.spillover_date === dateString)
+
+── FILTERING ONLY YOUR OWN SHIFTS (client-side) ─────────────────────────────────
+
+All schedules are returned for the org. To show only the authenticated user's shifts:
+  myShifts = schedules.filter(s => s.is_mine === true)
+
+── NOTES ────────────────────────────────────────────────────────────────────────
+
+- All schedules are scoped to the authenticated user's organization automatically.
+- "is_mine" flags shifts belonging to the authenticated user only.
+- "pending_swaps" lists open swap requests involving the user — no extra call needed.
+- Archived users are excluded from results.
+- "color" comes from the shift definition. Use it for color-coding schedule blocks.
+- Dates are always raw YYYY-MM-DD strings — compare as strings, not Date objects,
+  to avoid timezone shift bugs (do not use new Date(s.date).getDate()).
+- The "location_id" filter uses JOIN — users without a location assignment are
+  excluded when this filter is active.
 
 
 ────────────────────────────────────────────────────────────────────────────────
@@ -733,5 +819,5 @@ PATCH   /api/mobile/schedule/time-off       Bearer  Approve or decline a request
 ================================================================================
   TopShelf Inventory — Mobile API Reference
   Server: https://www.topshelfInventory.com
-  API Version: 2.0  |  Last updated: 2026-05-04
+  API Version: 2.1  |  Last updated: 2026-05-04
 ================================================================================

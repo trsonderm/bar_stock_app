@@ -1038,6 +1038,16 @@ export default function UserSchedulerClient() {
                                                 const isToday = dateStr === formatLocalDate(new Date());
                                                 const daySchedules = schedules.filter(s => s.user_id === user.id && s.date.split('T')[0] === dateStr);
 
+                                                // Overnight shifts from the previous day that spill into this column
+                                                const prevDay = new Date(day.getFullYear(), day.getMonth(), day.getDate() - 1);
+                                                const prevDateStr = formatLocalDate(prevDay);
+                                                const overnightSpillovers = schedules.filter(s => {
+                                                    if (s.user_id !== user.id || s.date.split('T')[0] !== prevDateStr) return false;
+                                                    const [sh, sm] = s.start_time.split(':').map(Number);
+                                                    const [eh, em] = s.end_time.split(':').map(Number);
+                                                    return (sh * 60 + sm) > (eh * 60 + em);
+                                                });
+
                                                 return (
                                                     <div
                                                         key={di}
@@ -1055,12 +1065,44 @@ export default function UserSchedulerClient() {
                                                             />
                                                         ))}
 
-                                                        {daySchedules.length === 0 && !hasAnyShift && (
+                                                        {daySchedules.length === 0 && overnightSpillovers.length === 0 && !hasAnyShift && (
                                                             <div className="absolute inset-0 flex items-center justify-center">
                                                                 <div className="w-full h-px bg-gray-800/60" />
                                                             </div>
                                                         )}
 
+                                                        {/* Overnight continuation blocks — shift started yesterday, ends in this column */}
+                                                        {overnightSpillovers.map(schedule => {
+                                                            const shiftDef = shifts.find(s => s.id === schedule.shift_id);
+                                                            const color = shiftDef?.color || '#3b82f6';
+                                                            const [eh, em] = schedule.end_time.split(':').map(Number);
+                                                            const widthPct = Math.max(((eh * 60 + em) / (24 * 60)) * 100, 3);
+                                                            return (
+                                                                <div
+                                                                    key={`spill-${schedule.id}`}
+                                                                    className="absolute top-2 bottom-2 flex items-center overflow-hidden cursor-pointer hover:brightness-110 hover:z-10 shadow-sm transition-all"
+                                                                    style={{
+                                                                        left: 0,
+                                                                        width: `${widthPct}%`,
+                                                                        backgroundColor: color,
+                                                                        opacity: 0.88,
+                                                                        borderRadius: '0 4px 4px 0',
+                                                                        borderTop: '1px solid rgba(255,255,255,0.15)',
+                                                                        borderRight: '1px solid rgba(255,255,255,0.15)',
+                                                                        borderBottom: '1px solid rgba(255,255,255,0.15)',
+                                                                        borderLeft: '2px dashed rgba(255,255,255,0.45)',
+                                                                    }}
+                                                                    onClick={() => handleEdit(schedule)}
+                                                                    title={`${schedule.shift_name} — overnight continuation, ends ${schedule.end_time}`}
+                                                                >
+                                                                    <span className="text-white text-[9px] font-bold px-1.5 truncate drop-shadow">
+                                                                        ↩ {schedule.end_time}
+                                                                    </span>
+                                                                </div>
+                                                            );
+                                                        })}
+
+                                                        {/* Today's shifts — overnight shifts get a flat right edge + dashed border to signal they continue */}
                                                         {daySchedules.map(schedule => {
                                                             const shiftDef = shifts.find(s => s.id === schedule.shift_id);
                                                             const color = shiftDef?.color || '#3b82f6';
@@ -1068,7 +1110,8 @@ export default function UserSchedulerClient() {
                                                             const [endH, endM] = schedule.end_time.split(':').map(Number);
                                                             const startTotal = startH * 60 + startM;
                                                             let endTotal = endH * 60 + endM;
-                                                            if (endTotal <= startTotal) endTotal = 24 * 60;
+                                                            const isOvernight = startTotal > endTotal;
+                                                            if (isOvernight) endTotal = 24 * 60;
                                                             const leftPct = (startTotal / (24 * 60)) * 100;
                                                             const widthPct = Math.max(((endTotal - startTotal) / (24 * 60)) * 100, 4);
 
@@ -1077,21 +1120,27 @@ export default function UserSchedulerClient() {
                                                                     key={schedule.id}
                                                                     draggable
                                                                     onDragStart={(e) => handleDragStart(e, schedule)}
-                                                                    className="absolute top-2 bottom-2 rounded px-2 flex flex-col justify-center overflow-hidden group cursor-pointer hover:brightness-110 hover:z-10 shadow-sm transition-all"
+                                                                    className="absolute top-2 bottom-2 flex flex-col justify-center overflow-hidden group cursor-pointer hover:brightness-110 hover:z-10 shadow-sm transition-all"
                                                                     style={{
                                                                         left: `${leftPct}%`,
-                                                                        width: `${widthPct}%`,
+                                                                        width: isOvernight ? `calc(${widthPct}% + 1px)` : `${widthPct}%`,
                                                                         backgroundColor: color,
-                                                                        border: '1px solid rgba(255,255,255,0.15)',
+                                                                        borderRadius: isOvernight ? '4px 0 0 4px' : '4px',
+                                                                        borderTop: '1px solid rgba(255,255,255,0.15)',
+                                                                        borderBottom: '1px solid rgba(255,255,255,0.15)',
+                                                                        borderLeft: '1px solid rgba(255,255,255,0.15)',
+                                                                        borderRight: isOvernight ? '2px dashed rgba(255,255,255,0.45)' : '1px solid rgba(255,255,255,0.15)',
                                                                     }}
                                                                     onClick={() => handleEdit(schedule)}
-                                                                    title={`${schedule.shift_name} · ${schedule.start_time}–${schedule.end_time}`}
+                                                                    title={`${schedule.shift_name} · ${schedule.start_time}–${schedule.end_time}${isOvernight ? ' (overnight →)' : ''}`}
                                                                 >
-                                                                    <div className="text-white text-[10px] font-bold truncate leading-tight drop-shadow">
-                                                                        {schedule.shift_name}
-                                                                    </div>
-                                                                    <div className="text-white/80 text-[9px] truncate leading-tight">
-                                                                        {schedule.start_time}–{schedule.end_time}
+                                                                    <div className="px-2">
+                                                                        <div className="text-white text-[10px] font-bold truncate leading-tight drop-shadow">
+                                                                            {schedule.shift_name}
+                                                                        </div>
+                                                                        <div className="text-white/80 text-[9px] truncate leading-tight">
+                                                                            {schedule.start_time}–{schedule.end_time}{isOvernight ? ' →' : ''}
+                                                                        </div>
                                                                     </div>
                                                                     {schedule.recurring_group_id && (
                                                                         <div className="absolute right-1 top-1 w-1 h-1 rounded-full bg-white opacity-70" title="Recurring" />
