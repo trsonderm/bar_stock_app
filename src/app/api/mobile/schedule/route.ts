@@ -50,23 +50,48 @@ export async function GET(req: NextRequest) {
             idx++;
         }
 
-        const rawSchedules = await db.query(
-            `SELECT us.id, us.date, us.user_id, us.shift_id, us.recurring_group_id,
-                    s.label AS shift_name, s.start_time, s.end_time, s.color,
-                    COALESCE(u.display_name, u.first_name || ' ' || u.last_name) AS user_name,
-                    u.profile_picture AS user_avatar,
-                    u.position,
-                    (us.user_id = $${idx}) AS is_mine
-             FROM user_schedules us
-             JOIN shifts s ON s.id = us.shift_id
-             JOIN users u ON u.id = us.user_id
-             ${locationJoin}
-             WHERE us.organization_id = $1
-               AND us.date BETWEEN $2 AND $3
-               AND COALESCE(u.is_archived, false) = false
-             ORDER BY us.date, s.start_time, u.first_name`,
-            [...params, session.id]
-        );
+        // Try full query first; fall back to base columns if optional ALTER TABLE
+        // columns (recurring_group_id, position) haven't been migrated yet on this DB.
+        let rawSchedules: any[];
+        try {
+            rawSchedules = await db.query(
+                `SELECT us.id, us.date, us.user_id, us.shift_id, us.recurring_group_id,
+                        s.label AS shift_name, s.start_time, s.end_time, s.color,
+                        COALESCE(u.display_name, u.first_name || ' ' || u.last_name) AS user_name,
+                        u.profile_picture AS user_avatar,
+                        u.position,
+                        (us.user_id = $${idx}) AS is_mine
+                 FROM user_schedules us
+                 JOIN shifts s ON s.id = us.shift_id
+                 JOIN users u ON u.id = us.user_id
+                 ${locationJoin}
+                 WHERE us.organization_id = $1
+                   AND us.date BETWEEN $2 AND $3
+                   AND COALESCE(u.is_archived, false) = false
+                 ORDER BY us.date, s.start_time, u.first_name`,
+                [...params, session.id]
+            );
+        } catch (fullQueryErr: any) {
+            console.warn('Mobile schedule: full query failed, trying base query:', fullQueryErr?.message);
+            // Fallback: no recurring_group_id or position (pre-migration DB)
+            rawSchedules = await db.query(
+                `SELECT us.id, us.date, us.user_id, us.shift_id,
+                        NULL::text AS recurring_group_id,
+                        s.label AS shift_name, s.start_time, s.end_time, s.color,
+                        COALESCE(u.display_name, u.first_name || ' ' || u.last_name) AS user_name,
+                        u.profile_picture AS user_avatar,
+                        NULL::text AS position,
+                        (us.user_id = $${idx}) AS is_mine
+                 FROM user_schedules us
+                 JOIN shifts s ON s.id = us.shift_id
+                 JOIN users u ON u.id = us.user_id
+                 ${locationJoin}
+                 WHERE us.organization_id = $1
+                   AND us.date BETWEEN $2 AND $3
+                 ORDER BY us.date, s.start_time, u.first_name`,
+                [...params, session.id]
+            );
+        }
 
         // Annotate entries with crosses_midnight and spillover flags
         const schedules = rawSchedules.map((s: any) => {
