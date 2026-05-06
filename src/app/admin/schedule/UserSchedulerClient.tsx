@@ -1075,12 +1075,16 @@ export default function UserSchedulerClient() {
                                                         />
                                                     )}
 
-                                                    {/* Overnight continuation block */}
+                                                    {/* Overnight continuation block — starts at left edge of this column */}
                                                     {overnightSpillovers.map(schedule => {
                                                         const shiftDef = shifts.find(s => s.id === schedule.shift_id);
                                                         const color = shiftDef?.color || '#3b82f6';
                                                         const [eh, em] = schedule.end_time.split(':').map(Number);
                                                         const widthPct = Math.max(((eh * 60 + em) / (24 * 60)) * 100, 3);
+                                                        const spillWide = widthPct >= 12;
+                                                        const spillMid  = widthPct >= 6;
+                                                        // Format end time as "5:00p"
+                                                        const fmtEnd = `${eh % 12 || 12}:${String(em).padStart(2,'0')}${eh >= 12 ? 'p' : 'a'}`;
                                                         return (
                                                             <div
                                                                 key={`spill-${schedule.id}`}
@@ -1091,18 +1095,30 @@ export default function UserSchedulerClient() {
                                                                     left: 0,
                                                                     width: `${widthPct}%`,
                                                                     backgroundColor: color,
-                                                                    opacity: 0.82,
+                                                                    opacity: 0.85,
                                                                     borderRadius: '0 5px 5px 0',
-                                                                    border: '1px solid rgba(255,255,255,0.12)',
-                                                                    borderLeft: '2px dashed rgba(255,255,255,0.4)',
-                                                                    backgroundImage: 'linear-gradient(to bottom, rgba(255,255,255,0.12) 0%, transparent 100%)',
+                                                                    border: '1px solid rgba(255,255,255,0.13)',
+                                                                    borderLeft: '2px dashed rgba(255,255,255,0.45)',
+                                                                    backgroundImage: 'linear-gradient(to bottom, rgba(255,255,255,0.13) 0%, rgba(0,0,0,0.06) 100%)',
                                                                     boxShadow: '0 2px 6px rgba(0,0,0,0.35)',
                                                                 }}
                                                                 onClick={() => handleEdit(schedule)}
-                                                                title={`${schedule.shift_name} — overnight, ends ${schedule.end_time}`}
+                                                                title={`${schedule.shift_name} — overnight continuation, ends ${schedule.end_time}`}
                                                             >
-                                                                <div className="h-full flex flex-col justify-center px-2">
-                                                                    <span className="text-white text-[9px] font-semibold truncate leading-tight drop-shadow">↩ {schedule.end_time}</span>
+                                                                <div className="h-full flex flex-col justify-center px-1.5 min-w-0">
+                                                                    {spillWide && (
+                                                                        <div className="text-white text-[10px] font-bold truncate leading-tight drop-shadow-sm">
+                                                                            {schedule.shift_name}
+                                                                        </div>
+                                                                    )}
+                                                                    {spillMid && (
+                                                                        <div className="text-white/80 text-[9px] truncate leading-tight drop-shadow-sm">
+                                                                            until {fmtEnd}
+                                                                        </div>
+                                                                    )}
+                                                                    {!spillMid && (
+                                                                        <div className="text-white/80 text-[8px] leading-tight drop-shadow-sm">↩</div>
+                                                                    )}
                                                                 </div>
                                                             </div>
                                                         );
@@ -1120,7 +1136,17 @@ export default function UserSchedulerClient() {
                                                         if (isOvernight) endTotal = 24 * 60;
                                                         const leftPct = (startTotal / (24 * 60)) * 100;
                                                         const widthPct = Math.max(((endTotal - startTotal) / (24 * 60)) * 100, 3.5);
-                                                        const isTiny = widthPct < 8; // too narrow for two lines of text
+
+                                                        // Text tier based on bar width:
+                                                        //  < 4%  → no text
+                                                        //  4–9%  → start time only (short format)
+                                                        //  9–17% → "start–end" on one line
+                                                        //  ≥ 17% → shift name + time on two lines
+                                                        const fmtShort = (h: number, m: number) =>
+                                                            `${h % 12 || 12}:${String(m).padStart(2,'0')}${h >= 12 ? 'p' : 'a'}`;
+                                                        const startShort = fmtShort(startH, startM);
+                                                        const endShort   = fmtShort(endH, endM);
+                                                        const tier = widthPct < 4 ? 0 : widthPct < 9 ? 1 : widthPct < 17 ? 2 : 3;
 
                                                         return (
                                                             <div
@@ -1136,35 +1162,51 @@ export default function UserSchedulerClient() {
                                                                     backgroundColor: color,
                                                                     borderRadius: isOvernight ? '5px 0 0 5px' : '5px',
                                                                     border: '1px solid rgba(255,255,255,0.14)',
-                                                                    borderRight: isOvernight ? '2px dashed rgba(255,255,255,0.42)' : '1px solid rgba(255,255,255,0.14)',
-                                                                    backgroundImage: 'linear-gradient(to bottom, rgba(255,255,255,0.14) 0%, rgba(0,0,0,0.08) 100%)',
+                                                                    borderRight: isOvernight ? '2px dashed rgba(255,255,255,0.45)' : '1px solid rgba(255,255,255,0.14)',
+                                                                    backgroundImage: 'linear-gradient(to bottom, rgba(255,255,255,0.15) 0%, rgba(0,0,0,0.06) 100%)',
                                                                     boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
                                                                 }}
                                                                 onClick={() => handleEdit(schedule)}
-                                                                title={`${schedule.shift_name} · ${schedule.start_time}–${schedule.end_time}${isOvernight ? ' (→ midnight)' : ''}`}
+                                                                title={`${schedule.shift_name} · ${schedule.start_time}–${schedule.end_time}${isOvernight ? ' → midnight' : ''}`}
                                                             >
-                                                                <div className="h-full flex flex-col justify-center px-2 min-w-0">
-                                                                    {!isTiny && (
+                                                                {/* Text content — tiered by bar width */}
+                                                                <div className="h-full flex flex-col justify-center px-2 min-w-0 pr-4">
+                                                                    {tier >= 3 && (
                                                                         <div className="text-white text-[10px] font-bold truncate leading-tight drop-shadow-sm">
                                                                             {schedule.shift_name}
                                                                         </div>
                                                                     )}
-                                                                    <div className={`text-white/80 truncate leading-tight drop-shadow-sm ${isTiny ? 'text-[8px]' : 'text-[9px]'}`}>
-                                                                        {schedule.start_time}–{schedule.end_time}{isOvernight ? ' →' : ''}
-                                                                    </div>
+                                                                    {tier >= 2 && (
+                                                                        <div className="text-white/85 text-[9px] truncate leading-tight drop-shadow-sm">
+                                                                            {startShort}–{endShort}{isOvernight ? ' →' : ''}
+                                                                        </div>
+                                                                    )}
+                                                                    {tier === 1 && (
+                                                                        <div className="text-white text-[8px] font-semibold truncate leading-tight drop-shadow-sm">
+                                                                            {startShort}
+                                                                        </div>
+                                                                    )}
+                                                                    {/* tier 0: no text, just color */}
                                                                 </div>
 
-                                                                {/* Recurring dot */}
-                                                                {schedule.recurring_group_id && (
-                                                                    <div className="absolute right-1.5 top-1.5 w-1.5 h-1.5 rounded-full bg-white/70" title="Recurring" />
+                                                                {/* Overnight pill at right edge */}
+                                                                {isOvernight && tier >= 2 && (
+                                                                    <div className="absolute right-0 top-0 bottom-0 flex items-center pr-1.5">
+                                                                        <span className="text-white/70 text-[8px] font-bold">→</span>
+                                                                    </div>
                                                                 )}
 
-                                                                {/* Delete button on hover */}
+                                                                {/* Recurring dot — top-left so it doesn't clash with delete button */}
+                                                                {schedule.recurring_group_id && (
+                                                                    <div className="absolute left-1.5 top-1.5 w-1.5 h-1.5 rounded-full bg-white/60" title="Recurring" />
+                                                                )}
+
+                                                                {/* Delete on hover */}
                                                                 <button
                                                                     onClick={(e) => { e.stopPropagation(); handleDelete(schedule.id, schedule); }}
-                                                                    className="absolute right-0 top-0 bottom-0 bg-red-600/85 px-1.5 opacity-0 group-hover:opacity-100 transition-opacity flex items-center rounded-r-[4px]"
+                                                                    className="absolute right-0 top-0 bottom-0 bg-black/40 px-1.5 opacity-0 group-hover:opacity-100 transition-opacity flex items-center rounded-r-[4px] backdrop-blur-sm"
                                                                 >
-                                                                    <Trash2 size={9} />
+                                                                    <Trash2 size={9} className="text-white" />
                                                                 </button>
                                                             </div>
                                                         );
