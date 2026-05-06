@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { verifyMobileToken } from '@/lib/mobile-auth';
+import { notify } from '@/lib/push-notifications';
 
 // POST /api/mobile/feed/like?id=<postId> — toggle like
 export async function POST(req: NextRequest) {
@@ -13,7 +14,7 @@ export async function POST(req: NextRequest) {
 
         // Verify post belongs to same org
         const post = await db.one(
-            'SELECT id FROM org_posts WHERE id = $1 AND organization_id = $2',
+            'SELECT id, user_id FROM org_posts WHERE id = $1 AND organization_id = $2',
             [postId, session.organizationId]
         );
         if (!post) return NextResponse.json({ error: 'Post not found' }, { status: 404 });
@@ -33,6 +34,22 @@ export async function POST(req: NextRequest) {
                 [postId, session.id, session.organizationId]
             );
             liked = true;
+
+            // Notify post author (skip if they liked their own post)
+            if (post.user_id && post.user_id !== session.id) {
+                const liker = await db.one(
+                    `SELECT COALESCE(display_name, first_name || ' ' || last_name) AS name FROM users WHERE id = $1`,
+                    [session.id]
+                );
+                await notify(
+                    post.user_id,
+                    session.organizationId,
+                    'post_liked',
+                    '❤️ New like',
+                    `${liker?.name ?? 'Someone'} liked your post`,
+                    { post_id: String(postId), type: 'post_liked' }
+                ).catch(() => {}); // non-fatal
+            }
         }
 
         const countRow = await db.one('SELECT COUNT(*) AS count FROM post_likes WHERE post_id = $1', [postId]);

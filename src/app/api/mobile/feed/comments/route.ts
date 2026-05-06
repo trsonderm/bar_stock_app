@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { verifyMobileToken } from '@/lib/mobile-auth';
+import { notify } from '@/lib/push-notifications';
 
 // GET /api/mobile/feed/comments?postId=<id> — load comments for a post
 export async function GET(req: NextRequest) {
@@ -43,7 +44,7 @@ export async function POST(req: NextRequest) {
         if (!content?.trim()) return NextResponse.json({ error: 'content required' }, { status: 400 });
 
         const post = await db.one(
-            'SELECT id FROM org_posts WHERE id = $1 AND organization_id = $2',
+            'SELECT id, user_id FROM org_posts WHERE id = $1 AND organization_id = $2',
             [postId, session.organizationId]
         );
         if (!post) return NextResponse.json({ error: 'Post not found' }, { status: 404 });
@@ -59,6 +60,30 @@ export async function POST(req: NextRequest) {
              FROM users WHERE id = $1`,
             [session.id]
         );
+
+        // Collect users to notify: post author + anyone who commented or liked (deduped, exclude self)
+        const engagedRows = await db.query(
+            `SELECT DISTINCT user_id FROM (
+                SELECT user_id FROM post_comments WHERE post_id = $1 AND user_id != $2
+                UNION
+                SELECT user_id FROM post_likes WHERE post_id = $1 AND user_id != $2
+            ) t`,
+            [postId, session.id]
+        );
+        const engagedIds: number[] = engagedRows.map((r: any) => r.user_id);
+
+        // Notify post author separately (if not already in engagedIds and not self)
+        const notifySet = new Set(engagedIds);
+        if (post.user_id && post.user_id !== session.id) notifySet.add(post.user_id);
+
+        const notifyTitle = `💬 New comment`;
+        const notifyBody = `${me?.author_name ?? 'Someone'} commented on a post`;
+
+        await Promise.allSettled([...notifySet].map(uid =>
+            notify(uid, session.organizationId, 'post_comment', notifyTitle, notifyBody,
+                { post_id: String(postId), type: 'post_comment' }
+            )
+        ));
 
         return NextResponse.json({
             ok: true,
@@ -92,7 +117,6 @@ export async function DELETE(req: NextRequest) {
         );
         if (!comment) return NextResponse.json({ error: 'Comment not found' }, { status: 404 });
 
-        // Only the author can delete (admins can also delete)
         if (comment.user_id !== session.id && session.role !== 'admin') {
             return NextResponse.json({ error: 'Cannot delete another user\'s comment' }, { status: 403 });
         }

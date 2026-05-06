@@ -705,11 +705,416 @@ ERROR RESPONSES:
 
 
 ────────────────────────────────────────────────────────────────────────────────
-11. PUSH NOTIFICATION TYPES
+11. MESSAGING — Direct and group messages between employees
+────────────────────────────────────────────────────────────────────────────────
+
+Messaging uses a thread model. A thread is either "direct" (1-on-1) or "group"
+(2+ other recipients). You always appear in the thread as a member.
+
+── DB MIGRATION REQUIRED ────────────────────────────────────────────────────────
+
+Before using messaging, run the migration on the server:
+  psql -U postgres topshelf -f scripts/mobile-features-migration.sql
+
+This creates: message_threads, message_thread_members, direct_messages,
+              mobile_user_settings
+
+── List threads (inbox) ─────────────────────────────────────────────────────────
+
+GET /api/mobile/messages
+
+RESPONSE (200 OK):
+{
+  "threads": [
+    {
+      "id": 1,
+      "type": "direct",                          ← "direct" or "group"
+      "name": null,                              ← group name (null for direct)
+      "updated_at": "2026-05-05T12:00:00Z",
+      "members": [
+        {
+          "id": 55,
+          "name": "Jamie Lee",
+          "avatar": "data:image/jpeg;base64,...",
+          "position": "Bartender"
+        }
+      ],
+      "last_message": {
+        "id": 200,
+        "content": "See you tonight!",
+        "sender_id": 55,
+        "created_at": "2026-05-05T11:58:00Z"
+      },
+      "unread_count": 2
+    }
+  ]
+}
+
+NOTES:
+- "members" excludes yourself — it is the other people in the thread.
+- "unread_count" counts messages sent by others after your last_read_at timestamp.
+- Threads are sorted newest-updated first.
+- For direct threads, derive the thread display name from members[0].name.
+
+── Start a new thread or send an initial message ────────────────────────────────
+
+POST /api/mobile/messages
+
+REQUEST BODY:
+{
+  "user_ids": [55],                   ← required: who to message (not yourself)
+  "message": "Hey, are you working tonight?",  ← at least one of message/image required
+  "image": "data:image/jpeg;base64,...",       ← optional, base64 data-URI
+  "thread_name": "Closing Crew"       ← optional, only used for group threads (user_ids.length > 1)
+}
+
+BEHAVIOR:
+- user_ids.length === 1 → direct thread. If a direct thread already exists between
+  you and that user, the message is added to it (no duplicate threads).
+- user_ids.length >= 2  → group thread. Always creates a new thread.
+- You do not need to include yourself in user_ids — the server adds you automatically.
+- All user_ids must belong to your organization; mismatches return 400.
+
+RESPONSE (200 OK):
+{
+  "ok": true,
+  "thread_id": 1,
+  "message_id": 200,
+  "created_at": "2026-05-05T12:00:00Z"
+}
+
+Side effect: FCM push notification sent to all recipients.
+
+ERROR RESPONSES:
+  400 { "error": "user_ids required" }
+  400 { "error": "message or image required" }
+  400 { "error": "image must be a base64 data-URI" }
+  400 { "error": "One or more users not found in your organization" }
+
+── Get messages in a thread (paginated) ─────────────────────────────────────────
+
+GET /api/mobile/messages/<threadId>
+
+QUERY PARAMETERS (all optional):
+  ?limit=50        Max messages to return (default: 50, max: 100)
+  ?before=<ISO>    Cursor for pagination: return messages older than this timestamp
+
+Automatically marks the thread as read for your user.
+
+RESPONSE (200 OK):
+{
+  "thread": {
+    "id": 1,
+    "type": "direct",
+    "name": null,
+    "members": [ { "id": 55, "name": "Jamie Lee", "avatar": null, "position": "Bartender" } ]
+  },
+  "messages": [
+    {
+      "id": 198,
+      "sender_id": 55,
+      "content": "Hey!",
+      "image": null,
+      "created_at": "2026-05-05T11:55:00Z",
+      "sender_name": "Jamie Lee",
+      "sender_avatar": null
+    },
+    {
+      "id": 199,
+      "sender_id": 42,
+      "content": "What's up?",
+      "image": null,
+      "created_at": "2026-05-05T11:57:00Z",
+      "sender_name": "Alex Smith",
+      "sender_avatar": null
+    }
+  ],
+  "has_more": false    ← true if there are older messages; paginate with ?before=<oldest created_at>
+}
+
+NOTES:
+- Messages are returned oldest-first (ascending created_at).
+- For pagination: take the oldest message's created_at and pass it as ?before=<ISO>.
+- "image" is a base64 data-URI string or null.
+- To show images: if message.image is not null, render it as an <Image> instead of text.
+
+── Send a message to an existing thread ─────────────────────────────────────────
+
+POST /api/mobile/messages/<threadId>
+
+REQUEST BODY:
+{
+  "message": "On my way!",                       ← at least one of message/image required
+  "image":   "data:image/jpeg;base64,..."        ← optional
+}
+
+RESPONSE (200 OK):
+{
+  "ok": true,
+  "message_id": 201,
+  "created_at": "2026-05-05T12:10:00Z"
+}
+
+Side effect: FCM push sent to all thread members except you.
+
+── Leave a thread ────────────────────────────────────────────────────────────────
+
+DELETE /api/mobile/messages/<threadId>
+
+Removes you from the thread's member list. The thread and its messages are preserved
+for the remaining members. You will no longer receive push notifications for it.
+
+RESPONSE (200 OK):
+  { "ok": true }
+
+── Live messaging — polling for new messages ─────────────────────────────────────
+
+GET /api/mobile/messages/poll?since=<ISO>
+
+Returns all new messages across ALL your threads since the given timestamp.
+Also returns updated unread counts for affected threads.
+
+Use this to keep the inbox live while the app is in the foreground.
+Recommended interval: every 5–8 seconds while the messages screen is open.
+
+For background updates: rely on FCM push (type: "new_message"). When a push
+arrives, call GET /api/mobile/messages/poll?since=<last_poll_time> to refresh.
+
+REQUEST:
+  GET /api/mobile/messages/poll?since=2026-05-05T12:00:00.000Z
+
+RESPONSE (200 OK):
+{
+  "messages": [
+    {
+      "id": 202,
+      "thread_id": 1,
+      "sender_id": 55,
+      "content": "Are you there?",
+      "image": null,
+      "created_at": "2026-05-05T12:02:00Z",
+      "sender_name": "Jamie Lee",
+      "sender_avatar": null
+    }
+  ],
+  "unread": [
+    { "thread_id": 1, "unread_count": "1" }
+  ],
+  "server_time": "2026-05-05T12:02:05.123Z"   ← use this as your next "since" value
+}
+
+POLLING IMPLEMENTATION PATTERN:
+  let lastPollTime = new Date().toISOString();
+  setInterval(async () => {
+    const res = await fetch(`/api/mobile/messages/poll?since=${lastPollTime}`, { headers });
+    const { messages, unread, server_time } = await res.json();
+    lastPollTime = server_time;   // always advance to server_time, not client Date.now()
+    if (messages.length > 0) updateUI(messages, unread);
+  }, 6000);
+
+ERROR RESPONSES:
+  400 { "error": "since param required (ISO timestamp)" }
+  400 { "error": "since must be a valid ISO timestamp" }
+
+
+────────────────────────────────────────────────────────────────────────────────
+12. PROFILE — View and update your user profile
+────────────────────────────────────────────────────────────────────────────────
+
+── Get your profile ─────────────────────────────────────────────────────────────
+
+GET /api/mobile/profile
+
+Returns the authenticated user's full profile. Password and PIN fields are
+NEVER included in any API response.
+
+RESPONSE (200 OK):
+{
+  "profile": {
+    "id": 42,
+    "first_name": "Alex",
+    "last_name": "Smith",
+    "display_name": "Alex S.",           ← used in feed/messages; falls back to full name if null
+    "email": "alex@yourbar.com",
+    "phone": "5550001234",
+    "bio": "Head bartender. Whiskey enthusiast.",
+    "role": "user",                      ← "user" or "admin"
+    "position": "Head Bartender",
+    "profile_picture": null,             ← base64 data-URI or null
+    "created_at": "2025-09-01T00:00:00Z",
+    "notifications_enabled": true,
+    "notify_messages": true,
+    "notify_post_likes": true,
+    "notify_post_comments": true,
+    "notify_schedule": true,
+    "notify_swaps": true,
+    "notify_time_off": true,
+    "address": null,
+    "city": null,
+    "state": null,
+    "zip": null,
+    "country": null
+  }
+}
+
+── Update your profile ───────────────────────────────────────────────────────────
+
+PATCH /api/mobile/profile
+
+Send only the fields you want to change. All fields are optional.
+Whitelisted updatable fields: first_name, last_name, display_name, email, phone, bio
+
+REQUEST BODY (example — any subset of these):
+{
+  "display_name": "Alex S.",
+  "phone": "5550009999",
+  "bio": "New bio text"
+}
+
+To clear a field (set to null): pass null for the field value.
+
+RESPONSE (200 OK):
+{
+  "ok": true,
+  "profile": {
+    "id": 42,
+    "first_name": "Alex",
+    "last_name": "Smith",
+    "display_name": "Alex S.",
+    "email": "alex@yourbar.com",
+    "phone": "5550009999",
+    "bio": "New bio text",
+    "role": "user",
+    "position": "Head Bartender",
+    "profile_picture": null,
+    "created_at": "2025-09-01T00:00:00Z"
+  }
+}
+
+ERROR RESPONSES:
+  400 { "error": "No valid fields provided" }
+  400 { "error": "<field> must be a string or null" }
+  409 { "error": "Email already in use" }
+
+── Upload a profile picture ──────────────────────────────────────────────────────
+
+POST /api/mobile/profile/picture
+
+REQUEST BODY:
+{
+  "image": "data:image/jpeg;base64,/9j/4AAQ..."   ← required, base64 data-URI
+}
+
+Accepted MIME types: image/jpeg, image/png, image/webp, image/gif
+Max size: 5 MB (encoded, including the data-URI prefix)
+
+The image is stored as a base64 data-URI in the database and returned as
+"profile_picture" on GET /api/mobile/profile and in message/feed responses.
+
+RESPONSE (200 OK):
+  { "ok": true }
+
+ERROR RESPONSES:
+  400 { "error": "image (base64 data-URI) required" }
+  400 { "error": "image must be a base64 data-URI (data:image/...)" }
+  400 { "error": "Unsupported image type. Allowed: image/jpeg, image/png, image/webp, image/gif" }
+  413 { "error": "Image too large (max 5 MB)" }
+
+── Remove profile picture ────────────────────────────────────────────────────────
+
+DELETE /api/mobile/profile/picture
+
+RESPONSE (200 OK):
+  { "ok": true }
+
+
+────────────────────────────────────────────────────────────────────────────────
+13. SETTINGS — Notification preferences and address
+────────────────────────────────────────────────────────────────────────────────
+
+Settings are stored per-user in the mobile_user_settings table. A default row
+is created on first GET (all notifications on, no address).
+
+── Get settings ─────────────────────────────────────────────────────────────────
+
+GET /api/mobile/settings
+
+RESPONSE (200 OK):
+{
+  "settings": {
+    "user_id": 42,
+    "notifications_enabled": true,     ← master on/off switch
+    "notify_messages": true,           ← direct message push
+    "notify_post_likes": true,         ← push when someone likes your post
+    "notify_post_comments": true,      ← push when someone comments on your post/thread
+    "notify_schedule": true,           ← push for schedule changes
+    "notify_swaps": true,              ← push for swap requests/updates
+    "notify_time_off": true,           ← push for time-off approval/decline
+    "address": null,
+    "city": null,
+    "state": null,
+    "zip": null,
+    "country": null,
+    "updated_at": "2026-05-05T00:00:00Z"
+  }
+}
+
+── Update settings ───────────────────────────────────────────────────────────────
+
+PATCH /api/mobile/settings
+
+Send only the fields you want to change. A settings row is upserted if it does
+not yet exist.
+
+REQUEST BODY (example — any subset):
+{
+  "notifications_enabled": true,
+  "notify_messages": true,
+  "notify_post_likes": false,
+  "notify_post_comments": true,
+  "notify_schedule": true,
+  "notify_swaps": true,
+  "notify_time_off": false,
+  "address": "123 Main St",
+  "city": "New York",
+  "state": "NY",
+  "zip": "10001",
+  "country": "US"
+}
+
+Boolean fields must be true/false (not "true"/"false" strings).
+String fields accept null to clear.
+
+RESPONSE (200 OK):
+{
+  "ok": true,
+  "settings": { ...updated settings object }
+}
+
+ERROR RESPONSES:
+  400 { "error": "No valid fields provided" }
+  400 { "error": "<field> must be a boolean" }
+  400 { "error": "<field> must be a string or null" }
+
+IMPLEMENTATION NOTES FOR MOBILE:
+- Check "notifications_enabled" before calling notify(). If false, suppress all
+  push. Individual notify_* fields let users opt out of specific push types.
+- The server currently sends pushes without checking these preference flags —
+  enforce them on the client by not displaying or surfacing certain push types
+  when their preference is disabled.
+- Store "address" fields here for staff profile display — they are not used by
+  the server for any logic.
+
+
+────────────────────────────────────────────────────────────────────────────────
+14. PUSH NOTIFICATION TYPES
 ────────────────────────────────────────────────────────────────────────────────
 
 Each push notification (and in-app notification) includes a "type" field:
 
+  new_message             — new direct or group message (data: thread_id, sender_id)
+  post_liked              — someone liked your post (data: post_id)
+  post_comment            — new comment on a post you engaged with (data: post_id)
   swap_request            — new swap request targeting you
   swap_accepted_employee  — your swap request was accepted by the other employee
   swap_declined           — your swap request was declined by the other employee
@@ -721,7 +1126,12 @@ Each push notification (and in-app notification) includes a "type" field:
   time_off_declined       — your time-off request was declined
 
 Use the "type" to deep-link into the appropriate screen when the user taps
-a push notification.
+a push notification:
+  new_message   → navigate to Messages screen, open thread with thread_id
+  post_liked    → navigate to Feed, highlight post with post_id
+  post_comment  → navigate to Feed, open comments for post_id
+  swap_*        → navigate to Schedule → Swaps tab
+  time_off_*    → navigate to Schedule → Time Off tab
 
 ── Server setup for push notifications ──────────────────────────────────────────
 
@@ -739,7 +1149,7 @@ On the mobile client:
 
 
 ────────────────────────────────────────────────────────────────────────────────
-12. ERROR HANDLING — Standard error responses
+15. ERROR HANDLING — Standard error responses
 ────────────────────────────────────────────────────────────────────────────────
 
 All endpoints use standard HTTP status codes.
@@ -764,38 +1174,50 @@ TOKEN EXPIRY HANDLING:
 
 
 ────────────────────────────────────────────────────────────────────────────────
-13. ENDPOINT QUICK REFERENCE
+16. ENDPOINT QUICK REFERENCE
 ────────────────────────────────────────────────────────────────────────────────
 
-METHOD  PATH                                AUTH    DESCRIPTION
-──────  ──────────────────────────────────  ──────  ────────────────────────────────────────────
-POST    /api/mobile/auth                    No      Login → get Bearer token
-GET     /api/mobile/register?token=…        No      Validate invite token
-POST    /api/mobile/register                No      Complete registration
-POST    /api/mobile/device-token            Bearer  Register device for push notifications
-DELETE  /api/mobile/device-token            Bearer  Unregister device (logout)
-GET     /api/mobile/notifications           Bearer  List in-app notifications + unread count
-PATCH   /api/mobile/notifications           Bearer  Mark notification(s) as read
-GET     /api/mobile/feed                    Bearer  Dashboard feed with likes/comments
-POST    /api/mobile/feed                    Bearer  Create a post
-POST    /api/mobile/feed/like?id=…          Bearer  Toggle like on a post
-GET     /api/mobile/feed/comments?postId=…  Bearer  Load comments for a post
-POST    /api/mobile/feed/comments?postId=…  Bearer  Add a comment
-DELETE  /api/mobile/feed/comments?id=…      Bearer  Delete a comment
-GET     /api/mobile/barred                  Bearer  Barred persons list
-POST    /api/mobile/barred                  Bearer  Add a barred person (admin/permission)
-GET     /api/mobile/out-of-stock            Bearer  Low/out-of-stock inventory
-GET     /api/mobile/schedule               Bearer  Full org schedule with pending swaps
-GET     /api/mobile/schedule/swap           Bearer  List my shift swap requests
-POST    /api/mobile/schedule/swap           Bearer  Create a shift swap request
-PATCH   /api/mobile/schedule/swap           Bearer  Accept or decline a swap (target employee)
-GET     /api/mobile/schedule/time-off       Bearer  List my time-off requests
-POST    /api/mobile/schedule/time-off       Bearer  Submit a time-off request
-PATCH   /api/mobile/schedule/time-off       Bearer  Approve or decline a request (admin only)
+METHOD  PATH                                      AUTH    DESCRIPTION
+──────  ────────────────────────────────────────  ──────  ────────────────────────────────────────────
+POST    /api/mobile/auth                          No      Login → get Bearer token
+GET     /api/mobile/register?token=…              No      Validate invite token
+POST    /api/mobile/register                      No      Complete registration
+POST    /api/mobile/device-token                  Bearer  Register device for push notifications
+DELETE  /api/mobile/device-token                  Bearer  Unregister device (logout)
+GET     /api/mobile/notifications                 Bearer  List in-app notifications + unread count
+PATCH   /api/mobile/notifications                 Bearer  Mark notification(s) as read
+GET     /api/mobile/feed                          Bearer  Dashboard feed with likes/comments
+POST    /api/mobile/feed                          Bearer  Create a post
+POST    /api/mobile/feed/like?id=…                Bearer  Toggle like on a post (notifies author)
+GET     /api/mobile/feed/comments?postId=…        Bearer  Load comments for a post
+POST    /api/mobile/feed/comments?postId=…        Bearer  Add a comment (notifies author + engaged)
+DELETE  /api/mobile/feed/comments?id=…            Bearer  Delete a comment
+GET     /api/mobile/barred                        Bearer  Barred persons list
+POST    /api/mobile/barred                        Bearer  Add a barred person (admin/permission)
+GET     /api/mobile/out-of-stock                  Bearer  Low/out-of-stock inventory
+GET     /api/mobile/schedule                      Bearer  Full org schedule with pending swaps
+GET     /api/mobile/schedule/swap                 Bearer  List my shift swap requests
+POST    /api/mobile/schedule/swap                 Bearer  Create a shift swap request
+PATCH   /api/mobile/schedule/swap                 Bearer  Accept or decline a swap (target employee)
+GET     /api/mobile/schedule/time-off             Bearer  List my time-off requests
+POST    /api/mobile/schedule/time-off             Bearer  Submit a time-off request
+PATCH   /api/mobile/schedule/time-off             Bearer  Approve or decline a request (admin only)
+GET     /api/mobile/messages                      Bearer  List all threads (inbox) with unread counts
+POST    /api/mobile/messages                      Bearer  Start a thread or send first message
+GET     /api/mobile/messages/<threadId>           Bearer  Get paginated messages; marks thread read
+POST    /api/mobile/messages/<threadId>           Bearer  Send a message to an existing thread
+DELETE  /api/mobile/messages/<threadId>           Bearer  Leave a thread
+GET     /api/mobile/messages/poll?since=<ISO>     Bearer  Poll for new messages across all threads
+GET     /api/mobile/profile                       Bearer  Get your profile (no password fields)
+PATCH   /api/mobile/profile                       Bearer  Update name, email, phone, bio, etc.
+POST    /api/mobile/profile/picture               Bearer  Upload profile picture (base64 data-URI)
+DELETE  /api/mobile/profile/picture               Bearer  Remove profile picture
+GET     /api/mobile/settings                      Bearer  Get notification preferences + address
+PATCH   /api/mobile/settings                      Bearer  Update notification preferences + address
 
 
 ────────────────────────────────────────────────────────────────────────────────
-14. SECURITY NOTES
+17. SECURITY NOTES
 ────────────────────────────────────────────────────────────────────────────────
 
 - Tokens are signed JWT (HS256). Never decode and trust the payload client-side
@@ -816,8 +1238,26 @@ PATCH   /api/mobile/schedule/time-off       Bearer  Approve or decline a request
 
 - HTTPS is required. All endpoints are served over TLS only.
 
+- Passwords and PINs are NEVER returned by any API endpoint. They are stored
+  as bcrypt hashes (password_hash, pin_hash). If you observe a raw password
+  in any response, treat it as a security incident.
+
+- Image uploads (profile picture, message images) are validated server-side:
+  must start with "data:image/", must be within size limits. Never trust the
+  content-type from the client alone.
+
+- Thread membership is enforced on every message read/send. You cannot read
+  or send to a thread you are not a member of, even if you know the thread ID.
+
+- All user lookups for messaging validate that target users belong to the same
+  organization before creating threads. Cross-org messaging is impossible.
+
+- The poll endpoint (/messages/poll) uses the server's current timestamp in
+  its response ("server_time"). Always advance your "since" cursor to this
+  value, not to client clock, to avoid clock-skew gaps or double-delivers.
+
 ================================================================================
   TopShelf Inventory — Mobile API Reference
   Server: https://www.topshelfInventory.com
-  API Version: 2.1  |  Last updated: 2026-05-04
+  API Version: 3.0  |  Last updated: 2026-05-05
 ================================================================================
