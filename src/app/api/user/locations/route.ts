@@ -10,36 +10,27 @@ export async function GET(req: NextRequest) {
     const userId = session.id;
 
     try {
-        let query = '';
-        let params = [];
+        const { searchParams } = new URL(req.url);
+        const adminAll = searchParams.get('adminAll') === 'true' && session.role === 'admin';
 
-        // If admin (or specific permission?), maybe they can see all locations?
-        // Requirement says "admins... will have a dropdown if they are selected for multiple locations".
-        // Use user_locations table for everyone.
-
-        // CHECK if user is Super Admin or has "all" permission? 
-        // For now, let's stick to explicit assignment in user_locations.
-        // If user_locations has entries, use those. 
-        // IF NO entries in user_locations AND role is admin, maybe show all?
-        // Let's strictly follow the table. If admin wants access, they assign themselves.
+        // Admins requesting all org locations (e.g. for user assignment form)
+        if (adminAll) {
+            const all = await db.query('SELECT id, name FROM locations WHERE organization_id = $1 ORDER BY name ASC', [organizationId]);
+            return NextResponse.json({ locations: all });
+        }
 
         const assigned = await db.query(`
-            SELECT l.id, l.name 
+            SELECT l.id, l.name
             FROM locations l
             JOIN user_locations ul ON l.id = ul.location_id
             WHERE ul.user_id = $1 AND l.organization_id = $2
             ORDER BY l.name ASC
         `, [userId, organizationId]);
 
-        // Fallback: If no locations assigned, maybe they are legacy admin?
-        // Or if table is empty?
-        // Let's check if they have NO assignments.
-        if (assigned.length === 0) {
-            // If admin, maybe return ALL?
-            if (session.role === 'admin') {
-                const all = await db.query('SELECT id, name FROM locations WHERE organization_id = $1 ORDER BY name ASC', [organizationId]);
-                return NextResponse.json({ locations: all });
-            }
+        // Fallback: admin with no explicit location assignments sees all locations
+        if (assigned.length === 0 && session.role === 'admin') {
+            const all = await db.query('SELECT id, name FROM locations WHERE organization_id = $1 ORDER BY name ASC', [organizationId]);
+            return NextResponse.json({ locations: all });
         }
 
         return NextResponse.json({ locations: assigned });

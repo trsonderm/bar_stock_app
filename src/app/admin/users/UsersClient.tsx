@@ -130,7 +130,7 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
     // Fetch Settings info for Shifts & Locations
     useEffect(() => {
         // We need locations and shifts to populate the form
-        fetch('/api/user/locations').then(r => r.json()).then(d => setLocations(d.locations || []));
+        fetch('/api/user/locations?adminAll=true').then(r => r.json()).then(d => setLocations(d.locations || []));
         fetch('/api/admin/settings/shifts').then(r => r.json()).then(d => setShifts(d.shifts || []));
     }, []);
 
