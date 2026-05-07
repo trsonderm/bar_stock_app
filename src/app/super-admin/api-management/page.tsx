@@ -443,7 +443,7 @@ export default function ApiManagementPage() {
             const data = await res.json();
             setLogs(data.logs ?? []);
             setLogsTotal(parseInt(data.total ?? 0));
-            const cats = [...new Set((data.categoryCounts ?? []).map((c: any) => c.category as string))];
+            const cats = [...new Set((data.categoryCounts ?? []).map((c: any) => c.category as string))] as string[];
             setLogCategories(cats);
         } catch {}
         setLogsLoading(false);
