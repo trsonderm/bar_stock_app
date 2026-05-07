@@ -317,8 +317,9 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
 
     return (
         <>
-            <div className={styles.grid}>
-                <div className={styles.card}>
+            {/* Top row: form + invite sidebar */}
+            <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-start', marginBottom: '1.5rem' }}>
+            <div className={styles.card} style={{ flex: 1, minWidth: 0 }}>
                     <div className={styles.cardTitle}>{editingId ? 'Edit User' : 'Create New User'}</div>
                     <form onSubmit={handleSubmit}>
                         <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
@@ -554,65 +555,66 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
                     </form>
                 </div>
 
-                {/* ── Invite by Email ──────────────────────────────────────────── */}
-                <div className={styles.card} style={{ gridColumn: 'span 3' }}>
-                    <div className={styles.cardTitle} style={{ marginBottom: '1rem' }}>📧 Invite New User by Email</div>
-                    <p style={{ color: '#9ca3af', fontSize: '0.85rem', marginTop: 0, marginBottom: '1rem' }}>
-                        Send a registration link to any email address. The recipient clicks the link to set up their name, password, and PIN — no admin setup required.
+                {/* ── Invite by Email sidebar ──────────────────────────────────── */}
+                <div className={styles.card} style={{ width: '280px', flexShrink: 0 }}>
+                    <div className={styles.cardTitle} style={{ marginBottom: '0.75rem', fontSize: '0.9rem' }}>✉ Invite by Email</div>
+                    <p style={{ color: '#9ca3af', fontSize: '0.78rem', margin: '0 0 0.75rem' }}>
+                        Send a registration link. The recipient sets up their own name, password, and PIN.
                     </p>
-                    <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-                        <input
-                            type="email"
-                            value={inviteEmail}
-                            onChange={e => setInviteEmail(e.target.value)}
-                            onKeyDown={async e => { if (e.key === 'Enter') { e.preventDefault(); await sendInvite(); } }}
-                            placeholder="staff@yourbar.com"
-                            style={{ flex: 1, minWidth: '220px', background: '#111827', border: '1px solid #374151', borderRadius: '8px', color: 'white', padding: '0.65rem 0.9rem', fontSize: '0.9rem', outline: 'none' }}
-                        />
-                        <button
-                            onClick={sendInvite}
-                            disabled={inviteSending || !inviteEmail.trim()}
-                            style={{ background: '#059669', color: 'white', border: 'none', borderRadius: '8px', padding: '0.65rem 1.25rem', fontWeight: 700, cursor: 'pointer', fontSize: '0.9rem', opacity: (inviteSending || !inviteEmail.trim()) ? 0.5 : 1, whiteSpace: 'nowrap' }}>
-                            {inviteSending ? 'Sending…' : '✉ Send Invite'}
-                        </button>
-                    </div>
+                    <input
+                        type="email"
+                        value={inviteEmail}
+                        onChange={e => setInviteEmail(e.target.value)}
+                        onKeyDown={async e => { if (e.key === 'Enter') { e.preventDefault(); await sendInvite(); } }}
+                        placeholder="staff@yourbar.com"
+                        style={{ width: '100%', background: '#111827', border: '1px solid #374151', borderRadius: '8px', color: 'white', padding: '0.55rem 0.75rem', fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box', marginBottom: '0.5rem' }}
+                    />
+                    <button
+                        onClick={sendInvite}
+                        disabled={inviteSending || !inviteEmail.trim()}
+                        style={{ width: '100%', background: '#059669', color: 'white', border: 'none', borderRadius: '8px', padding: '0.55rem', fontWeight: 700, cursor: 'pointer', fontSize: '0.85rem', opacity: (inviteSending || !inviteEmail.trim()) ? 0.5 : 1 }}>
+                        {inviteSending ? 'Sending…' : 'Send Invite'}
+                    </button>
 
                     {inviteResult && (
-                        <div style={{ marginTop: '0.75rem', background: inviteResult.ok ? '#052e16' : '#7f1d1d', border: `1px solid ${inviteResult.ok ? '#16a34a' : '#ef4444'}`, borderRadius: '8px', padding: '0.65rem 0.9rem', display: 'flex', alignItems: 'flex-start', gap: '0.75rem' }}>
-                            <span style={{ color: inviteResult.ok ? '#34d399' : '#fca5a5', fontSize: '0.875rem', flex: 1 }}>{inviteResult.message}</span>
+                        <div style={{ marginTop: '0.6rem', background: inviteResult.ok ? '#052e16' : '#7f1d1d', border: `1px solid ${inviteResult.ok ? '#16a34a' : '#ef4444'}`, borderRadius: '8px', padding: '0.5rem 0.65rem', display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
+                            <span style={{ color: inviteResult.ok ? '#34d399' : '#fca5a5', fontSize: '0.78rem', flex: 1 }}>{inviteResult.message}</span>
                             {inviteResult.url && (
                                 <button onClick={() => { navigator.clipboard.writeText(inviteResult!.url!); }}
-                                    style={{ background: '#374151', border: 'none', color: '#d1d5db', borderRadius: '6px', padding: '4px 10px', cursor: 'pointer', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>
-                                    Copy Link
+                                    style={{ background: '#374151', border: 'none', color: '#d1d5db', borderRadius: '6px', padding: '3px 8px', cursor: 'pointer', fontSize: '0.7rem', whiteSpace: 'nowrap' }}>
+                                    Copy
                                 </button>
                             )}
                             <button onClick={() => setInviteResult(null)} style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', padding: 0, fontSize: '1rem', lineHeight: 1 }}>×</button>
                         </div>
                     )}
 
-                    {/* Pending invitations */}
                     {invitations.filter(i => i.is_active).length > 0 && (
-                        <div style={{ marginTop: '1.25rem' }}>
-                            <div style={{ color: '#9ca3af', fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.5rem' }}>PENDING INVITATIONS</div>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                        <div style={{ marginTop: '1rem' }}>
+                            <div style={{ color: '#6b7280', fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.4rem' }}>Pending</div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
                                 {invitations.filter(i => i.is_active).map(inv => (
-                                    <div key={inv.id} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', background: '#111827', borderRadius: '8px', padding: '0.5rem 0.75rem', border: '1px solid #1f2937' }}>
-                                        <span style={{ color: '#60a5fa', fontSize: '0.85rem', flex: 1 }}>{inv.email}</span>
-                                        <span style={{ color: '#6b7280', fontSize: '0.75rem' }}>
+                                    <div key={inv.id} style={{ background: '#111827', borderRadius: '6px', padding: '0.4rem 0.6rem', border: '1px solid #1f2937' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                            <span style={{ color: '#60a5fa', fontSize: '0.78rem', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{inv.email}</span>
+                                            <button onClick={() => revokeInvite(inv.id)}
+                                                style={{ background: 'none', border: '1px solid #374151', color: '#9ca3af', borderRadius: '4px', padding: '1px 6px', cursor: 'pointer', fontSize: '0.7rem', flexShrink: 0 }}>
+                                                Revoke
+                                            </button>
+                                        </div>
+                                        <div style={{ color: '#4b5563', fontSize: '0.7rem', marginTop: '2px' }}>
                                             expires {new Date(inv.expires_at).toLocaleDateString()}
-                                        </span>
-                                        <span style={{ color: '#9ca3af', fontSize: '0.75rem' }}>by {inv.created_by_name}</span>
-                                        <button onClick={() => revokeInvite(inv.id)}
-                                            style={{ background: 'none', border: '1px solid #374151', color: '#9ca3af', borderRadius: '6px', padding: '3px 8px', cursor: 'pointer', fontSize: '0.75rem' }}>
-                                            Revoke
-                                        </button>
+                                        </div>
                                     </div>
                                 ))}
                             </div>
                         </div>
                     )}
                 </div>
+            </div>{/* end top row */}
 
+            {/* Users table */}
+            <div className={styles.grid}>
                 <div className={styles.card} style={{ gridColumn: 'span 2' }}>
                     <div className={styles.cardTitle}>Existing Users</div>
                     <div className={styles.tableContainer}>
