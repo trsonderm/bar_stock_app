@@ -23,7 +23,6 @@ import {
     Globe,
     Bell,
     ShieldCheck,
-    Globe,
 } from 'lucide-react';
 
 export default function SuperAdminNav() {
