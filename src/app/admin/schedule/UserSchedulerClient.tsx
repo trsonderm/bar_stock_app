@@ -858,7 +858,7 @@ export default function UserSchedulerClient() {
                                                                     onClick={() => handleEdit(schedule)}
                                                                 >
                                                                     <div className="font-bold truncate">{schedule.shift_name}</div>
-                                                                    <div className="text-[10px] truncate">{schedule.start_time}-{schedule.end_time}</div>
+                                                                    <div className="text-[10px] truncate">{(() => { const fT = (t: string) => { const [h, m] = t.split(':').map(Number); return `${h % 12 || 12}:${String(m).padStart(2,'0')}${h >= 12 ? 'p' : 'a'}`; }; return `${fT(schedule.start_time)}–${fT(schedule.end_time)}`; })()}</div>
                                                                     {schedule.recurring_group_id && <div className="absolute right-1 bottom-1 w-1.5 h-1.5 rounded-full bg-white opacity-80" title="Repeating Shift" />}
 
                                                                     {/* Hover Delete */}
@@ -887,7 +887,7 @@ export default function UserSchedulerClient() {
                                                 <div className="w-3 h-3 rounded-full" style={{ backgroundColor: shift.color }}></div>
                                                 <div>
                                                     <div>{shift.label}</div>
-                                                    <div className="text-xs text-gray-500">{shift.start_time} - {shift.end_time}</div>
+                                                    <div className="text-xs text-gray-500">{(() => { const fT = (t: string) => { const [h, m] = t.split(':').map(Number); return `${h % 12 || 12}:${String(m).padStart(2,'0')}${h >= 12 ? 'p' : 'a'}`; }; return `${fT(shift.start_time)}–${fT(shift.end_time)}`; })()}</div>
                                                 </div>
                                             </div>
                                         </td>
@@ -932,7 +932,7 @@ export default function UserSchedulerClient() {
                                                 <div className="w-3 h-3 rounded-full" style={{ backgroundColor: shift.color }}></div>
                                                 <div>
                                                     <div>{shift.label}</div>
-                                                    <div className="text-xs text-gray-500">{shift.start_time} - {shift.end_time}</div>
+                                                    <div className="text-xs text-gray-500">{(() => { const fT = (t: string) => { const [h, m] = t.split(':').map(Number); return `${h % 12 || 12}:${String(m).padStart(2,'0')}${h >= 12 ? 'p' : 'a'}`; }; return `${fT(shift.start_time)}–${fT(shift.end_time)}`; })()}</div>
                                                 </div>
                                             </div>
                                         </td>
@@ -1305,7 +1305,7 @@ export default function UserSchedulerClient() {
                                                         onClick={() => handleEdit(schedule)}
                                                     >
                                                         <span className="text-xs font-bold text-white truncate drop-shadow-md">
-                                                            {schedule.shift_name} ({schedule.start_time}-{schedule.end_time})
+                                                            {schedule.shift_name} ({(() => { const fT = (t: string) => { const [h, m] = t.split(':').map(Number); return `${h % 12 || 12}:${String(m).padStart(2,'0')}${h >= 12 ? 'p' : 'a'}`; }; return `${fT(schedule.start_time)}–${fT(schedule.end_time)}`; })()})
                                                         </span>
                                                         <button
                                                             onClick={(e) => { e.stopPropagation(); handleDelete(schedule.id, schedule); }}

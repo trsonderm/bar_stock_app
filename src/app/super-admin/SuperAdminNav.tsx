@@ -47,6 +47,7 @@ export default function SuperAdminNav() {
         { name: 'Help Editor', href: '/super-admin/help-editor', icon: HelpCircle },
         { name: 'Mail Accounts', href: '/super-admin/mail-accounts', icon: Settings },
         { name: 'Email Queue', href: '/super-admin/mail-queue', icon: Mail },
+        { name: 'Queue Management', href: '/super-admin/queue-management', icon: Activity },
         { name: 'Global Database', href: '/super-admin/global-database', icon: Globe },
         { name: 'Super Admins', href: '/super-admin/super-admins', icon: ShieldCheck },
         { name: 'Server Alerts', href: '/super-admin/server-alerts', icon: Bell },

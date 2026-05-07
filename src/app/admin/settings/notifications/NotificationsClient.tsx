@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import Switch from '@mui/material/Switch';
@@ -18,6 +18,7 @@ import FormControl from '@mui/material/FormControl';
 import Accordion from '@mui/material/Accordion';
 import AccordionSummary from '@mui/material/AccordionSummary';
 import AccordionDetails from '@mui/material/AccordionDetails';
+import Paper from '@mui/material/Paper';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import NotificationsIcon from '@mui/icons-material/Notifications';
 import InventoryIcon from '@mui/icons-material/Inventory';
@@ -28,50 +29,120 @@ import AutoGraphIcon from '@mui/icons-material/AutoGraph';
 import TrackChangesIcon from '@mui/icons-material/TrackChanges';
 import PersonIcon from '@mui/icons-material/Person';
 import SaveIcon from '@mui/icons-material/Save';
+import SendIcon from '@mui/icons-material/Send';
 
-// ── Email chip input ──────────────────────────────────────────────────────────
+// ── Email picker with user typeahead ─────────────────────────────────────────
 
-function EmailList({ label, value, onChange, disabled }: {
+interface OrgUser {
+    id: number;
+    first_name: string;
+    last_name: string;
+    email: string;
+}
+
+function UserEmailPicker({ label, value, onChange, users, disabled }: {
     label: string;
     value: string[];
     onChange: (v: string[]) => void;
+    users: OrgUser[];
     disabled?: boolean;
 }) {
     const [input, setInput] = useState('');
+    const [open, setOpen] = useState(false);
+    const containerRef = useRef<HTMLDivElement>(null);
 
-    const add = () => {
-        const v = input.trim().toLowerCase();
-        if (v && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v) && !value.includes(v)) {
+    useEffect(() => {
+        const handler = (e: MouseEvent) => {
+            if (containerRef.current && !containerRef.current.contains(e.target as Node)) setOpen(false);
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, []);
+
+    const nameFor = (email: string) => {
+        const u = users.find(u => u.email.toLowerCase() === email.toLowerCase());
+        return u ? `${u.first_name} ${u.last_name}` : email;
+    };
+
+    const isValidEmail = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
+
+    const suggestions = users.filter(u => {
+        if (value.map(e => e.toLowerCase()).includes(u.email.toLowerCase())) return false;
+        const q = input.toLowerCase();
+        return q.length > 0 && (
+            `${u.first_name} ${u.last_name}`.toLowerCase().includes(q) ||
+            u.email.toLowerCase().includes(q)
+        );
+    }).slice(0, 8);
+
+    const showDropdown = open && (suggestions.length > 0 || (input.trim().length > 0 && isValidEmail(input)));
+
+    const addEmail = (email: string) => {
+        const v = email.trim().toLowerCase();
+        if (v && isValidEmail(v) && !value.map(e => e.toLowerCase()).includes(v)) {
             onChange([...value, v]);
         }
         setInput('');
+        setOpen(false);
+    };
+
+    const addUser = (u: OrgUser) => {
+        if (!value.map(e => e.toLowerCase()).includes(u.email.toLowerCase())) {
+            onChange([...value, u.email.toLowerCase()]);
+        }
+        setInput('');
+        setOpen(false);
     };
 
     return (
-        <Box>
+        <Box ref={containerRef} sx={{ position: 'relative' }}>
             <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>{label}</Typography>
             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mb: 1, minHeight: 32 }}>
                 {value.map(email => (
                     <Chip
                         key={email}
-                        label={email}
+                        label={nameFor(email)}
+                        title={email}
                         size="small"
-                        onDelete={disabled ? undefined : () => onChange(value.filter(e => e !== email))}
+                        onDelete={disabled ? undefined : () => onChange(value.filter(e => e.toLowerCase() !== email.toLowerCase()))}
                     />
                 ))}
-                {value.length === 0 && <Typography variant="caption" color="text.disabled" sx={{ pt: 0.5 }}>No recipients</Typography>}
+                {value.length === 0 && (
+                    <Typography variant="caption" color="text.disabled" sx={{ pt: 0.5 }}>No recipients</Typography>
+                )}
             </Box>
             {!disabled && (
                 <Box sx={{ display: 'flex', gap: 1 }}>
-                    <TextField
-                        size="small"
-                        placeholder="email@example.com"
-                        value={input}
-                        onChange={e => setInput(e.target.value)}
-                        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); add(); } }}
-                        sx={{ flex: 1 }}
-                    />
-                    <Button size="small" variant="outlined" onClick={add}>Add</Button>
+                    <Box sx={{ flex: 1, position: 'relative' }}>
+                        <TextField
+                            size="small"
+                            placeholder="Search by name or enter an email"
+                            value={input}
+                            onChange={e => { setInput(e.target.value); setOpen(true); }}
+                            onKeyDown={e => {
+                                if (e.key === 'Enter') { e.preventDefault(); addEmail(input); }
+                                if (e.key === 'Escape') setOpen(false);
+                            }}
+                            onFocus={() => { if (input) setOpen(true); }}
+                            sx={{ width: '100%' }}
+                        />
+                        {showDropdown && (
+                            <Paper sx={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 200, mt: 0.5, maxHeight: 200, overflow: 'auto', border: '1px solid', borderColor: 'divider' }}>
+                                {suggestions.map(u => (
+                                    <MenuItem key={u.id} onClick={() => addUser(u)} dense sx={{ flexDirection: 'column', alignItems: 'flex-start' }}>
+                                        <Typography variant="body2">{u.first_name} {u.last_name}</Typography>
+                                        <Typography variant="caption" color="text.secondary">{u.email}</Typography>
+                                    </MenuItem>
+                                ))}
+                                {isValidEmail(input) && !users.find(u => u.email.toLowerCase() === input.trim().toLowerCase()) && (
+                                    <MenuItem onClick={() => addEmail(input)} dense>
+                                        <Typography variant="body2" color="primary.main">Add "{input.trim()}"</Typography>
+                                    </MenuItem>
+                                )}
+                            </Paper>
+                        )}
+                    </Box>
+                    <Button size="small" variant="outlined" onClick={() => addEmail(input)}>Add</Button>
                 </Box>
             )}
         </Box>
@@ -154,14 +225,22 @@ function Section({ icon, title, description, badge, defaultExpanded = false, chi
 
 export default function NotificationsClient() {
     const [data, setData] = useState<any>(null);
+    const [users, setUsers] = useState<OrgUser[]>([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [saved, setSaved] = useState(false);
+    const [sendingReport, setSendingReport] = useState<string | null>(null);
+    const [reportMsg, setReportMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
     useEffect(() => {
-        fetch('/api/admin/notifications-settings')
-            .then(r => r.json())
-            .then(d => { setData(d); setLoading(false); });
+        Promise.all([
+            fetch('/api/admin/notifications-settings').then(r => r.json()),
+            fetch('/api/admin/users').then(r => r.json()).catch(() => ({ users: [] })),
+        ]).then(([notifData, userData]) => {
+            setData(notifData);
+            setUsers(userData.users || []);
+            setLoading(false);
+        });
     }, []);
 
     const setS = (key: string, val: any) =>
@@ -182,6 +261,29 @@ export default function NotificationsClient() {
         setTimeout(() => setSaved(false), 3000);
     };
 
+    const sendReportNow = async (reportType: string) => {
+        setSendingReport(reportType);
+        setReportMsg(null);
+        try {
+            const res = await fetch('/api/admin/reporting/email-now', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ reportType }),
+            });
+            const d = await res.json();
+            if (res.ok) {
+                setReportMsg({ type: 'success', text: d.message || 'Report sent.' });
+            } else {
+                setReportMsg({ type: 'error', text: d.error || 'Failed to send report.' });
+            }
+        } catch {
+            setReportMsg({ type: 'error', text: 'Network error sending report.' });
+        } finally {
+            setSendingReport(null);
+            setTimeout(() => setReportMsg(null), 6000);
+        }
+    };
+
     if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 8 }}><CircularProgress /></Box>;
 
     const { settings: s, profile: p, access } = data;
@@ -198,6 +300,7 @@ export default function NotificationsClient() {
             </Box>
 
             {saved && <Alert severity="success" sx={{ mb: 2 }}>Settings saved successfully.</Alert>}
+            {reportMsg && <Alert severity={reportMsg.type} sx={{ mb: 2 }}>{reportMsg.text}</Alert>}
 
             {/* ── Personal Preferences ── */}
             <Section
@@ -274,16 +377,18 @@ export default function NotificationsClient() {
                                 inputProps={{ min: 0, style: { width: 80 } }}
                             />
                         </Box>
-                        <EmailList
+                        <UserEmailPicker
                             label="To"
                             value={s.low_stock_alert_emails?.to || []}
                             onChange={v => setS('low_stock_alert_emails', { ...s.low_stock_alert_emails, to: v })}
+                            users={users}
                             disabled={!isAdmin}
                         />
-                        <EmailList
+                        <UserEmailPicker
                             label="CC"
                             value={s.low_stock_alert_emails?.cc || []}
                             onChange={v => setS('low_stock_alert_emails', { ...s.low_stock_alert_emails, cc: v })}
+                            users={users}
                             disabled={!isAdmin}
                         />
                         <Box>
@@ -294,6 +399,20 @@ export default function NotificationsClient() {
                                 disabled={!isAdmin}
                             />
                         </Box>
+                        {isAdmin && (
+                            <Box>
+                                <Button
+                                    size="small"
+                                    variant="outlined"
+                                    startIcon={sendingReport === 'low_stock' ? <CircularProgress size={14} /> : <SendIcon />}
+                                    onClick={() => sendReportNow('low_stock' as any)}
+                                    disabled={!!sendingReport}
+                                    color="warning"
+                                >
+                                    Send Low Stock Alert Now
+                                </Button>
+                            </Box>
+                        )}
                     </Box>
                 </Section>
             )}
@@ -317,15 +436,17 @@ export default function NotificationsClient() {
                         sx={{ mb: 2 }}
                     />
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, opacity: s.audit_alert_enabled === 'true' ? 1 : 0.5 }}>
-                        <EmailList
+                        <UserEmailPicker
                             label="To"
                             value={s.audit_alert_emails?.to || []}
                             onChange={v => setS('audit_alert_emails', { ...s.audit_alert_emails, to: v })}
+                            users={users}
                         />
-                        <EmailList
+                        <UserEmailPicker
                             label="CC"
                             value={s.audit_alert_emails?.cc || []}
                             onChange={v => setS('audit_alert_emails', { ...s.audit_alert_emails, cc: v })}
+                            users={users}
                         />
                         <FormControl size="small" sx={{ maxWidth: 250 }}>
                             <InputLabel>Notify for</InputLabel>
@@ -361,15 +482,17 @@ export default function NotificationsClient() {
                                 onChange={e => setS('report_title', e.target.value)}
                                 sx={{ maxWidth: 400 }}
                             />
-                            <EmailList
+                            <UserEmailPicker
                                 label="To"
                                 value={s.report_emails?.to || []}
                                 onChange={v => setS('report_emails', { ...s.report_emails, to: v })}
+                                users={users}
                             />
-                            <EmailList
+                            <UserEmailPicker
                                 label="CC"
                                 value={s.report_emails?.cc || []}
                                 onChange={v => setS('report_emails', { ...s.report_emails, cc: v })}
+                                users={users}
                             />
                             <Box>
                                 <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>Report schedule</Typography>
@@ -377,6 +500,27 @@ export default function NotificationsClient() {
                                     value={s.report_schedule || { frequency: 'daily', time: '08:00' }}
                                     onChange={v => setS('report_schedule', v)}
                                 />
+                            </Box>
+                            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                                <Button
+                                    size="small"
+                                    variant="outlined"
+                                    startIcon={sendingReport === 'daily' ? <CircularProgress size={14} /> : <SendIcon />}
+                                    onClick={() => sendReportNow('daily')}
+                                    disabled={!!sendingReport}
+                                >
+                                    Send Daily Report Now
+                                </Button>
+                                <Button
+                                    size="small"
+                                    variant="outlined"
+                                    startIcon={sendingReport === 'smart-order' ? <CircularProgress size={14} /> : <SendIcon />}
+                                    onClick={() => sendReportNow('smart-order')}
+                                    disabled={!!sendingReport}
+                                    color="secondary"
+                                >
+                                    Send Smart Order Now
+                                </Button>
                             </Box>
                         </Box>
                     </Section>
@@ -406,15 +550,17 @@ export default function NotificationsClient() {
                                 onChange={e => setS('shift_report_title', e.target.value)}
                                 sx={{ maxWidth: 400 }}
                             />
-                            <EmailList
+                            <UserEmailPicker
                                 label="To"
                                 value={s.shift_report_emails?.to || []}
                                 onChange={v => setS('shift_report_emails', { ...s.shift_report_emails, to: v })}
+                                users={users}
                             />
-                            <EmailList
+                            <UserEmailPicker
                                 label="CC"
                                 value={s.shift_report_emails?.cc || []}
                                 onChange={v => setS('shift_report_emails', { ...s.shift_report_emails, cc: v })}
+                                users={users}
                             />
                             <Box>
                                 <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>Send frequency</Typography>

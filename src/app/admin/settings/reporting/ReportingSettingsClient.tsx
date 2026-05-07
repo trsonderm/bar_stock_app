@@ -148,19 +148,43 @@ export default function ReportingSettingsClient() {
         }
     };
 
+    const [saveStatus, setSaveStatus] = useState<'idle' | 'ok' | 'error'>('idle');
+    const [sendingReport, setSendingReport] = useState(false);
+    const [reportResult, setReportResult] = useState<{ ok: boolean; text: string } | null>(null);
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setSaving(true);
+        setSaveStatus('idle');
         try {
             const res = await fetch('/api/admin/settings', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(settings)
             });
-            if (res.ok) alert('Reporting Settings Saved');
-            else alert('Failed to save');
+            setSaveStatus(res.ok ? 'ok' : 'error');
+            setTimeout(() => setSaveStatus('idle'), 4000);
         } finally {
             setSaving(false);
+        }
+    };
+
+    const handleSendReportNow = async (reportType: string) => {
+        setSendingReport(true);
+        setReportResult(null);
+        try {
+            const res = await fetch('/api/admin/reporting/email-now', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ reportType }),
+            });
+            const data = await res.json();
+            setReportResult({ ok: res.ok, text: res.ok ? (data.message || 'Report sent!') : (data.error || 'Failed to send.') });
+        } catch {
+            setReportResult({ ok: false, text: 'Network error.' });
+        } finally {
+            setSendingReport(false);
+            setTimeout(() => setReportResult(null), 6000);
         }
     };
 
@@ -561,11 +585,26 @@ export default function ReportingSettingsClient() {
                         )}
                     </div>
 
-                    <div style={{ marginTop: '1rem', display: 'flex', gap: '1rem' }}>
+                    {saveStatus === 'ok' && (
+                        <div style={{ marginTop: '0.75rem', padding: '0.6rem 1rem', background: '#064e3b', color: '#6ee7b7', borderRadius: '0.4rem', fontSize: '0.875rem', border: '1px solid #065f46' }}>
+                            Configuration saved successfully.
+                        </div>
+                    )}
+                    {saveStatus === 'error' && (
+                        <div style={{ marginTop: '0.75rem', padding: '0.6rem 1rem', background: '#7f1d1d', color: '#fca5a5', borderRadius: '0.4rem', fontSize: '0.875rem', border: '1px solid #991b1b' }}>
+                            Failed to save. Please try again.
+                        </div>
+                    )}
+                    {reportResult && (
+                        <div style={{ marginTop: '0.75rem', padding: '0.6rem 1rem', borderRadius: '0.4rem', fontSize: '0.875rem', border: '1px solid', background: reportResult.ok ? '#064e3b' : '#7f1d1d', color: reportResult.ok ? '#6ee7b7' : '#fca5a5', borderColor: reportResult.ok ? '#065f46' : '#991b1b' }}>
+                            {reportResult.text}
+                        </div>
+                    )}
+                    <div style={{ marginTop: '1rem', display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
                         <button
                             type="submit"
                             disabled={saving}
-                            style={{ padding: '0.75rem 2rem', background: '#d97706', color: 'white', borderRadius: '0.5rem', fontWeight: 'bold', cursor: 'pointer' }}
+                            style={{ padding: '0.75rem 2rem', background: '#d97706', color: 'white', borderRadius: '0.5rem', fontWeight: 'bold', cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.7 : 1 }}
                         >
                             {saving ? 'Saving...' : 'Save Configuration'}
                         </button>
@@ -576,6 +615,24 @@ export default function ReportingSettingsClient() {
                         >
                             Send Test Email
                         </button>
+                        <div style={{ display: 'flex', gap: '0.5rem', borderLeft: '1px solid #374151', paddingLeft: '0.75rem' }}>
+                            <button
+                                type="button"
+                                onClick={() => handleSendReportNow('daily')}
+                                disabled={sendingReport}
+                                style={{ padding: '0.6rem 1.25rem', background: '#1d4ed8', color: 'white', borderRadius: '0.5rem', fontWeight: 600, cursor: sendingReport ? 'not-allowed' : 'pointer', opacity: sendingReport ? 0.7 : 1, fontSize: '0.875rem', border: 'none' }}
+                            >
+                                {sendingReport ? 'Sending…' : '📧 Send Report Now'}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => handleSendReportNow('smart-order')}
+                                disabled={sendingReport}
+                                style={{ padding: '0.6rem 1.25rem', background: '#6d28d9', color: 'white', borderRadius: '0.5rem', fontWeight: 600, cursor: sendingReport ? 'not-allowed' : 'pointer', opacity: sendingReport ? 0.7 : 1, fontSize: '0.875rem', border: 'none' }}
+                            >
+                                📊 Smart Order Now
+                            </button>
+                        </div>
                     </div>
                 </form>
             </div >
