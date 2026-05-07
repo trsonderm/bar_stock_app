@@ -23,6 +23,7 @@ import {
     Globe,
     Bell,
     ShieldCheck,
+    Globe,
 } from 'lucide-react';
 
 export default function SuperAdminNav() {
@@ -52,6 +53,7 @@ export default function SuperAdminNav() {
         { name: 'Server Alerts', href: '/super-admin/server-alerts', icon: Bell },
         { name: 'Report Builder', href: '/super-admin/reports/custom', icon: FileBarChart },
         { name: 'System Logs', href: '/super-admin/system-logs', icon: Activity },
+        { name: 'API Management', href: '/super-admin/api-management', icon: Globe },
         { name: 'Device Tokens', href: '/super-admin/devices', icon: Smartphone },
     ];
 
