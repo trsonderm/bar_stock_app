@@ -51,6 +51,7 @@ import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
 import SecurityIcon from '@mui/icons-material/Security';
 import PhoneAndroidIcon from '@mui/icons-material/PhoneAndroid';
+import NotificationsIcon from '@mui/icons-material/Notifications';
 
 const drawerWidth = 260;
 
@@ -334,6 +335,7 @@ export default function AdminNav({ user, children }: { user: NavUser, children: 
                         <DrawerItem text="Suppliers" icon={<LocalShippingIcon fontSize="small" />} href="/admin/suppliers" isSub />
                         <DrawerItem text="Locations" icon={<LocationOnIcon fontSize="small" />} href="/admin/settings/locations" isSub />
                         <DrawerItem text="Shift Calculator" icon={<ReceiptLongIcon fontSize="small" />} href="/admin/settings/shift-calculator" isSub />
+                        <DrawerItem text="Notifications" icon={<NotificationsIcon fontSize="small" />} href="/admin/settings/notifications" isSub />
                         <DrawerItem text="Mobile API" icon={<PhoneAndroidIcon fontSize="small" />} href="/admin/mobile-api" isSub />
                     </List>
                 </Collapse>
