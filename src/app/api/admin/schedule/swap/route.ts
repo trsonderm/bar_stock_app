@@ -14,6 +14,8 @@ export async function GET(req: NextRequest) {
         `SELECT ssr.id, ssr.status, ssr.message, ssr.decline_reason,
                 ssr.requester_id, ssr.target_id, ssr.created_at,
                 ssr.employee_responded_at, ssr.manager_responded_at,
+                COALESCE(ssr.request_type, 'direct') AS request_type,
+                COALESCE(ssr.is_giveaway, false) AS is_giveaway,
                 COALESCE(ru.display_name, ru.first_name||' '||ru.last_name) AS requester_name,
                 ru.profile_picture AS requester_avatar,
                 COALESCE(tu.display_name, tu.first_name||' '||tu.last_name) AS target_name,
@@ -24,11 +26,11 @@ export async function GET(req: NextRequest) {
                 tsh.label AS target_shift, tsh.start_time AS target_start, tsh.end_time AS target_end
          FROM shift_swap_requests ssr
          JOIN users ru ON ru.id = ssr.requester_id
-         JOIN users tu ON tu.id = ssr.target_id
+         LEFT JOIN users tu ON tu.id = ssr.target_id
          JOIN user_schedules rs ON rs.id = ssr.requester_schedule_id
-         JOIN user_schedules ts ON ts.id = ssr.target_schedule_id
          JOIN shifts rsh ON rsh.id = rs.shift_id
-         JOIN shifts tsh ON tsh.id = ts.shift_id
+         LEFT JOIN user_schedules ts ON ts.id = ssr.target_schedule_id
+         LEFT JOIN shifts tsh ON tsh.id = ts.shift_id
          WHERE ssr.organization_id = $1 AND ssr.status = $2
          ORDER BY ssr.employee_responded_at DESC NULLS LAST`,
         [session.organizationId, status]
@@ -50,6 +52,8 @@ export async function PATCH(req: NextRequest) {
 
     const swap = await db.one(
         `SELECT ssr.*,
+                COALESCE(ssr.request_type, 'direct') AS request_type,
+                COALESCE(ssr.is_giveaway, false) AS is_giveaway,
                 COALESCE(ru.display_name, ru.first_name||' '||ru.last_name) AS requester_name,
                 COALESCE(tu.display_name, tu.first_name||' '||tu.last_name) AS target_name,
                 rs.date AS requester_date, rs.shift_id AS requester_shift_id,
@@ -57,11 +61,11 @@ export async function PATCH(req: NextRequest) {
                 rsh.label AS requester_shift_name, tsh.label AS target_shift_name
          FROM shift_swap_requests ssr
          JOIN users ru ON ru.id = ssr.requester_id
-         JOIN users tu ON tu.id = ssr.target_id
+         LEFT JOIN users tu ON tu.id = ssr.target_id
          JOIN user_schedules rs ON rs.id = ssr.requester_schedule_id
-         JOIN user_schedules ts ON ts.id = ssr.target_schedule_id
          JOIN shifts rsh ON rsh.id = rs.shift_id
-         JOIN shifts tsh ON tsh.id = ts.shift_id
+         LEFT JOIN user_schedules ts ON ts.id = ssr.target_schedule_id
+         LEFT JOIN shifts tsh ON tsh.id = ts.shift_id
          WHERE ssr.id = $1 AND ssr.organization_id = $2`,
         [swap_id, session.organizationId]
     );
@@ -78,36 +82,54 @@ export async function PATCH(req: NextRequest) {
         );
 
         const msg = `Your shift swap was declined by ${managerName}${decline_reason ? `: ${decline_reason}` : '.'}`;
-        await Promise.all([
-            notify(swap.requester_id, session.organizationId, 'swap_manager_declined', '❌ Swap Declined by Manager', msg, { swap_id: String(swap_id) }),
-            notify(swap.target_id, session.organizationId, 'swap_manager_declined', '❌ Swap Declined by Manager', msg, { swap_id: String(swap_id) }),
-        ]);
+        const notifyIds = [swap.requester_id, ...(swap.target_id ? [swap.target_id] : [])];
+        await Promise.all(notifyIds.map(uid =>
+            notify(uid, session.organizationId, 'swap_manager_declined', '❌ Swap Declined by Manager', msg, { swap_id: String(swap_id) })
+        ));
     } else {
-        // Approve — swap the shift assignments in user_schedules
-        await db.execute(
-            `UPDATE user_schedules SET shift_id = $1 WHERE id = $2`,
-            [swap.target_shift_id, swap.requester_schedule_id]
-        );
-        await db.execute(
-            `UPDATE user_schedules SET shift_id = $1 WHERE id = $2`,
-            [swap.requester_shift_id, swap.target_schedule_id]
-        );
+        // Approve — behavior depends on request type
+        if (swap.is_giveaway) {
+            // Giveaway: reassign the requester's schedule entry to the claimer
+            await db.execute(
+                `UPDATE user_schedules SET user_id = $1 WHERE id = $2`,
+                [swap.target_id, swap.requester_schedule_id]
+            );
+        } else {
+            // Swap: exchange shift assignments between both schedule entries
+            await db.execute(
+                `UPDATE user_schedules SET shift_id = $1 WHERE id = $2`,
+                [swap.target_shift_id, swap.requester_schedule_id]
+            );
+            await db.execute(
+                `UPDATE user_schedules SET shift_id = $1 WHERE id = $2`,
+                [swap.requester_shift_id, swap.target_schedule_id]
+            );
+        }
+
         await db.execute(
             `UPDATE shift_swap_requests SET status = 'approved', manager_id = $1, manager_responded_at = NOW(), updated_at = NOW() WHERE id = $2`,
             [session.id, swap_id]
         );
 
-        const approvedMsg = (name: string, otherName: string) =>
-            `✅ Shift swap approved by ${managerName}! You are now working ${name}'s shift.`;
-
-        await Promise.all([
-            notify(swap.requester_id, session.organizationId, 'swap_approved', '✅ Shift Swap Approved!',
-                approvedMsg(swap.target_name, swap.requester_name),
-                { swap_id: String(swap_id), type: 'swap_approved' }),
-            notify(swap.target_id, session.organizationId, 'swap_approved', '✅ Shift Swap Approved!',
-                approvedMsg(swap.requester_name, swap.target_name),
-                { swap_id: String(swap_id), type: 'swap_approved' }),
-        ]);
+        if (swap.is_giveaway) {
+            await Promise.all([
+                notify(swap.requester_id, session.organizationId, 'swap_approved', '✅ Shift Giveaway Approved!',
+                    `Your ${swap.requester_shift_name} shift on ${swap.requester_date} has been transferred to ${swap.target_name}. Approved by ${managerName}.`,
+                    { swap_id: String(swap_id), type: 'swap_approved' }),
+                ...(swap.target_id ? [notify(swap.target_id, session.organizationId, 'swap_approved', '✅ Shift Giveaway Approved!',
+                    `You are now working the ${swap.requester_shift_name} shift on ${swap.requester_date}. Approved by ${managerName}.`,
+                    { swap_id: String(swap_id), type: 'swap_approved' })] : []),
+            ]);
+        } else {
+            await Promise.all([
+                notify(swap.requester_id, session.organizationId, 'swap_approved', '✅ Shift Swap Approved!',
+                    `Shift swap approved by ${managerName}! You are now working ${swap.target_name}'s shift.`,
+                    { swap_id: String(swap_id), type: 'swap_approved' }),
+                ...(swap.target_id ? [notify(swap.target_id, session.organizationId, 'swap_approved', '✅ Shift Swap Approved!',
+                    `Shift swap approved by ${managerName}! You are now working ${swap.requester_name}'s shift.`,
+                    { swap_id: String(swap_id), type: 'swap_approved' })] : []),
+            ]);
+        }
     }
 
     return NextResponse.json({ ok: true });

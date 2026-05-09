@@ -125,12 +125,14 @@ export async function GET(req: NextRequest) {
             };
         });
 
-        // Pending swap requests that involve this user (for badge/alert display)
+        // Pending/open swap requests involving this user or open to all
         let pendingSwaps: any[] = [];
         try {
             pendingSwaps = await db.query(
                 `SELECT ssr.id, ssr.status, ssr.message,
                         ssr.requester_id, ssr.target_id,
+                        COALESCE(ssr.request_type, 'direct') AS request_type,
+                        COALESCE(ssr.is_giveaway, false) AS is_giveaway,
                         COALESCE(ru.display_name, ru.first_name || ' ' || ru.last_name) AS requester_name,
                         COALESCE(tu.display_name, tu.first_name || ' ' || tu.last_name) AS target_name,
                         rs.date AS requester_date, rs.shift_id AS requester_shift_id,
@@ -139,14 +141,18 @@ export async function GET(req: NextRequest) {
                         tsh.label AS target_shift_name, tsh.start_time AS target_start, tsh.end_time AS target_end
                  FROM shift_swap_requests ssr
                  JOIN users ru ON ru.id = ssr.requester_id
-                 JOIN users tu ON tu.id = ssr.target_id
+                 LEFT JOIN users tu ON tu.id = ssr.target_id
                  JOIN user_schedules rs ON rs.id = ssr.requester_schedule_id
-                 JOIN user_schedules ts ON ts.id = ssr.target_schedule_id
                  JOIN shifts rsh ON rsh.id = rs.shift_id
-                 JOIN shifts tsh ON tsh.id = ts.shift_id
+                 LEFT JOIN user_schedules ts ON ts.id = ssr.target_schedule_id
+                 LEFT JOIN shifts tsh ON tsh.id = ts.shift_id
                  WHERE ssr.organization_id = $1
-                   AND (ssr.requester_id = $2 OR ssr.target_id = $2)
-                   AND ssr.status IN ('pending_employee','pending_manager')
+                   AND (
+                       ssr.requester_id = $2
+                       OR ssr.target_id = $2
+                       OR (COALESCE(ssr.request_type,'direct') = 'open' AND ssr.status = 'open')
+                   )
+                   AND ssr.status IN ('pending_employee','pending_manager','open')
                  ORDER BY ssr.created_at DESC`,
                 [session.organizationId, session.id]
             );

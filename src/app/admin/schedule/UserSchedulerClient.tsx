@@ -46,7 +46,7 @@ export default function UserSchedulerClient() {
         return `${year}-${month}-${day}`;
     };
 
-    const [activeTab, setActiveTab] = useState<'weekly' | 'daily' | 'monthly' | 'shifts'>('weekly');
+    const [activeTab, setActiveTab] = useState<'weekly' | 'daily' | 'monthly' | 'shifts' | 'swaps'>('weekly');
     const [viewMode, setViewMode] = useState<'employees' | 'shifts' | 'coverage' | 'timeline'>('timeline');
     const [currentDate, setCurrentDate] = useState(new Date());
     const [weekStart, setWeekStart] = useState<Date>(getStartOfWeek(new Date()));
@@ -74,6 +74,13 @@ export default function UserSchedulerClient() {
     // New Recurring State
     const [isRecurring, setIsRecurring] = useState(false);
     const [recurringEndDate, setRecurringEndDate] = useState('');
+
+    // Swap Requests State
+    const [swapRequests, setSwapRequests] = useState<any[]>([]);
+    const [swapLoading, setSwapLoading] = useState(false);
+    const [swapDeclineId, setSwapDeclineId] = useState<number | null>(null);
+    const [swapDeclineReason, setSwapDeclineReason] = useState('');
+    const [swapStatusFilter, setSwapStatusFilter] = useState('pending_manager');
 
     // Edit Modal specific Make Repeating state
     const [isEditRecurring, setIsEditRecurring] = useState(false);
@@ -136,7 +143,12 @@ export default function UserSchedulerClient() {
         if (activeTab === 'weekly') fetchSchedules(weekStart, 8);
         if (activeTab === 'daily') fetchSchedules(currentDate, 1);
         if (activeTab === 'monthly') fetchSchedules(currentDate, 35);
+        if (activeTab === 'swaps') fetchSwaps(swapStatusFilter);
     }, [weekStart, currentDate, activeTab, selectedLocationId]);
+
+    useEffect(() => {
+        if (activeTab === 'swaps') fetchSwaps(swapStatusFilter);
+    }, [swapStatusFilter]);
 
     // Derived: selected location name — users are already fetched scoped to this location
     const selectedLocationName = myLocations.find(l => l.id === selectedLocationId)?.name || '';
@@ -373,6 +385,30 @@ export default function UserSchedulerClient() {
         const res = await fetch(`/api/admin/schedule?start=${start}&end=${end}${locParam}`);
         const data = await res.json();
         if (data.schedules) setSchedules(data.schedules);
+    };
+
+    const fetchSwaps = async (status: string) => {
+        setSwapLoading(true);
+        try {
+            const res = await fetch(`/api/admin/schedule/swap?status=${status}`);
+            const data = await res.json();
+            setSwapRequests(data.swaps || []);
+        } finally {
+            setSwapLoading(false);
+        }
+    };
+
+    const handleSwapAction = async (swapId: number, action: 'approve' | 'decline') => {
+        const body: any = { swap_id: swapId, action };
+        if (action === 'decline') body.decline_reason = swapDeclineReason || undefined;
+        await fetch('/api/admin/schedule/swap', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        setSwapDeclineId(null);
+        setSwapDeclineReason('');
+        fetchSwaps(swapStatusFilter);
     };
 
     const changeWeek = (offset: number) => {
@@ -646,10 +682,16 @@ export default function UserSchedulerClient() {
                         >
                             Shift Settings
                         </button>
+                        <button
+                            onClick={() => setActiveTab('swaps')}
+                            className={`pb-1 border-b-2 transition-colors ${activeTab === 'swaps' ? 'border-amber-400 text-white' : 'border-transparent text-gray-400 hover:text-gray-300'}`}
+                        >
+                            Swap Requests
+                        </button>
                     </div>
                 </div>
                 <div className="flex gap-4">
-                    {activeTab !== 'shifts' && (
+                    {activeTab !== 'shifts' && activeTab !== 'swaps' && (
                         <>
                             <button
                                 onClick={handleNotify}
@@ -671,6 +713,15 @@ export default function UserSchedulerClient() {
                             </button>
                         </>
                     )}
+                    {activeTab === 'swaps' && (
+                        <button
+                            type="button"
+                            onClick={() => fetchSwaps(swapStatusFilter)}
+                            className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded font-bold flex items-center gap-2"
+                        >
+                            Refresh
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -680,6 +731,144 @@ export default function UserSchedulerClient() {
                     scheduleSettings={scheduleSettings}
                     onSettingsChange={setScheduleSettings}
                 />
+            )}
+
+            {/* TAB: SWAP REQUESTS */}
+            {activeTab === 'swaps' && (
+                <div className="bg-gray-900 rounded-lg border border-gray-700 p-4">
+                    {/* Filter */}
+                    <div className="flex items-center gap-3 mb-5">
+                        <span className="text-sm text-gray-400">Show:</span>
+                        {(['pending_manager', 'approved', 'declined', 'open'] as const).map(s => (
+                            <button
+                                key={s}
+                                type="button"
+                                onClick={() => setSwapStatusFilter(s)}
+                                className={`px-3 py-1 rounded text-sm font-medium transition-colors ${swapStatusFilter === s
+                                    ? 'bg-amber-500 text-black'
+                                    : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                                }`}
+                            >
+                                {s === 'pending_manager' ? 'Needs Approval' : s === 'open' ? 'Open Requests' : s.charAt(0).toUpperCase() + s.slice(1)}
+                            </button>
+                        ))}
+                    </div>
+
+                    {swapLoading && <p className="text-gray-400 text-sm py-8 text-center">Loading…</p>}
+
+                    {!swapLoading && swapRequests.length === 0 && (
+                        <p className="text-gray-500 text-sm py-8 text-center">No swap requests with status "{swapStatusFilter}".</p>
+                    )}
+
+                    {!swapLoading && swapRequests.map((s: any) => {
+                        const isGiveaway = s.is_giveaway;
+                        const isOpen = s.request_type === 'open';
+                        return (
+                            <div key={s.id} className="mb-4 bg-gray-800 rounded-lg border border-gray-700 p-4">
+                                <div className="flex flex-wrap items-start justify-between gap-4">
+                                    <div className="flex-1 min-w-0">
+                                        {/* Badge */}
+                                        <div className="flex items-center gap-2 mb-2">
+                                            {isGiveaway
+                                                ? <span className="text-xs bg-purple-900/50 text-purple-300 border border-purple-700 px-2 py-0.5 rounded-full">Give Away</span>
+                                                : <span className="text-xs bg-blue-900/50 text-blue-300 border border-blue-700 px-2 py-0.5 rounded-full">Swap</span>
+                                            }
+                                            {isOpen && s.status === 'open' && (
+                                                <span className="text-xs bg-amber-900/50 text-amber-300 border border-amber-700 px-2 py-0.5 rounded-full">Open — Unclaimed</span>
+                                            )}
+                                            {isOpen && s.status === 'pending_manager' && (
+                                                <span className="text-xs bg-amber-900/50 text-amber-300 border border-amber-700 px-2 py-0.5 rounded-full">Claimed</span>
+                                            )}
+                                        </div>
+
+                                        {/* Requester shift */}
+                                        <div className="flex items-center gap-2 text-sm">
+                                            <span className="text-gray-300 font-medium">{s.requester_name}</span>
+                                            <span className="text-gray-500">→</span>
+                                            <span className="text-white">{s.requester_shift}</span>
+                                            <span className="text-gray-400">{s.requester_date}</span>
+                                            <span className="text-gray-500 text-xs">{s.requester_start?.slice(0,5)}–{s.requester_end?.slice(0,5)}</span>
+                                        </div>
+
+                                        {/* Target shift (if applicable) */}
+                                        {s.target_name && (
+                                            <div className="flex items-center gap-2 text-sm mt-1">
+                                                <span className="text-gray-300 font-medium">{s.target_name}</span>
+                                                {!isGiveaway && s.target_shift && (
+                                                    <>
+                                                        <span className="text-gray-500">→</span>
+                                                        <span className="text-white">{s.target_shift}</span>
+                                                        <span className="text-gray-400">{s.target_date}</span>
+                                                        <span className="text-gray-500 text-xs">{s.target_start?.slice(0,5)}–{s.target_end?.slice(0,5)}</span>
+                                                    </>
+                                                )}
+                                                {isGiveaway && <span className="text-green-400 text-xs">will cover</span>}
+                                            </div>
+                                        )}
+
+                                        {s.message && (
+                                            <p className="text-gray-400 text-xs mt-1 italic">"{s.message}"</p>
+                                        )}
+                                        {s.decline_reason && (
+                                            <p className="text-red-400 text-xs mt-1">Declined: {s.decline_reason}</p>
+                                        )}
+                                        <p className="text-gray-600 text-xs mt-1">Submitted {new Date(s.created_at).toLocaleDateString()}</p>
+                                    </div>
+
+                                    {/* Actions */}
+                                    {swapStatusFilter === 'pending_manager' && (
+                                        <div className="flex flex-col items-end gap-2">
+                                            {swapDeclineId === s.id ? (
+                                                <div className="flex flex-col gap-2 items-end">
+                                                    <input
+                                                        type="text"
+                                                        value={swapDeclineReason}
+                                                        onChange={e => setSwapDeclineReason(e.target.value)}
+                                                        placeholder="Reason (optional)"
+                                                        className="bg-gray-900 border border-gray-600 text-white text-xs rounded px-2 py-1 w-48"
+                                                    />
+                                                    <div className="flex gap-2">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => { setSwapDeclineId(null); setSwapDeclineReason(''); }}
+                                                            className="text-xs text-gray-400 hover:text-white px-2 py-1"
+                                                        >
+                                                            Cancel
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleSwapAction(s.id, 'decline')}
+                                                            className="text-xs bg-red-700 hover:bg-red-600 text-white px-3 py-1 rounded"
+                                                        >
+                                                            Confirm Decline
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <div className="flex gap-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setSwapDeclineId(s.id)}
+                                                        className="text-xs bg-gray-700 hover:bg-red-800 text-red-400 hover:text-red-300 px-3 py-1.5 rounded border border-gray-600"
+                                                    >
+                                                        Decline
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleSwapAction(s.id, 'approve')}
+                                                        className="text-xs bg-green-700 hover:bg-green-600 text-white px-3 py-1.5 rounded"
+                                                    >
+                                                        {isGiveaway ? 'Approve Giveaway' : 'Approve Swap'}
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
             )}
 
             {/* TAB: MONTHLY */}
