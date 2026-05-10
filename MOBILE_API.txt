@@ -548,17 +548,32 @@ All schedules are returned for the org. To show only the authenticated user's sh
 9. SHIFT SWAPS — Request and manage shift swaps
 ────────────────────────────────────────────────────────────────────────────────
 
-Status machine:
-  pending_employee → (target accepts) → pending_manager → (manager approves) → approved
-                   → (target declines) → declined
-                                       → (manager declines) → declined
+There are two types of swap requests:
 
-── List my swap requests ────────────────────────────────────────────────────────
+  DIRECT — Requester selects a specific colleague and their shift to swap with.
+  OPEN   — Requester posts their shift openly to all org members. Anyone can
+           claim it. Supports both "swap" (two-way) and "give away" (one-way).
+
+Status machines:
+
+  Direct swap:
+    pending_employee → (target accepts) → pending_manager → (manager approves) → approved
+                     → (target declines) → declined
+                                         → (manager declines) → declined
+
+  Open request (swap or give away):
+    open → (any employee claims via PUT) → pending_manager → (manager approves) → approved
+                                                           → (manager declines) → declined
+
+── List swap requests ───────────────────────────────────────────────────────────
 
 GET /api/mobile/schedule/swap
 
+Returns swap requests you're involved in (as requester or target), plus any
+open org-wide requests currently in "open" status (claimable by you).
+
 QUERY PARAMETERS (all optional):
-  ?status=pending_employee|pending_manager|approved|declined
+  ?status=open|pending_employee|pending_manager|approved|declined
 
 RESPONSE (200 OK):
 {
@@ -566,22 +581,24 @@ RESPONSE (200 OK):
     {
       "id": 10,
       "status": "pending_manager",
+      "request_type": "direct",      ← "direct" | "open"
+      "is_giveaway": false,           ← true = one-way giveaway, false = mutual swap
       "message": "Can we swap? I have a family thing.",
       "decline_reason": null,
       "requester_id": 42,
-      "target_id": 55,
+      "target_id": 55,               ← null for unclaimed open requests
       "employee_responded_at": "2026-05-04T20:00:00Z",
       "manager_responded_at": null,
       "created_at": "2026-05-04T18:00:00Z",
       "requester_name": "Alex Smith",
       "requester_avatar": null,
-      "target_name": "Jamie Lee",
+      "target_name": "Jamie Lee",    ← null for unclaimed open requests
       "target_avatar": null,
       "requester_date": "2026-05-10",
       "requester_shift": "Evening",
       "requester_start": "17:00",
       "requester_end": "23:00",
-      "target_date": "2026-05-11",
+      "target_date": "2026-05-11",   ← null for giveaway or unclaimed open requests
       "target_shift": "Morning",
       "target_start": "09:00",
       "target_end": "15:00",
@@ -590,39 +607,93 @@ RESPONSE (200 OK):
   ]
 }
 
-status_detail examples (vary by who is viewing):
-  "Jane wants to swap shifts with you. Waiting for your response."
-  "Waiting for Jane to accept or decline your swap request."
-  "Jane accepted! Waiting for a manager to approve."
-  "You accepted. Waiting for a manager to approve the swap."
-  "Swap approved! Alice and Bob have swapped shifts."
-  "Swap declined: Manager was unable to accommodate."
+status_detail strings (computed server-side, vary by who is viewing):
+
+  Direct swap:
+    "Jane wants to swap shifts with you. Waiting for your response."
+    "Waiting for Jane to accept or decline your swap request."
+    "Jane accepted! Waiting for a manager to approve."
+    "You accepted. Waiting for a manager to approve the swap."
+    "Swap approved! Alice and Bob have swapped shifts."
+    "Swap declined: Manager was unable to accommodate."
+
+  Open request (requester view):
+    "You've posted your Evening shift on 2026-05-10 for anyone to take."
+    "You've posted your Evening shift on 2026-05-10 as open for anyone to swap with."
+    "Jamie Lee claimed your open shift request. Waiting for a manager to approve."
+
+  Open request (other employees view):
+    "Alex Smith is giving away their Evening shift on 2026-05-10. Tap to claim it."
+    "Alex Smith is looking for someone to swap their Evening shift on 2026-05-10."
 
 ── Create a swap request ────────────────────────────────────────────────────────
 
 POST /api/mobile/schedule/swap
 
-REQUEST BODY:
+DIRECT SWAP — target a specific colleague:
 {
-  "my_schedule_id": 301,       ← your user_schedules.id
-  "their_schedule_id": 402,    ← the other employee's user_schedules.id
-  "target_user_id": 55,        ← the other employee's user id
+  "my_schedule_id": 301,       ← your user_schedules.id  (required)
+  "their_schedule_id": 402,    ← colleague's user_schedules.id  (required for direct)
+  "target_user_id": 55,        ← colleague's user id  (required for direct)
   "message": "Can we swap?"    ← optional note
 }
+
+OPEN REQUEST — broadcast to all org members:
+{
+  "my_schedule_id": 301,       ← your user_schedules.id  (required)
+  "is_giveaway": true,         ← true = give away shift, false/omit = open swap
+  "message": "Anyone free?"    ← optional note
+}
+Omit their_schedule_id and target_user_id entirely to create an open request.
 
 RESPONSE (200 OK):
   { "ok": true, "swap_id": 10 }
 
-Side effect: push notification sent to the target employee.
+Side effects:
+  Direct: push notification sent to target employee.
+  Open:   push notification broadcast to all org members.
 
 ERROR RESPONSES:
+  400 { "error": "my_schedule_id is required" }
   404 { "error": "Your schedule entry not found" }
   404 { "error": "Target schedule entry not found" }
   409 { "error": "A pending swap request already exists for that shift" }
 
-── Respond to a swap request (target employee only) ─────────────────────────────
+── Claim an open request ────────────────────────────────────────────────────────
+
+PUT /api/mobile/schedule/swap
+
+Any org member can claim an open request. For open swaps (is_giveaway=false),
+provide your schedule entry. For give-aways, no schedule entry is needed —
+you're simply agreeing to cover the shift.
+
+REQUEST BODY:
+{
+  "swap_id": 10,               ← required
+  "my_schedule_id": 205        ← required for open swaps, omit for give-aways
+}
+
+RESPONSE (200 OK):
+  { "ok": true }
+
+Side effects: notifies the requester that their shift was claimed + notifies
+all admins that manager approval is needed. Status moves to pending_manager.
+
+ERROR RESPONSES:
+  400 { "error": "swap_id is required" }
+  400 { "error": "This is not an open request" }
+  400 { "error": "You cannot claim your own request" }
+  400 { "error": "my_schedule_id is required to claim a swap request" }
+  404 { "error": "Swap request not found" }
+  404 { "error": "Your schedule entry not found" }
+  409 { "error": "This request is no longer open" }
+
+── Respond to a direct swap request (target employee only) ──────────────────────
 
 PATCH /api/mobile/schedule/swap
+
+Only the designated target employee of a direct swap uses this endpoint.
+Open requests use PUT (claim) above instead.
 
 REQUEST BODY:
 {
@@ -635,8 +706,8 @@ RESPONSE (200 OK):
   { "ok": true }
 
 Side effects:
-  - accept: notifies requester ("accepted, waiting for manager") + all admins
-  - decline: notifies requester with decline message
+  - accept: status → pending_manager; notifies requester + all admins
+  - decline: status → declined; notifies requester with decline message
 
 
 ────────────────────────────────────────────────────────────────────────────────
@@ -1403,13 +1474,39 @@ RESPONSE (200 OK):
   "meta": { "total": 142, "limit": 100, "offset": 0, ... }
 }
 
+── Create an item ────────────────────────────────────────────────────────────────
+
+POST /api/v1/inventory
+Required scope: inventory:write
+
+Creates a new inventory item. Optionally sets an initial stock quantity at
+a specific location.
+
+REQUEST BODY:
+{
+  "name": "Tito's Vodka 750ml",     ← required; must be unique within org
+  "category": "Spirits",            ← optional — primary category
+  "sub_category": "Vodka",          ← optional — secondary category
+  "supplier": "Southern Glazers",   ← optional
+  "unit_cost": 22.50,               ← optional — cost per unit
+  "sale_price": 8.00,               ← optional — sale price per unit
+  "order_size": 12,                 ← optional — units per order
+  "low_stock_threshold": 10,        ← optional (default: 5)
+  "initial_quantity": 24,           ← optional — starting stock quantity
+  "location_id": 1                  ← optional — where to set initial_quantity
+}
+
+RESPONSE (201 Created):
+  { "data": { "id": 88, "created": true }, "meta": { ... } }
+
+ERROR RESPONSES:
+  400 — name is required
+  400 — an item with that name already exists
+
 ── Get a single item ────────────────────────────────────────────────────────────
 
 GET /api/v1/inventory/{itemId}
 Required scope: inventory:read
-
-PATH PARAMETER:
-  itemId  integer  required — item ID
 
 RESPONSE (200 OK):
 {
@@ -1443,9 +1540,9 @@ Send only the fields you want to change. All fields optional.
 
 REQUEST BODY:
 {
-  "name": "Premium Vodka",          ← item name
-  "category": "Spirits",            ← primary category (stored as "type")
-  "sub_category": "Vodka",          ← secondary category
+  "name": "Premium Vodka",
+  "category": "Spirits",
+  "sub_category": "Vodka",
   "supplier": "Distributor Co",
   "unit_cost": 22.50,
   "sale_price": 8.00,
@@ -1466,22 +1563,91 @@ Permanently deletes the item and all inventory quantity records.
 RESPONSE (200 OK):
   { "data": { "id": 1, "deleted": true }, "meta": { ... } }
 
-── Adjust stock ─────────────────────────────────────────────────────────────────
+── Add stock (restock) ───────────────────────────────────────────────────────────
+
+POST /api/v1/inventory/{itemId}/restock
+Required scope: inventory:write
+
+Add stock for a specific item at a location. Use this when receiving a delivery,
+transferring in product, or correcting a count upward.
+Response includes quantity_before and quantity_after for confirmation.
+
+REQUEST BODY:
+{
+  "quantity": 12,           ← required — amount to add (must be positive)
+  "location_id": 1,         ← optional (defaults to org's first location)
+  "note": "Delivery from Southern Glazers"   ← optional, logged in activity
+}
+
+RESPONSE (200 OK):
+{
+  "data": {
+    "item_id": 1,
+    "item_name": "Vodka",
+    "location_id": 1,
+    "quantity_added": 12,
+    "quantity_before": 10,
+    "quantity_after": 22
+  },
+  "meta": { ... }
+}
+
+ERROR RESPONSES:
+  400 — quantity must be a positive number
+  404 — item not found in this organization
+  404 — location not found in this organization
+
+── Remove stock (consume) ────────────────────────────────────────────────────────
+
+POST /api/v1/inventory/{itemId}/consume
+Required scope: inventory:write
+
+Remove stock for a specific item at a location. Use this when recording usage,
+breakage, or any stock reduction. Returns a 400 if the location has insufficient
+stock — quantity will never go negative.
+
+REQUEST BODY:
+{
+  "quantity": 2,            ← required — amount to remove (must be positive)
+  "location_id": 1,         ← optional (defaults to org's first location)
+  "note": "2 bottles broken during service"   ← optional, logged in activity
+}
+
+RESPONSE (200 OK):
+{
+  "data": {
+    "item_id": 1,
+    "item_name": "Vodka",
+    "location_id": 1,
+    "quantity_removed": 2,
+    "quantity_before": 22,
+    "quantity_after": 20
+  },
+  "meta": { ... }
+}
+
+ERROR RESPONSES:
+  400 — quantity must be a positive number
+  400 — insufficient stock (shows available vs. requested)
+  404 — item not found in this organization
+  404 — location not found in this organization
+
+── Adjust stock (signed delta) ───────────────────────────────────────────────────
 
 POST /api/v1/inventory/adjust
 Required scope: inventory:write
 
-Add or subtract quantity for an item at a location.
-  Positive change = add stock
-  Negative change = remove stock
-Quantity never goes below 0.
+General-purpose signed adjustment. Positive = add, negative = remove.
+Prefer /restock and /consume for clearer intent; use /adjust for programmatic
+integrations where the sign is computed dynamically.
+Quantity is floored at 0 (will not go negative).
 
 REQUEST BODY:
 {
   "item_id": 1,         ← required
   "change": -2,         ← required, non-zero; negative = subtract
   "location_id": 1,     ← optional (defaults to org's first location)
-  "note": "2 bottles broken during delivery"   ← optional, logged in activity
+  "note": "Variance correction"   ← optional
 }
 
 RESPONSE (200 OK):
@@ -1491,27 +1657,23 @@ RESPONSE (200 OK):
     "item_name": "Vodka",
     "location_id": 1,
     "change": -2,
-    "quantity_after": 22.5
+    "quantity_after": 20
   },
   "meta": { ... }
 }
 
 ERROR RESPONSES:
-  404 — item_id not found in this organization
-  404 — location_id not found in this organization
   400 — change is zero or missing
-  400 — no locations configured for this organization
+  404 — item not found
+  404 — location not found
 
-NOTE: Adjustments are logged in the activity log with source: "api" and
-the API key name for traceability.
-
-── Transfer stock ───────────────────────────────────────────────────────────────
+── Transfer stock between locations ──────────────────────────────────────────────
 
 POST /api/v1/inventory/transfer
 Required scope: inventory:write
 
-Move stock for an item from one location to another. Returns an error if the
-source location has insufficient stock.
+Move stock for an item from one location to another. Fails if the source
+location has insufficient stock.
 
 REQUEST BODY:
 {
@@ -1535,17 +1697,17 @@ RESPONSE (200 OK):
 }
 
 ERROR RESPONSES:
-  404 — item_id, from_location_id, or to_location_id not found
   400 — insufficient stock at source location (shows available vs. requested)
   400 — from and to location are the same
+  404 — item, source location, or destination location not found
 
 ── Low-stock report ──────────────────────────────────────────────────────────────
 
 GET /api/v1/inventory/low-stock
 Required scope: inventory:read
 
-Returns items at or below their configured low_stock_threshold. Each item
-includes a "deficit" field showing how many units short it is.
+Returns items at or below their low_stock_threshold. Each item includes a
+"deficit" field showing how many units short of the threshold it is.
 
 QUERY PARAMETERS (all optional):
   ?location_id=<id>    Scope to a specific location
@@ -1569,10 +1731,9 @@ RESPONSE (200 OK):
 }
 
 NOTES:
-- Items excluded from low-stock alerts (include_in_low_stock_alerts = false)
-  are also excluded from this endpoint.
-- Items are returned sorted by quantity ascending (most urgent first).
-- "deficit" = max(0, low_stock_threshold - quantity).
+- Items with include_in_low_stock_alerts = false are excluded.
+- Results sorted by quantity ascending (most urgent first).
+- deficit = max(0, low_stock_threshold - quantity).
 
 
 ────────────────────────────────────────────────────────────────────────────────
@@ -1856,24 +2017,27 @@ NOTE: Items not found in this organization are silently skipped.
 23. DEVELOPER API — ENDPOINT QUICK REFERENCE
 ────────────────────────────────────────────────────────────────────────────────
 
-METHOD  PATH                              SCOPE              DESCRIPTION
-──────  ────────────────────────────────  ─────────────────  ──────────────────────────────────────────
-GET     /api/v1/inventory                 inventory:read     List all items with quantities
-GET     /api/v1/inventory/{itemId}        inventory:read     Get single item + per-location quantities
-PUT     /api/v1/inventory/{itemId}        inventory:write    Update item metadata
-DELETE  /api/v1/inventory/{itemId}        inventory:write    Delete item and all inventory records
-POST    /api/v1/inventory/adjust          inventory:write    Add or subtract stock at a location
-POST    /api/v1/inventory/transfer        inventory:write    Transfer stock between locations
-GET     /api/v1/inventory/low-stock       inventory:read     Items at or below their threshold
-GET     /api/v1/locations                 locations:read     List all locations
-GET     /api/v1/categories               categories:read    List all item categories
-GET     /api/v1/orders                    orders:read        List purchase orders
-POST    /api/v1/orders                    orders:write       Create a purchase order
-GET     /api/v1/orders/{id}              orders:read        Get order with line items
-PUT     /api/v1/orders/{id}              orders:write       Update order status or notes
-DELETE  /api/v1/orders/{id}              orders:write       Delete a PENDING order
-GET     /api/v1/audits                    audits:read        List audit history sessions
-POST    /api/v1/audits                    audits:write       Submit a counted audit
+METHOD  PATH                                    SCOPE              DESCRIPTION
+──────  ──────────────────────────────────────  ─────────────────  ────────────────────────────────────────────
+GET     /api/v1/inventory                       inventory:read     List all items with quantities
+POST    /api/v1/inventory                       inventory:write    Create a new inventory item
+GET     /api/v1/inventory/{itemId}              inventory:read     Get single item + per-location quantities
+PUT     /api/v1/inventory/{itemId}              inventory:write    Update item metadata
+DELETE  /api/v1/inventory/{itemId}              inventory:write    Delete item and all inventory records
+POST    /api/v1/inventory/{itemId}/restock      inventory:write    Add stock (delivery, receiving)
+POST    /api/v1/inventory/{itemId}/consume      inventory:write    Remove stock (usage, breakage)
+POST    /api/v1/inventory/adjust                inventory:write    Signed delta adjustment (+/-)
+POST    /api/v1/inventory/transfer              inventory:write    Transfer stock between locations
+GET     /api/v1/inventory/low-stock             inventory:read     Items at or below their threshold
+GET     /api/v1/locations                       locations:read     List all locations
+GET     /api/v1/categories                      categories:read    List all item categories
+GET     /api/v1/orders                          orders:read        List purchase orders
+POST    /api/v1/orders                          orders:write       Create a purchase order
+GET     /api/v1/orders/{id}                     orders:read        Get order with line items
+PUT     /api/v1/orders/{id}                     orders:write       Update order status or notes
+DELETE  /api/v1/orders/{id}                     orders:write       Delete a PENDING order
+GET     /api/v1/audits                          audits:read        List audit history sessions
+POST    /api/v1/audits                          audits:write       Submit a counted audit
 
 
 ────────────────────────────────────────────────────────────────────────────────
@@ -1905,5 +2069,5 @@ POST    /api/v1/audits                    audits:write       Submit a counted au
   TopShelf Inventory — Developer API Reference (v1)
   Server: https://www.topshelfInventory.com/api/v1
   Docs:   https://www.topshelfInventory.com/admin/developer
-  API Version: v1  |  Last updated: 2026-05-09
+  API Version: v1  |  Last updated: 2026-05-10
 ================================================================================
