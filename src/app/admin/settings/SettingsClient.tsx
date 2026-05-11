@@ -34,6 +34,9 @@ export default function SettingsClient() {
         receipt_mode: 'combined',               // 'combined' | 'separate'
         show_items_at_all_locations: 'true',
         shared_inventory_count: 'false',
+        recipes_enabled: 'false',
+        recipe_search_source: 'both',
+        recipe_search_primary: 'local',
     });
 
     const [users, setUsers] = useState<any[]>([]);
@@ -658,6 +661,85 @@ export default function SettingsClient() {
                                 </div>
                             </label>
                         </div>
+                    </div>
+                    <div style={{ marginTop: '1rem' }}>
+                        <button onClick={handleSubmit} style={{ padding: '0.5rem 1rem', background: '#3b82f6', color: 'white', borderRadius: '0.25rem', border: 'none', cursor: 'pointer' }}>
+                            Save Settings
+                        </button>
+                    </div>
+                </div>
+
+                {/* Drink Recipe Settings */}
+                <div className={styles.card} style={{ gridColumn: 'span 2' }}>
+                    <div className={styles.cardTitle}>Drink Recipe Library</div>
+                    <p style={{ color: '#9ca3af', marginBottom: '1rem' }}>
+                        Enable access to drink recipes from the Stock View. Recipes can come from the global shared library and your own org-specific library.
+                    </p>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                        <div style={{ background: '#1f2937', padding: '1rem', borderRadius: '0.5rem', border: '1px solid #374151', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                            <input
+                                type="checkbox"
+                                id="recipes_enabled"
+                                checked={(settings as any).recipes_enabled === 'true'}
+                                onChange={e => setSettings(prev => ({ ...prev, recipes_enabled: e.target.checked ? 'true' : 'false' }))}
+                                style={{ width: '20px', height: '20px', flexShrink: 0 }}
+                            />
+                            <label htmlFor="recipes_enabled" style={{ cursor: 'pointer' }}>
+                                <div style={{ color: 'white', fontWeight: 'bold' }}>Show Recipes in Stock View</div>
+                                <div style={{ fontSize: '0.85rem', color: '#9ca3af' }}>Adds a "Recipes" button to the stock view action bar for quick lookup during service.</div>
+                            </label>
+                        </div>
+                        {(settings as any).recipes_enabled === 'true' && (
+                            <div style={{ background: '#1f2937', padding: '1rem', borderRadius: '0.5rem', border: '1px solid #374151' }}>
+                                <div style={{ color: 'white', fontWeight: 'bold', marginBottom: '0.5rem' }}>Search Source</div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                    {[
+                                        { value: 'local', label: 'My Library Only', desc: 'Only search your org\'s own recipes.' },
+                                        { value: 'global', label: 'Global Library Only', desc: 'Only search the shared global recipe database.' },
+                                        { value: 'both', label: 'Both Libraries', desc: 'Search both your library and the global database.' },
+                                    ].map(opt => (
+                                        <label key={opt.value} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: 'pointer' }}>
+                                            <input
+                                                type="radio"
+                                                name="recipe_search_source"
+                                                value={opt.value}
+                                                checked={(settings as any).recipe_search_source === opt.value}
+                                                onChange={e => setSettings(prev => ({ ...prev, recipe_search_source: e.target.value }))}
+                                                style={{ width: '16px', height: '16px' }}
+                                            />
+                                            <div>
+                                                <span style={{ color: 'white', fontWeight: 500 }}>{opt.label}</span>
+                                                <span style={{ color: '#9ca3af', fontSize: '0.8rem', marginLeft: '0.5rem' }}>{opt.desc}</span>
+                                            </div>
+                                        </label>
+                                    ))}
+                                </div>
+                                {(settings as any).recipe_search_source === 'both' && (
+                                    <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid #374151' }}>
+                                        <div style={{ color: 'white', fontWeight: 'bold', marginBottom: '0.5rem' }}>Primary Source</div>
+                                        <div style={{ color: '#9ca3af', fontSize: '0.8rem', marginBottom: '0.5rem' }}>When both libraries have a recipe with the same name, which one takes priority?</div>
+                                        <div style={{ display: 'flex', gap: '1rem' }}>
+                                            {[
+                                                { value: 'local', label: 'My Library First' },
+                                                { value: 'global', label: 'Global Library First' },
+                                            ].map(opt => (
+                                                <label key={opt.value} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                                                    <input
+                                                        type="radio"
+                                                        name="recipe_search_primary"
+                                                        value={opt.value}
+                                                        checked={(settings as any).recipe_search_primary === opt.value}
+                                                        onChange={e => setSettings(prev => ({ ...prev, recipe_search_primary: e.target.value }))}
+                                                        style={{ width: '16px', height: '16px' }}
+                                                    />
+                                                    <span style={{ color: 'white' }}>{opt.label}</span>
+                                                </label>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </div>
                     <div style={{ marginTop: '1rem' }}>
                         <button onClick={handleSubmit} style={{ padding: '0.5rem 1rem', background: '#3b82f6', color: 'white', borderRadius: '0.25rem', border: 'none', cursor: 'pointer' }}>

@@ -38,6 +38,9 @@ export async function GET(req: NextRequest) {
         settingsObj['per_location_pricing'] = generalSettings.per_location_pricing ? 'true' : 'false';
         settingsObj['show_items_at_all_locations'] = generalSettings.show_items_at_all_locations === false ? 'false' : 'true';
         settingsObj['shared_inventory_count'] = generalSettings.shared_inventory_count ? 'true' : 'false';
+        settingsObj['recipes_enabled'] = generalSettings.recipes_enabled ? 'true' : 'false';
+        settingsObj['recipe_search_source'] = generalSettings.recipe_search_source || 'both';
+        settingsObj['recipe_search_primary'] = generalSettings.recipe_search_primary || 'local';
     }
 
     return NextResponse.json({ settings: settingsObj });
@@ -111,7 +114,7 @@ export async function POST(req: NextRequest) {
         }
 
         // Handle General Settings (JSONB on organizations.settings)
-        const generalSettingsKeys = ['stock_count_mode', 'allow_custom_increment', 'smart_order_per_location', 'per_location_pricing', 'show_items_at_all_locations', 'shared_inventory_count'];
+        const generalSettingsKeys = ['stock_count_mode', 'allow_custom_increment', 'smart_order_per_location', 'per_location_pricing', 'show_items_at_all_locations', 'shared_inventory_count', 'recipes_enabled', 'recipe_search_source', 'recipe_search_primary'];
         if (generalSettingsKeys.some(k => body[k] !== undefined)) {
             const orgRow = await client.query('SELECT settings FROM organizations WHERE id = $1', [organizationId]);
             const currentSettings = orgRow.rows[0]?.settings || {};
@@ -121,6 +124,9 @@ export async function POST(req: NextRequest) {
             if (body.per_location_pricing !== undefined) currentSettings.per_location_pricing = body.per_location_pricing === 'true' || body.per_location_pricing === true;
             if (body.show_items_at_all_locations !== undefined) currentSettings.show_items_at_all_locations = body.show_items_at_all_locations === 'true' || body.show_items_at_all_locations === true;
             if (body.shared_inventory_count !== undefined) currentSettings.shared_inventory_count = body.shared_inventory_count === 'true' || body.shared_inventory_count === true;
+            if (body.recipes_enabled !== undefined) currentSettings.recipes_enabled = body.recipes_enabled === 'true' || body.recipes_enabled === true;
+            if (body.recipe_search_source !== undefined) currentSettings.recipe_search_source = body.recipe_search_source;
+            if (body.recipe_search_primary !== undefined) currentSettings.recipe_search_primary = body.recipe_search_primary;
             await client.query('UPDATE organizations SET settings = $1 WHERE id = $2', [currentSettings, organizationId]);
         }
 

@@ -111,6 +111,7 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
     const [categories, setCategories] = useState<any[]>([]); // Full Category objects
     const [suppliers, setSuppliers] = useState<{ id: number, name: string }[]>([]);
     const [allowCustomIncrement, setAllowCustomIncrement] = useState(false);
+    const [recipesEnabled, setRecipesEnabled] = useState(false);
     const [loading, setLoading] = useState(false);
 
     // Pending Orders Check-In State (legacy)
@@ -241,6 +242,9 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
             const settingsData = await settingsRes.json();
             if (settingsData.settings?.allow_custom_increment === 'true') {
                 setAllowCustomIncrement(true);
+            }
+            if (settingsData.settings?.recipes_enabled === 'true') {
+                setRecipesEnabled(true);
             }
         } catch { }
     };
@@ -732,6 +736,16 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
                 >
                     Activity
                 </Button>
+                {recipesEnabled && (
+                    <Button
+                        variant="outlined"
+                        size="small"
+                        onClick={() => router.push('/inventory/recipes')}
+                        sx={{ flexShrink: 0, borderColor: '#a78bfa', color: '#a78bfa', '&:hover': { borderColor: '#7c3aed', background: 'rgba(124,58,237,0.08)' } }}
+                    >
+                        🍹 Recipes
+                    </Button>
+                )}
                 {orgLocations.length > 1 && canAddStock && !transferMode && (
                     <Button
                         variant="contained"

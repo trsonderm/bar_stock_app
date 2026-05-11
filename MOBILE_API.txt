@@ -2038,6 +2038,186 @@ PUT     /api/v1/orders/{id}                     orders:write       Update order 
 DELETE  /api/v1/orders/{id}                     orders:write       Delete a PENDING order
 GET     /api/v1/audits                          audits:read        List audit history sessions
 POST    /api/v1/audits                          audits:write       Submit a counted audit
+GET     /api/v1/recipes                         recipes:read       List recipes (local and/or global)
+POST    /api/v1/recipes                         recipes:write      Create an org-local recipe
+GET     /api/v1/recipes/{id}                    recipes:read       Get a single recipe
+PUT     /api/v1/recipes/{id}                    recipes:write      Update an org-local recipe
+DELETE  /api/v1/recipes/{id}                    recipes:write      Delete an org-local recipe
+POST    /api/v1/recipes/{id}/image              recipes:write      Upload or replace recipe image
+DELETE  /api/v1/recipes/{id}/image              recipes:write      Remove recipe image
+
+
+────────────────────────────────────────────────────────────────────────────────
+25. DEVELOPER API — DRINK RECIPES
+────────────────────────────────────────────────────────────────────────────────
+
+TopShelf supports two recipe libraries:
+  • Org-local  — recipes your admin creates, readable and writable via the API
+  • Global     — curated recipes managed by TopShelf staff, read-only via the API
+
+Which libraries are searched is configured per-org in General Settings
+(recipe_search_source: "local" | "global" | "both"). The ?source query param
+overrides this per request.
+
+RECIPE ID FORMAT
+  l:<id>   org-local recipe (e.g. "l:3")
+  g:<id>   global recipe    (e.g. "g:12")
+  <int>    plain integer — resolves local first, then global
+
+Only local recipes (l: prefix or plain integer) can be created, updated,
+deleted, or have images uploaded via the API. Global recipes are read-only.
+
+────────────────────────────────────────────────────────────────────────────────
+GET /api/v1/recipes
+────────────────────────────────────────────────────────────────────────────────
+Scope: recipes:read
+
+List drink recipes according to the org's recipe_search_source setting.
+Results are merged with the primary library first, deduplicating by name.
+
+QUERY PARAMS:
+  q          string   Full-text search across name and description
+  category   string   Filter by category ("Cocktail", "Shot", "Mocktail", etc.)
+  source     string   "local" | "global" | "both" — overrides org setting
+  limit      integer  Page size (default 50, max 200)
+  offset     integer  Page offset (default 0)
+
+RESPONSE 200:
+{
+  "data": [
+    {
+      "id": "l:3",
+      "name": "Margarita",
+      "source": "local",
+      "description": "Classic tequila cocktail",
+      "category": "Cocktail",
+      "tags": ["citrus", "popular"],
+      "ingredients": [
+        { "amount": "1.5", "unit": "oz", "item": "Tequila" },
+        { "amount": "0.75", "unit": "oz", "item": "Triple Sec" },
+        { "amount": "1", "unit": "oz", "item": "Lime Juice" }
+      ],
+      "instructions": "Shake with ice and strain into a salted rim glass.",
+      "image_url": "/uploads/3f7a1b2c.jpg",
+      "is_active": true,
+      "created_at": "2026-05-01T10:00:00Z",
+      "updated_at": "2026-05-10T14:30:00Z"
+    }
+  ],
+  "meta": { "total": 24, "limit": 50, "offset": 0 }
+}
+
+────────────────────────────────────────────────────────────────────────────────
+POST /api/v1/recipes
+────────────────────────────────────────────────────────────────────────────────
+Scope: recipes:write
+Content-Type: application/json
+
+Create a new org-local recipe.
+
+REQUEST BODY:
+{
+  "name": "Classic Mojito",          // required
+  "description": "...",              // optional
+  "category": "Cocktail",            // optional — Cocktail|Shot|Mocktail|Beer|Wine|Spirit|Other
+  "tags": ["mint", "rum"],           // optional — string array
+  "ingredients": [                   // optional
+    { "amount": "2", "unit": "oz", "item": "White Rum" },
+    { "amount": "0.75", "unit": "oz", "item": "Lime Juice" },
+    { "amount": "10", "item": "Mint Leaves" }
+  ],
+  "instructions": "Muddle mint..."   // optional
+}
+
+RESPONSE 201:
+{
+  "data": {
+    "id": "l:7",
+    "name": "Classic Mojito",
+    "source": "local"
+  }
+}
+
+────────────────────────────────────────────────────────────────────────────────
+GET /api/v1/recipes/{id}
+────────────────────────────────────────────────────────────────────────────────
+Scope: recipes:read
+
+Get a single recipe by ID. Accepts l:<id>, g:<id>, or plain integer.
+
+RESPONSE 200: Full recipe object (same shape as list item above)
+RESPONSE 404: Recipe not found
+
+────────────────────────────────────────────────────────────────────────────────
+PUT /api/v1/recipes/{id}
+────────────────────────────────────────────────────────────────────────────────
+Scope: recipes:write
+Content-Type: application/json
+
+Update an org-local recipe. All fields are optional — send only the fields
+you want to change. Global recipes (g: prefix) return 400.
+
+REQUEST BODY (all fields optional):
+{
+  "name": "Spicy Margarita",
+  "description": "With jalapeño",
+  "category": "Cocktail",
+  "tags": ["citrus", "spicy"],
+  "ingredients": [...],
+  "instructions": "..."
+}
+
+RESPONSE 200:
+{ "data": { "id": "l:3", "updated": true } }
+
+RESPONSE 400: Cannot update global recipes via the API
+RESPONSE 404: Recipe not found or not owned by this org
+
+────────────────────────────────────────────────────────────────────────────────
+DELETE /api/v1/recipes/{id}
+────────────────────────────────────────────────────────────────────────────────
+Scope: recipes:write
+
+Delete an org-local recipe. Global recipes (g: prefix) return 400.
+
+RESPONSE 200: { "data": { "id": "l:3", "deleted": true } }
+RESPONSE 400: Cannot delete global recipes via the API
+RESPONSE 404: Recipe not found or not owned by this org
+
+────────────────────────────────────────────────────────────────────────────────
+POST /api/v1/recipes/{id}/image
+────────────────────────────────────────────────────────────────────────────────
+Scope: recipes:write
+Content-Type: multipart/form-data
+
+Upload or replace the image for an org-local recipe. Only local recipes
+are supported (l:<id> or plain integer). Global recipes return 400.
+
+FORM FIELDS:
+  image   File   Required. jpeg, png, gif, or webp — max 5 MB.
+
+RESPONSE 200:
+{ "ok": true, "image_url": "/uploads/3f7a1b2c.jpg" }
+
+RESPONSE 400: No file provided | invalid MIME type | file too large | global recipe ID
+RESPONSE 404: Recipe not found or not owned by this org
+
+────────────────────────────────────────────────────────────────────────────────
+DELETE /api/v1/recipes/{id}/image
+────────────────────────────────────────────────────────────────────────────────
+Scope: recipes:write
+
+Remove the image from an org-local recipe (sets image_url to null).
+
+RESPONSE 200: { "ok": true }
+RESPONSE 400: Global recipe ID not supported
+
+────────────────────────────────────────────────────────────────────────────────
+RECIPE SCOPES SUMMARY
+────────────────────────────────────────────────────────────────────────────────
+  recipes:read   GET /api/v1/recipes, GET /api/v1/recipes/{id}
+  recipes:write  POST/PUT/DELETE /api/v1/recipes, POST/DELETE /api/v1/recipes/{id}/image
+  *              All of the above plus all other scopes
 
 
 ────────────────────────────────────────────────────────────────────────────────

@@ -176,6 +176,71 @@ const ENDPOINTS: Endpoint[] = [
         body: `{\n  "location_id": 1,\n  "label": "Weekly count",\n  "items": [\n    { "item_id": 1, "actual_quantity": 22, "note": "2 broken" },\n    { "item_id": 5, "actual_quantity": 8 }\n  ]\n}`,
         response: `{ "data": { "items_audited": 2, "items": [{ "item_name": "Vodka", "previous_quantity": 24, "actual_quantity": 22, "variance": -2 }] } }`,
     },
+    // ── RECIPES ───────────────────────────────────────────────────────────────
+    {
+        group: 'Recipes',
+        method: 'GET', path: '/api/v1/recipes',
+        description: 'List drink recipes. Returns org-local and/or global recipes based on your organization\'s recipe search settings. Supports search, category filter, pagination, and source override.',
+        scopes: ['recipes:read'],
+        params: [
+            { name: 'q', in: 'query', type: 'string', required: false, description: 'Full-text search across name and description' },
+            { name: 'category', in: 'query', type: 'string', required: false, description: 'Filter by category (e.g. "Cocktail", "Shot")' },
+            { name: 'source', in: 'query', type: 'string', required: false, description: '"local" | "global" | "both" — overrides org setting for this request' },
+            { name: 'limit', in: 'query', type: 'integer', required: false, description: 'Page size (default 50, max 200)' },
+            { name: 'offset', in: 'query', type: 'integer', required: false, description: 'Page offset' },
+        ],
+        response: `{ "data": [{ "id": "l:3", "name": "Margarita", "source": "local", "category": "Cocktail", "tags": ["citrus"], "ingredients": [{ "amount": "1.5", "unit": "oz", "item": "Tequila" }], "image_url": "/uploads/abc.jpg" }], "meta": { "total": 24, "limit": 50, "offset": 0 } }`,
+    },
+    {
+        group: 'Recipes',
+        method: 'POST', path: '/api/v1/recipes',
+        description: 'Create a new org-local recipe.',
+        scopes: ['recipes:write'],
+        body: `{\n  "name": "Classic Mojito",\n  "description": "Refreshing Cuban cocktail",\n  "category": "Cocktail",\n  "tags": ["mint", "rum", "citrus"],\n  "ingredients": [\n    { "amount": "2", "unit": "oz", "item": "White Rum" },\n    { "amount": "0.75", "unit": "oz", "item": "Lime Juice" },\n    { "amount": "10", "item": "Mint Leaves" }\n  ],\n  "instructions": "Muddle mint..."\n}`,
+        response: `{ "data": { "id": "l:7", "name": "Classic Mojito", "source": "local" } }`,
+    },
+    {
+        group: 'Recipes',
+        method: 'GET', path: '/api/v1/recipes/{id}',
+        description: 'Get a single recipe. Use prefix l:<id> for local, g:<id> for global, or a plain integer (resolves local first, then global).',
+        scopes: ['recipes:read'],
+        params: [{ name: 'id', in: 'path', type: 'string', required: true, description: 'Recipe ID — e.g. "l:3", "g:12", or "3"' }],
+        response: `{ "data": { "id": "l:3", "name": "Margarita", "source": "local", "category": "Cocktail", "ingredients": [...], "instructions": "...", "image_url": null } }`,
+    },
+    {
+        group: 'Recipes',
+        method: 'PUT', path: '/api/v1/recipes/{id}',
+        description: 'Update an org-local recipe. Only local recipes (l:<id> prefix or plain integer) can be updated via the API.',
+        scopes: ['recipes:write'],
+        params: [{ name: 'id', in: 'path', type: 'string', required: true, description: 'Local recipe ID — e.g. "l:3" or "3"' }],
+        body: `{\n  "name": "Spicy Margarita",\n  "tags": ["citrus", "spicy"],\n  "ingredients": [{ "amount": "1.5", "unit": "oz", "item": "Tequila" }]\n}`,
+        response: `{ "data": { "id": "l:3", "updated": true } }`,
+    },
+    {
+        group: 'Recipes',
+        method: 'DELETE', path: '/api/v1/recipes/{id}',
+        description: 'Delete an org-local recipe. Global recipes cannot be deleted via the API.',
+        scopes: ['recipes:write'],
+        params: [{ name: 'id', in: 'path', type: 'string', required: true, description: 'Local recipe ID — e.g. "l:3" or "3"' }],
+        response: `{ "data": { "id": "l:3", "deleted": true } }`,
+    },
+    {
+        group: 'Recipes',
+        method: 'POST', path: '/api/v1/recipes/{id}/image',
+        description: 'Upload or replace the image for an org-local recipe. Send as multipart/form-data with field "image" (jpeg, png, gif, or webp — max 5 MB).',
+        scopes: ['recipes:write'],
+        params: [{ name: 'id', in: 'path', type: 'string', required: true, description: 'Local recipe ID — e.g. "l:3" or "3"' }],
+        body: `multipart/form-data\n  image: <file>  (jpeg | png | gif | webp, max 5 MB)`,
+        response: `{ "ok": true, "image_url": "/uploads/3f7a1b2c.jpg" }`,
+    },
+    {
+        group: 'Recipes',
+        method: 'DELETE', path: '/api/v1/recipes/{id}/image',
+        description: 'Remove the image from an org-local recipe.',
+        scopes: ['recipes:write'],
+        params: [{ name: 'id', in: 'path', type: 'string', required: true, description: 'Local recipe ID — e.g. "l:3" or "3"' }],
+        response: `{ "ok": true }`,
+    },
 ];
 
 const GROUPS = [...new Set(ENDPOINTS.map(e => e.group))];
@@ -191,7 +256,7 @@ const METHOD_COLORS: Record<Method, string> = {
 
 interface ApiKey { id: number; name: string; prefix: string; scopes: string[]; is_active: boolean; last_used_at: string | null; created_at: string }
 
-const ALL_SCOPES = ['inventory:read', 'inventory:write', 'orders:read', 'orders:write', 'audits:read', 'audits:write', 'locations:read', 'categories:read'];
+const ALL_SCOPES = ['inventory:read', 'inventory:write', 'orders:read', 'orders:write', 'audits:read', 'audits:write', 'locations:read', 'categories:read', 'recipes:read', 'recipes:write'];
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -388,6 +453,8 @@ export default function DeveloperClient() {
                                                 ['audits:write', 'Submit inventory audits'],
                                                 ['locations:read', 'List locations'],
                                                 ['categories:read', 'List categories'],
+                                                ['recipes:read', 'List and view drink recipes (local and global)'],
+                                                ['recipes:write', 'Create, update, delete, and upload images for org-local recipes'],
                                             ].map(([scope, desc]) => (
                                                 <tr key={scope} className="border-b border-gray-800/50 last:border-0">
                                                     <td className="px-5 py-3 font-mono text-xs text-purple-300">{scope}</td>
