@@ -10,8 +10,7 @@ import {
     AlertCircle, Clock, HelpCircle, TrendingUp, TrendingDown, BarChart3,
     Settings2, Database, History, ListChecks, AlertTriangle, Target,
 } from 'lucide-react';
-import { DEFAULT_ORG_ML_CONFIG, OrgMLConfig, ItemMLParams, OrgMLPerformance, OrgMLStatus, HistoryEntry } from '@/lib/org-ml';
-import { MLModelType } from '@/lib/ml';
+import { DEFAULT_ORG_ML_CONFIG, OrgMLConfig, ItemMLParams, OrgMLPerformance, OrgMLStatus, HistoryEntry, MLModelType } from '@/lib/org-ml-types';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 

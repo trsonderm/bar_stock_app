@@ -1,83 +1,13 @@
 import { db } from './db';
-import { MLModelConfig, DEFAULT_ML_CONFIG, MLModelType, burnRate, linearRegression } from './ml';
-
-// ── Config ────────────────────────────────────────────────────────────────────
-
-export interface OrgMLConfig extends MLModelConfig {
-    auto_retrain: boolean;
-    auto_retrain_interval_days: number;
-    holdout_fraction: number;       // 0.1–0.3; portion of each series reserved for validation
-    replacement_threshold: number;  // min confidence-score improvement required to replace current model
-    comparison_mode: boolean;       // train a challenger and only replace if it beats current
-}
-
-export const DEFAULT_ORG_ML_CONFIG: OrgMLConfig = {
-    ...DEFAULT_ML_CONFIG,
-    auto_retrain: false,
-    auto_retrain_interval_days: 30,
-    holdout_fraction: 0.2,
-    replacement_threshold: 2,
-    comparison_mode: true,
-};
-
-// ── Params & performance types ────────────────────────────────────────────────
-
-export interface ItemMLParams {
-    item_id: number;
-    item_name: string;
-    burn_rate: number;
-    slope: number;
-    r2: number;
-    mean_daily: number;
-    std_dev: number;
-    data_points: number;
-    first_day: string;
-    last_day: string;
-    forecast_next_7: number;
-    forecast_next_30: number;
-    mape: number;   // holdout mean absolute percentage error (0 = no holdout test)
-    mae: number;    // holdout mean absolute error
-}
-
-export interface HoldoutMetrics {
-    mape: number;        // mean absolute percentage error across all tested items
-    mae: number;         // mean absolute error
-    items_tested: number;
-    accuracy_pct: number; // 100 - mape, clamped to [0,100]
-}
-
-export interface OrgMLPerformance {
-    items_covered: number;
-    total_items: number;
-    coverage_pct: number;
-    total_data_points: number;
-    avg_r2: number;
-    confidence_score: number;
-    training_window_days: number;
-    model_used: MLModelType;
-    holdout: HoldoutMetrics;
-}
-
-export type OrgMLStatus = 'untrained' | 'training' | 'trained' | 'failed';
-
-export interface HistoryEntry {
-    id: number;
-    organization_id: number;
-    status: 'trained' | 'failed' | 'rejected';
-    config: OrgMLConfig;
-    performance: OrgMLPerformance;
-    comparison: {
-        confidence_delta: number;
-        r2_delta: number;
-        coverage_delta: number;
-        mape_delta: number;
-        replaced: boolean;
-        reason: string;
-    } | null;
-    improvement_reasons: string[];
-    trained_at: string;
-    duration_ms: number;
-}
+import { MLModelType, burnRate, linearRegression } from './ml';
+export {
+    OrgMLConfig, DEFAULT_ORG_ML_CONFIG,
+    ItemMLParams, HoldoutMetrics, OrgMLPerformance,
+    OrgMLStatus, HistoryEntry,
+} from './org-ml-types';
+import type {
+    OrgMLConfig, ItemMLParams, HoldoutMetrics, OrgMLPerformance,
+} from './org-ml-types';
 
 // ── DB setup ──────────────────────────────────────────────────────────────────
 
