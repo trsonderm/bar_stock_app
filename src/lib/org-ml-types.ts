@@ -72,6 +72,7 @@ export interface HistoryEntry {
         reason: string;
     } | null;
     improvement_reasons: string[];
+    replaced_previous: boolean;
     trained_at: string;
     duration_ms: number;
 }
