@@ -15,6 +15,7 @@ import {
     Smartphone,
     Activity,
     Cpu,
+    Brain,
     ScanLine,
     HelpCircle,
     Shield,
@@ -42,6 +43,7 @@ export default function SuperAdminNav() {
         { name: 'Site Settings', href: '/super-admin/settings', icon: Settings },
         { name: 'Security', href: '/super-admin/security', icon: Shield },
         { name: 'ML Models', href: '/super-admin/ml-models', icon: Cpu },
+        { name: 'Org ML Models', href: '/super-admin/org-models', icon: Brain },
         { name: 'Bottle Lookup', href: '/super-admin/bottle-lookup', icon: ScanLine },
         { name: 'Bottle Lookup DB', href: '/super-admin/bottle-lookup-db', icon: ScanLine },
         { name: 'Help Editor', href: '/super-admin/help-editor', icon: HelpCircle },
@@ -103,6 +105,7 @@ export default function SuperAdminNav() {
                     Return to App
                 </Link>
                 <button
+                    type="button"
                     onClick={async () => {
                         await fetch('/api/auth/logout', { method: 'POST' });
                         window.location.href = '/login';
