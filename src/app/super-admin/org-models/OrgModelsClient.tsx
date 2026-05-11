@@ -168,8 +168,8 @@ function OrgHistoryCharts({ orgId }: { orgId: number }) {
                         <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
                         <XAxis dataKey="date" tick={{ fill: '#64748b', fontSize: 10 }} />
                         <YAxis domain={[0, 100]} tick={{ fill: '#64748b', fontSize: 10 }} />
-                        <Tooltip {...ChartTooltipStyle} formatter={(v: any, name: string) => [
-                            name === 'R² (×100)' ? `${v}%` : `${v}%`, name
+                        <Tooltip {...ChartTooltipStyle} formatter={(v: any, name: string | undefined) => [
+                            `${v}%`, name ?? ''
                         ]} />
                         <Legend wrapperStyle={{ fontSize: 11, color: '#94a3b8' }} />
                         <ReferenceLine y={70} stroke="#374151" strokeDasharray="3 3" />
@@ -343,7 +343,7 @@ function ItemsBurnChart({ params }: { params: ItemMLParams[] }) {
                 <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" horizontal={false} />
                 <XAxis type="number" tick={{ fill: '#64748b', fontSize: 10 }} />
                 <YAxis type="category" dataKey="name" tick={{ fill: '#94a3b8', fontSize: 10 }} width={90} />
-                <Tooltip {...ChartTooltipStyle} formatter={(v: any, name: string) => [`${v} units`, name]} />
+                <Tooltip {...ChartTooltipStyle} formatter={(v: any, name: string | undefined) => [`${v} units`, name ?? '']} />
                 <Legend wrapperStyle={{ fontSize: 11, color: '#94a3b8' }} />
                 <Bar dataKey="burn" name="Daily burn rate" fill="#3b82f6" radius={[0, 3, 3, 0]} />
                 <Bar dataKey="forecast7" name="7-day forecast" fill="#6366f1" radius={[0, 3, 3, 0]} />

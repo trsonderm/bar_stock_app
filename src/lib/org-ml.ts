@@ -1,8 +1,8 @@
 import { db } from './db';
 import { MLModelType, burnRate, linearRegression } from './ml';
-export {
-    OrgMLConfig, DEFAULT_ORG_ML_CONFIG,
-    ItemMLParams, HoldoutMetrics, OrgMLPerformance,
+export { DEFAULT_ORG_ML_CONFIG } from './org-ml-types';
+export type {
+    OrgMLConfig, ItemMLParams, HoldoutMetrics, OrgMLPerformance,
     OrgMLStatus, HistoryEntry,
 } from './org-ml-types';
 import type {
