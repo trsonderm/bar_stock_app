@@ -20,7 +20,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
     const id = parseInt(params.id);
     const exists = await db.one(
-        `SELECT id FROM org_drink_recipes WHERE id = $1 AND organization_id = $2`,
+        `SELECT id FROM org_recipes WHERE id = $1 AND organization_id = $2`,
         [id, session.organizationId]
     );
     if (!exists) return NextResponse.json({ error: 'Recipe not found' }, { status: 404 });
@@ -33,7 +33,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
     const url = await saveFile(file);
     await db.execute(
-        `UPDATE org_drink_recipes SET image_url = $1, updated_at = NOW() WHERE id = $2 AND organization_id = $3`,
+        `UPDATE org_recipes SET image_url = $1, updated_at = NOW() WHERE id = $2 AND organization_id = $3`,
         [url, id, session.organizationId]
     );
 
@@ -48,7 +48,7 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
 
     const id = parseInt(params.id);
     await db.execute(
-        `UPDATE org_drink_recipes SET image_url = NULL, updated_at = NOW() WHERE id = $1 AND organization_id = $2`,
+        `UPDATE org_recipes SET image_url = NULL, updated_at = NOW() WHERE id = $1 AND organization_id = $2`,
         [id, session.organizationId]
     );
 

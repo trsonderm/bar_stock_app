@@ -8,7 +8,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
 
     const id = parseInt(params.id);
     const body = await req.json();
-    const allowed = ['name', 'description', 'ingredients', 'instructions', 'category', 'tags', 'is_active'];
+    const allowed = ['name', 'description', 'ingredients', 'instructions', 'category_id', 'category', 'tags', 'is_active'];
     const sets: string[] = [];
     const vals: any[] = [];
     let idx = 1;
@@ -24,7 +24,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     vals.push(id);
 
     const result = await db.execute(
-        `UPDATE drink_recipes SET ${sets.join(', ')} WHERE id = $${idx}`,
+        `UPDATE recipes SET ${sets.join(', ')} WHERE id = $${idx}`,
         vals
     );
     if ((result as any).rowCount === 0) return NextResponse.json({ error: 'Recipe not found' }, { status: 404 });
@@ -36,7 +36,7 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
     const session = await getSession();
     if (!session?.isSuperAdmin) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const result = await db.execute(`DELETE FROM drink_recipes WHERE id = $1`, [parseInt(params.id)]);
+    const result = await db.execute(`DELETE FROM recipes WHERE id = $1`, [parseInt(params.id)]);
     if ((result as any).rowCount === 0) return NextResponse.json({ error: 'Recipe not found' }, { status: 404 });
 
     return NextResponse.json({ ok: true });

@@ -62,7 +62,7 @@ export async function GET(req: NextRequest) {
         if (q) { params.push(q.trim()); where += ` AND to_tsvector('english', name) @@ plainto_tsquery('english', $${params.length})`; }
         if (category) { params.push(category); where += ` AND category = $${params.length}`; }
         const rows = await db.query(
-            `SELECT id, name, description, ingredients, instructions, category, tags, created_at FROM org_drink_recipes ${where} ORDER BY name ASC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+            `SELECT id, name, description, ingredients, instructions, category, tags, created_at FROM org_recipes ${where} ORDER BY name ASC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
             [...params, limit, offset]
         );
         localResults.push(...rows.map((r: any) => ({ ...r, source: 'local' })));
@@ -74,7 +74,7 @@ export async function GET(req: NextRequest) {
         if (q) { params.push(q.trim()); where += ` AND to_tsvector('english', name) @@ plainto_tsquery('english', $${params.length})`; }
         if (category) { params.push(category); where += ` AND category = $${params.length}`; }
         const rows = await db.query(
-            `SELECT id, name, description, ingredients, instructions, category, tags, created_at FROM drink_recipes ${where} ORDER BY name ASC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+            `SELECT id, name, description, ingredients, instructions, category, tags, created_at FROM recipes ${where} ORDER BY name ASC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
             [...params, limit, offset]
         );
         globalResults.push(...rows.map((r: any) => ({ ...r, source: 'global' })));
@@ -125,13 +125,13 @@ export async function POST(req: NextRequest) {
     if (!name || !name.trim()) return Err.badRequest('name is required');
 
     const existing = await db.one(
-        `SELECT id FROM org_drink_recipes WHERE organization_id = $1 AND LOWER(name) = LOWER($2)`,
+        `SELECT id FROM org_recipes WHERE organization_id = $1 AND LOWER(name) = LOWER($2)`,
         [session.organizationId, name.trim()]
     );
     if (existing) return Err.badRequest('A recipe with that name already exists in your library');
 
     const row = await db.one(
-        `INSERT INTO org_drink_recipes (organization_id, name, description, ingredients, instructions, category, tags)
+        `INSERT INTO org_recipes (organization_id, name, description, ingredients, instructions, category, tags)
          VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
         [session.organizationId, name.trim(), description || null,
          JSON.stringify(ingredients || []), instructions || null,

@@ -30,20 +30,20 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     if (!parsed) return Err.badRequest('Invalid recipe id');
 
     if (parsed.type === 'global') {
-        const row = await db.one(`SELECT * FROM drink_recipes WHERE id = $1 AND is_active = true`, [parsed.id]);
+        const row = await db.one(`SELECT * FROM recipes WHERE id = $1 AND is_active = true`, [parsed.id]);
         if (!row) return Err.notFound('Recipe');
         return apiOk({ ...row, source: 'global' });
     }
 
     // Try local first
     let row = await db.one(
-        `SELECT * FROM org_drink_recipes WHERE id = $1 AND organization_id = $2`,
+        `SELECT * FROM org_recipes WHERE id = $1 AND organization_id = $2`,
         [parsed.id, session.organizationId]
     );
     if (row) return apiOk({ ...row, source: 'local' });
 
     // Fall back to global
-    row = await db.one(`SELECT * FROM drink_recipes WHERE id = $1 AND is_active = true`, [parsed.id]);
+    row = await db.one(`SELECT * FROM recipes WHERE id = $1 AND is_active = true`, [parsed.id]);
     if (row) return apiOk({ ...row, source: 'global' });
 
     return Err.notFound('Recipe');
@@ -60,7 +60,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     if (!parsed || parsed.type === 'global') return Err.badRequest('Only org-local recipes can be updated. Use l:<id> or a plain integer.');
 
     const exists = await db.one(
-        `SELECT id FROM org_drink_recipes WHERE id = $1 AND organization_id = $2`,
+        `SELECT id FROM org_recipes WHERE id = $1 AND organization_id = $2`,
         [parsed.id, session.organizationId]
     );
     if (!exists) return Err.notFound('Recipe');
@@ -82,7 +82,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     vals.push(parsed.id, session.organizationId);
 
     await db.execute(
-        `UPDATE org_drink_recipes SET ${sets.join(', ')} WHERE id = $${idx} AND organization_id = $${idx + 1}`,
+        `UPDATE org_recipes SET ${sets.join(', ')} WHERE id = $${idx} AND organization_id = $${idx + 1}`,
         vals
     );
 
@@ -100,7 +100,7 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
     if (!parsed || parsed.type === 'global') return Err.badRequest('Only org-local recipes can be deleted.');
 
     const result = await db.execute(
-        `DELETE FROM org_drink_recipes WHERE id = $1 AND organization_id = $2`,
+        `DELETE FROM org_recipes WHERE id = $1 AND organization_id = $2`,
         [parsed.id, session.organizationId]
     );
     if ((result as any).rowCount === 0) return Err.notFound('Recipe');

@@ -32,7 +32,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     if (localId === null) return NextResponse.json({ error: 'Image upload is only supported for org-local recipes. Use l:<id> or a plain integer.' }, { status: 400 });
 
     const exists = await db.one(
-        `SELECT id FROM org_drink_recipes WHERE id = $1 AND organization_id = $2`,
+        `SELECT id FROM org_recipes WHERE id = $1 AND organization_id = $2`,
         [localId, api.organizationId]
     );
     if (!exists) return NextResponse.json({ error: 'Recipe not found' }, { status: 404 });
@@ -45,7 +45,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
     const url = await saveFile(file);
     await db.execute(
-        `UPDATE org_drink_recipes SET image_url = $1, updated_at = NOW() WHERE id = $2 AND organization_id = $3`,
+        `UPDATE org_recipes SET image_url = $1, updated_at = NOW() WHERE id = $2 AND organization_id = $3`,
         [url, localId, api.organizationId]
     );
 
@@ -61,7 +61,7 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
     if (localId === null) return NextResponse.json({ error: 'Image removal is only supported for org-local recipes.' }, { status: 400 });
 
     await db.execute(
-        `UPDATE org_drink_recipes SET image_url = NULL, updated_at = NOW() WHERE id = $1 AND organization_id = $2`,
+        `UPDATE org_recipes SET image_url = NULL, updated_at = NOW() WHERE id = $1 AND organization_id = $2`,
         [localId, api.organizationId]
     );
 

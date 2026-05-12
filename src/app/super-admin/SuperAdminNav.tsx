@@ -24,6 +24,7 @@ import {
     Globe,
     Bell,
     ShieldCheck,
+    BookOpen,
 } from 'lucide-react';
 
 export default function SuperAdminNav() {
@@ -44,6 +45,7 @@ export default function SuperAdminNav() {
         { name: 'Security', href: '/super-admin/security', icon: Shield },
         { name: 'ML Models', href: '/super-admin/ml-models', icon: Cpu },
         { name: 'Org ML Models', href: '/super-admin/org-models', icon: Brain },
+        { name: 'Recipes', href: '/super-admin/recipes', icon: BookOpen },
         { name: 'Bottle Lookup', href: '/super-admin/bottle-lookup', icon: ScanLine },
         { name: 'Bottle Lookup DB', href: '/super-admin/bottle-lookup-db', icon: ScanLine },
         { name: 'Help Editor', href: '/super-admin/help-editor', icon: HelpCircle },

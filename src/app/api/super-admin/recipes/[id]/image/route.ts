@@ -23,7 +23,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
     const url = await saveFile(file);
     const result = await db.execute(
-        `UPDATE drink_recipes SET image_url = $1, updated_at = NOW() WHERE id = $2`,
+        `UPDATE recipes SET image_url = $1, updated_at = NOW() WHERE id = $2`,
         [url, id]
     );
     if ((result as any).rowCount === 0) return NextResponse.json({ error: 'Recipe not found' }, { status: 404 });
@@ -35,6 +35,6 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
     const session = await getSession();
     if (!session?.isSuperAdmin) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    await db.execute(`UPDATE drink_recipes SET image_url = NULL, updated_at = NOW() WHERE id = $1`, [parseInt(params.id)]);
+    await db.execute(`UPDATE recipes SET image_url = NULL, updated_at = NOW() WHERE id = $1`, [parseInt(params.id)]);
     return NextResponse.json({ ok: true });
 }

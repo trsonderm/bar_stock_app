@@ -83,44 +83,93 @@ export async function ensureApiKeysTable(): Promise<void> {
 }
 
 export async function ensureRecipeTables(): Promise<void> {
-    // Global recipes — managed by super-admins, read-only for orgs
+    // Migrate: rename old tables if they still exist under their old names
     await db.execute(`
-        CREATE TABLE IF NOT EXISTS drink_recipes (
-            id           SERIAL PRIMARY KEY,
-            name         VARCHAR(255) NOT NULL,
-            description  TEXT,
-            ingredients  JSONB NOT NULL DEFAULT '[]',
-            instructions TEXT,
-            category     VARCHAR(100),
-            tags         TEXT[] DEFAULT '{}',
-            image_url    TEXT,
-            is_active    BOOLEAN NOT NULL DEFAULT TRUE,
-            created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        DO $$ BEGIN
+            IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename='drink_recipes')
+               AND NOT EXISTS (SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename='recipes') THEN
+                ALTER TABLE drink_recipes RENAME TO recipes;
+            END IF;
+        END $$
+    `).catch(() => {});
+    await db.execute(`
+        DO $$ BEGIN
+            IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename='org_drink_recipes')
+               AND NOT EXISTS (SELECT 1 FROM pg_tables WHERE schemaname='public' AND tablename='org_recipes') THEN
+                ALTER TABLE org_drink_recipes RENAME TO org_recipes;
+            END IF;
+        END $$
+    `).catch(() => {});
+
+    // Recipe categories — system-wide and org-specific custom ones
+    await db.execute(`
+        CREATE TABLE IF NOT EXISTS recipe_categories (
+            id         SERIAL PRIMARY KEY,
+            name       TEXT NOT NULL,
+            slug       TEXT NOT NULL,
+            org_id     INTEGER REFERENCES organizations(id) ON DELETE CASCADE,
+            is_system  BOOLEAN NOT NULL DEFAULT FALSE,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
     `);
-    await db.execute(`CREATE INDEX IF NOT EXISTS drink_recipes_name_trgm ON drink_recipes USING GIN (to_tsvector('english', name))`);
-    // Add image_url column if table already existed without it
-    await db.execute(`ALTER TABLE drink_recipes ADD COLUMN IF NOT EXISTS image_url TEXT`).catch(() => {});
+    await db.execute(`
+        CREATE UNIQUE INDEX IF NOT EXISTS recipe_categories_slug_global
+        ON recipe_categories (slug) WHERE org_id IS NULL
+    `).catch(() => {});
+    await db.execute(`
+        CREATE UNIQUE INDEX IF NOT EXISTS recipe_categories_slug_org
+        ON recipe_categories (slug, org_id) WHERE org_id IS NOT NULL
+    `).catch(() => {});
+    // Seed system categories
+    await db.execute(`
+        INSERT INTO recipe_categories (name, slug, is_system) VALUES
+            ('Food','food',TRUE), ('Cocktail','cocktail',TRUE), ('Shot','shot',TRUE),
+            ('Mocktail','mocktail',TRUE), ('Beer','beer',TRUE), ('Wine','wine',TRUE),
+            ('Spirit','spirit',TRUE), ('Other','other',TRUE)
+        ON CONFLICT DO NOTHING
+    `).catch(() => {});
+
+    // Global recipes — managed by super-admins
+    await db.execute(`
+        CREATE TABLE IF NOT EXISTS recipes (
+            id          SERIAL PRIMARY KEY,
+            name        TEXT NOT NULL,
+            description TEXT,
+            ingredients JSONB NOT NULL DEFAULT '[]',
+            instructions TEXT,
+            category_id INTEGER REFERENCES recipe_categories(id) ON DELETE SET NULL,
+            category    TEXT,
+            tags        TEXT[] NOT NULL DEFAULT '{}',
+            image_url   TEXT,
+            is_active   BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    `);
+    await db.execute(`CREATE INDEX IF NOT EXISTS recipes_name_trgm ON recipes USING GIN (to_tsvector('english', name))`);
+    await db.execute(`ALTER TABLE recipes ADD COLUMN IF NOT EXISTS image_url TEXT`).catch(() => {});
+    await db.execute(`ALTER TABLE recipes ADD COLUMN IF NOT EXISTS category_id INTEGER REFERENCES recipe_categories(id) ON DELETE SET NULL`).catch(() => {});
 
     // Org-local recipes — managed by each org's admin
     await db.execute(`
-        CREATE TABLE IF NOT EXISTS org_drink_recipes (
+        CREATE TABLE IF NOT EXISTS org_recipes (
             id              SERIAL PRIMARY KEY,
             organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-            name            VARCHAR(255) NOT NULL,
+            name            TEXT NOT NULL,
             description     TEXT,
             ingredients     JSONB NOT NULL DEFAULT '[]',
             instructions    TEXT,
-            category        VARCHAR(100),
-            tags            TEXT[] DEFAULT '{}',
+            category_id     INTEGER REFERENCES recipe_categories(id) ON DELETE SET NULL,
+            category        TEXT,
+            tags            TEXT[] NOT NULL DEFAULT '{}',
             image_url       TEXT,
             is_active       BOOLEAN NOT NULL DEFAULT TRUE,
             created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
     `);
-    await db.execute(`CREATE INDEX IF NOT EXISTS org_drink_recipes_org_idx ON org_drink_recipes(organization_id)`);
-    await db.execute(`CREATE INDEX IF NOT EXISTS org_drink_recipes_name_trgm ON org_drink_recipes USING GIN (to_tsvector('english', name))`);
-    await db.execute(`ALTER TABLE org_drink_recipes ADD COLUMN IF NOT EXISTS image_url TEXT`).catch(() => {});
+    await db.execute(`CREATE INDEX IF NOT EXISTS org_recipes_org_idx ON org_recipes(organization_id)`);
+    await db.execute(`CREATE INDEX IF NOT EXISTS org_recipes_name_trgm ON org_recipes USING GIN (to_tsvector('english', name))`);
+    await db.execute(`ALTER TABLE org_recipes ADD COLUMN IF NOT EXISTS image_url TEXT`).catch(() => {});
+    await db.execute(`ALTER TABLE org_recipes ADD COLUMN IF NOT EXISTS category_id INTEGER REFERENCES recipe_categories(id) ON DELETE SET NULL`).catch(() => {});
 }

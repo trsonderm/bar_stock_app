@@ -10,7 +10,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
 
     const id = parseInt(params.id);
     const exists = await db.one(
-        `SELECT id FROM org_drink_recipes WHERE id = $1 AND organization_id = $2`,
+        `SELECT id FROM org_recipes WHERE id = $1 AND organization_id = $2`,
         [id, session.organizationId]
     );
     if (!exists) return NextResponse.json({ error: 'Recipe not found' }, { status: 404 });
@@ -32,7 +32,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     vals.push(id, session.organizationId);
 
     await db.execute(
-        `UPDATE org_drink_recipes SET ${sets.join(', ')} WHERE id = $${idx} AND organization_id = $${idx + 1}`,
+        `UPDATE org_recipes SET ${sets.join(', ')} WHERE id = $${idx} AND organization_id = $${idx + 1}`,
         vals
     );
 
@@ -47,7 +47,7 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
 
     const id = parseInt(params.id);
     const result = await db.execute(
-        `DELETE FROM org_drink_recipes WHERE id = $1 AND organization_id = $2`,
+        `DELETE FROM org_recipes WHERE id = $1 AND organization_id = $2`,
         [id, session.organizationId]
     );
     if ((result as any).rowCount === 0) return NextResponse.json({ error: 'Recipe not found' }, { status: 404 });
