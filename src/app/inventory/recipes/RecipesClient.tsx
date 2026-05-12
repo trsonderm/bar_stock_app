@@ -23,6 +23,8 @@ interface Recipe {
     ingredients: { item: string; amount: string; unit?: string }[];
     instructions: string | null;
     category: string | null;
+    glass: string | null;
+    amount: string | null;
     tags: string[];
     source: 'local' | 'global';
     image_url?: string | null;
@@ -44,7 +46,7 @@ export default function RecipesClient({ user }: { user: any }) {
     // Edit/create modal
     const [editOpen, setEditOpen] = useState(false);
     const [editTarget, setEditTarget] = useState<Recipe | null>(null);
-    const [form, setForm] = useState({ name: '', description: '', instructions: '', category: '', tags: '', ingredients: '' });
+    const [form, setForm] = useState({ name: '', description: '', instructions: '', category: '', glass: '', amount: '', tags: '', ingredients: '' });
     const [saving, setSaving] = useState(false);
     const [deleting, setDeleting] = useState(false);
 
@@ -70,7 +72,7 @@ export default function RecipesClient({ user }: { user: any }) {
 
     const openCreate = () => {
         setEditTarget(null);
-        setForm({ name: '', description: '', instructions: '', category: '', tags: '', ingredients: '' });
+        setForm({ name: '', description: '', instructions: '', category: '', glass: '', amount: '', tags: '', ingredients: '' });
         setEditOpen(true);
     };
 
@@ -82,6 +84,8 @@ export default function RecipesClient({ user }: { user: any }) {
             description: r.description || '',
             instructions: r.instructions || '',
             category: r.category || '',
+            glass: r.glass || '',
+            amount: r.amount || '',
             tags: (r.tags || []).join(', '),
             ingredients: (r.ingredients || []).map(i => `${i.amount}${i.unit ? ' ' + i.unit : ''} ${i.item}`).join('\n'),
         });
@@ -105,6 +109,8 @@ export default function RecipesClient({ user }: { user: any }) {
                 description: form.description || null,
                 instructions: form.instructions || null,
                 category: form.category || null,
+                glass: form.glass || null,
+                amount: form.amount || null,
                 tags: form.tags ? form.tags.split(',').map(t => t.trim()).filter(Boolean) : [],
                 ingredients: parseIngredients(form.ingredients),
             };
@@ -252,7 +258,9 @@ export default function RecipesClient({ user }: { user: any }) {
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
                             <Box>
                                 <Typography variant="h5" sx={{ fontWeight: 700 }}>{selected.name}</Typography>
-                                {selected.category && <Chip label={selected.category} size="small" sx={{ mt: 0.5, mr: 0.5 }} />}
+                                        {selected.category && <Chip label={selected.category} size="small" sx={{ mt: 0.5, mr: 0.5 }} />}
+                                {selected.glass && <Chip label={`Glass: ${selected.glass}`} size="small" variant="outlined" sx={{ mt: 0.5, mr: 0.5 }} />}
+                                {selected.amount && <Chip label={`Serves: ${selected.amount}`} size="small" variant="outlined" sx={{ mt: 0.5, mr: 0.5 }} />}
                                 {selected.tags?.map(t => <Chip key={t} label={t} size="small" sx={{ mt: 0.5, mr: 0.5 }} variant="outlined" />)}
                                 <Chip label={selected.source === 'global' ? 'Global Library' : 'My Library'} size="small" sx={{ mt: 0.5, bgcolor: selected.source === 'global' ? '#1e3a5f' : '#1a2e1a', color: selected.source === 'global' ? '#93c5fd' : '#86efac' }} />
                             </Box>
@@ -309,6 +317,10 @@ export default function RecipesClient({ user }: { user: any }) {
                         {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                     </TextField>
                     <TextField label="Description" value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} fullWidth size="small" multiline rows={2} />
+                    <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.5 }}>
+                        <TextField label="Glass Type" value={form.glass} onChange={e => setForm(p => ({ ...p, glass: e.target.value }))} fullWidth size="small" placeholder="e.g. Collins glass" />
+                        <TextField label="Serving Size" value={form.amount} onChange={e => setForm(p => ({ ...p, amount: e.target.value }))} fullWidth size="small" placeholder="e.g. 4 oz" />
+                    </Box>
                     <TextField
                         label="Ingredients (one per line: amount unit item)"
                         placeholder={'1.5 oz Vodka\n0.5 oz Triple Sec\n1 oz Lime Juice'}

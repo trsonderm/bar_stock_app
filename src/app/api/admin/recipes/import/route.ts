@@ -52,8 +52,8 @@ export async function POST(req: NextRequest) {
 
         try {
             await db.one(
-                `INSERT INTO org_recipes (organization_id, name, description, ingredients, instructions, category, tags)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+                `INSERT INTO org_recipes (organization_id, name, description, ingredients, instructions, category, glass, amount, tags)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
                 [
                     session.organizationId,
                     name,
@@ -61,6 +61,8 @@ export async function POST(req: NextRequest) {
                     JSON.stringify(Array.isArray(rec.ingredients) ? rec.ingredients : []),
                     rec.instructions?.trim() || null,
                     rec.category?.trim() || null,
+                    (rec as any).glass?.trim() || null,
+                    (rec as any).amount?.trim() || null,
                     Array.isArray(rec.tags) ? rec.tags : [],
                 ]
             );

@@ -62,7 +62,7 @@ export async function GET(req: NextRequest) {
         if (q) { params.push(q.trim()); where += ` AND to_tsvector('english', name) @@ plainto_tsquery('english', $${params.length})`; }
         if (category) { params.push(category); where += ` AND category = $${params.length}`; }
         const rows = await db.query(
-            `SELECT id, name, description, ingredients, instructions, category, tags, created_at FROM org_recipes ${where} ORDER BY name ASC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+            `SELECT id, name, description, ingredients, instructions, category, glass, amount, tags, created_at FROM org_recipes ${where} ORDER BY name ASC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
             [...params, limit, offset]
         );
         localResults.push(...rows.map((r: any) => ({ ...r, source: 'local' })));
@@ -74,7 +74,7 @@ export async function GET(req: NextRequest) {
         if (q) { params.push(q.trim()); where += ` AND to_tsvector('english', name) @@ plainto_tsquery('english', $${params.length})`; }
         if (category) { params.push(category); where += ` AND category = $${params.length}`; }
         const rows = await db.query(
-            `SELECT id, name, description, ingredients, instructions, category, tags, created_at FROM recipes ${where} ORDER BY name ASC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+            `SELECT id, name, description, ingredients, instructions, category, glass, amount, tags, created_at FROM recipes ${where} ORDER BY name ASC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
             [...params, limit, offset]
         );
         globalResults.push(...rows.map((r: any) => ({ ...r, source: 'global' })));
@@ -105,6 +105,8 @@ export async function GET(req: NextRequest) {
             ingredients: r.ingredients || [],
             instructions: r.instructions,
             category: r.category,
+            glass: r.glass || null,
+            amount: r.amount || null,
             tags: r.tags || [],
             source: r.source,
             created_at: r.created_at,
@@ -121,7 +123,7 @@ export async function POST(req: NextRequest) {
     await ensureRecipeTables();
 
     const body = await req.json();
-    const { name, description, ingredients, instructions, category, tags } = body;
+    const { name, description, ingredients, instructions, category, glass, amount, tags } = body;
     if (!name || !name.trim()) return Err.badRequest('name is required');
 
     const existing = await db.one(
@@ -131,11 +133,11 @@ export async function POST(req: NextRequest) {
     if (existing) return Err.badRequest('A recipe with that name already exists in your library');
 
     const row = await db.one(
-        `INSERT INTO org_recipes (organization_id, name, description, ingredients, instructions, category, tags)
-         VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+        `INSERT INTO org_recipes (organization_id, name, description, ingredients, instructions, category, glass, amount, tags)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
         [session.organizationId, name.trim(), description || null,
          JSON.stringify(ingredients || []), instructions || null,
-         category || null, tags || []]
+         category || null, glass || null, amount || null, tags || []]
     );
 
     return apiOk({ id: row.id, created: true }, {}, 201);

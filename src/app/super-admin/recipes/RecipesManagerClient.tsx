@@ -32,6 +32,8 @@ interface Recipe {
     instructions: string | null;
     category: string | null;
     category_id: number | null;
+    glass: string | null;
+    amount: string | null;
     tags: string[];
     image_url: string | null;
     is_active: boolean;
@@ -40,7 +42,7 @@ interface Recipe {
 }
 
 type ImportField = 'name' | 'description' | 'instructions' | 'ingredients' | 'category' | 'tags' | 'skip';
-type PivotField = 'recipe_name' | 'ing_name' | 'ing_amount' | 'ing_unit' | 'ing_instructions' | 'instructions' | 'description' | 'category' | 'tags' | 'skip';
+type PivotField = 'recipe_name' | 'ing_name' | 'ing_amount' | 'ing_unit' | 'ing_instructions' | 'instructions' | 'description' | 'category' | 'glass' | 'amount' | 'tags' | 'skip';
 
 interface ImportPreviewRow {
     name: string;
@@ -48,6 +50,8 @@ interface ImportPreviewRow {
     instructions: string;
     ingredients: Ingredient[];
     category: string;
+    glass: string;
+    amount: string;
     tags: string[];
     issues: string[];
 }
@@ -190,6 +194,8 @@ function buildPreviewRow(raw: string[], headers: string[], mapping: Record<strin
         instructions: get('instructions').trim(),
         ingredients: parseIngredients(get('ingredients')),
         category: get('category').trim(),
+        glass: '',
+        amount: '',
         tags: get('tags').split(/[,;]+/).map(t => t.trim()).filter(Boolean),
         issues,
     };
@@ -205,7 +211,9 @@ const PIVOT_FIELD_ALIASES: Record<PivotField, string[]> = {
     ing_instructions: ['ingredientuse', 'ingredient_use', 'use', 'method', 'role', 'type', 'build', 'garnish'],
     instructions: ['howtomix', 'how_to_mix', 'how_to', 'directions', 'steps', 'preparation', 'instructions'],
     description: ['description', 'desc', 'summary', 'notes'],
-    category: ['category', 'glass', 'glass_type', 'style', 'class'],
+    category: ['category', 'style', 'class', 'type'],
+    glass: ['glass', 'glass_type', 'glassware', 'serve_in', 'served_in'],
+    amount: ['serving', 'yield', 'serve_size', 'serving_size', 'total_amount', 'total', 'serve'],
     tags: ['tags', 'tag', 'keywords'],
     skip: [],
 };
@@ -268,6 +276,8 @@ function buildPivotedPreview(
             instructions: getCol(first, 'instructions').trim(),
             ingredients,
             category: getCol(first, 'category').trim(),
+            glass: getCol(first, 'glass').trim(),
+            amount: getCol(first, 'amount').trim(),
             tags: getCol(first, 'tags').split(/[,;]+/).map(t => t.trim()).filter(Boolean),
             issues,
         });
@@ -295,6 +305,8 @@ const PIVOT_FIELD_OPTIONS: { value: PivotField; label: string; group?: string }[
     { value: 'description', label: 'Recipe Description', group: 'Recipe' },
     { value: 'instructions', label: 'Recipe Instructions', group: 'Recipe' },
     { value: 'category', label: 'Category', group: 'Recipe' },
+    { value: 'glass', label: 'Glass Type', group: 'Recipe' },
+    { value: 'amount', label: 'Serving Amount', group: 'Recipe' },
     { value: 'tags', label: 'Tags', group: 'Recipe' },
     { value: 'ing_name', label: 'Ingredient Name', group: 'Ingredient (per row)' },
     { value: 'ing_amount', label: 'Ingredient Amount', group: 'Ingredient (per row)' },
@@ -320,6 +332,8 @@ export default function RecipesManagerClient() {
     const [editInstructions, setEditInstructions] = useState('');
     const [editCatId, setEditCatId] = useState<number | null>(null);
     const [editCat, setEditCat] = useState('');
+    const [editGlass, setEditGlass] = useState('');
+    const [editAmount, setEditAmount] = useState('');
     const [editTags, setEditTags] = useState('');
     const [editActive, setEditActive] = useState(true);
     const [editSaving, setEditSaving] = useState(false);
@@ -389,8 +403,8 @@ export default function RecipesManagerClient() {
     function openCreate() {
         setEditId(null); setEditName(''); setEditDesc('');
         setEditIngredients([{ ...EMPTY_ING }]); setEditInstructions('');
-        setEditCatId(null); setEditCat(''); setEditTags('');
-        setEditActive(true); setEditError(''); setEditOpen(true);
+        setEditCatId(null); setEditCat(''); setEditGlass(''); setEditAmount('');
+        setEditTags(''); setEditActive(true); setEditError(''); setEditOpen(true);
     }
 
     function openEdit(r: Recipe) {
@@ -403,6 +417,8 @@ export default function RecipesManagerClient() {
         setEditInstructions(r.instructions || '');
         setEditCatId(r.category_id);
         setEditCat(r.category || '');
+        setEditGlass(r.glass || '');
+        setEditAmount(r.amount || '');
         setEditTags((r.tags || []).join(', '));
         setEditActive(r.is_active); setEditError(''); setEditOpen(true);
     }
@@ -417,6 +433,8 @@ export default function RecipesManagerClient() {
             instructions: editInstructions.trim() || null,
             category_id: editCatId,
             category: editCat.trim() || null,
+            glass: editGlass.trim() || null,
+            amount: editAmount.trim() || null,
             tags: editTags.split(',').map(t => t.trim()).filter(Boolean),
             is_active: editActive,
         };
@@ -507,6 +525,8 @@ export default function RecipesManagerClient() {
             instructions: row.instructions || null,
             category: row.category || globalImportCat || null,
             category_id: !row.category && globalImportCatId ? globalImportCatId : null,
+            glass: row.glass || null,
+            amount: row.amount || null,
             tags: row.tags,
         }));
 
@@ -637,9 +657,17 @@ export default function RecipesManagerClient() {
                             </div>
                         </div>
 
-                        {selected.category && (
-                            <span className="inline-block text-xs text-blue-400 bg-blue-900/30 border border-blue-800/40 px-2 py-1 rounded-full">{selected.category}</span>
-                        )}
+                        <div className="flex flex-wrap gap-1.5">
+                            {selected.category && (
+                                <span className="text-xs text-blue-400 bg-blue-900/30 border border-blue-800/40 px-2 py-1 rounded-full">{selected.category}</span>
+                            )}
+                            {selected.glass && (
+                                <span className="text-xs text-slate-300 bg-slate-800 border border-slate-700 px-2 py-1 rounded-full">🥃 {selected.glass}</span>
+                            )}
+                            {selected.amount && (
+                                <span className="text-xs text-slate-300 bg-slate-800 border border-slate-700 px-2 py-1 rounded-full">Serves {selected.amount}</span>
+                            )}
+                        </div>
                         {selected.description && <p className="text-sm text-slate-300">{selected.description}</p>}
 
                         {(selected.ingredients || []).length > 0 && (
@@ -802,6 +830,24 @@ export default function RecipesManagerClient() {
                                     placeholder="Step-by-step preparation instructions for the whole recipe…"
                                     className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500 resize-y"
                                 />
+                            </div>
+
+                            {/* Glass & Amount */}
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Glass Type</label>
+                                    <input value={editGlass} onChange={e => setEditGlass(e.target.value)}
+                                        placeholder="e.g. Collins glass"
+                                        className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Serving Size</label>
+                                    <input value={editAmount} onChange={e => setEditAmount(e.target.value)}
+                                        placeholder="e.g. 4 oz"
+                                        className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                    />
+                                </div>
                             </div>
 
                             {/* Tags */}

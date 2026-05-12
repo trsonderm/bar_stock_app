@@ -149,6 +149,8 @@ export async function ensureRecipeTables(): Promise<void> {
     await db.execute(`CREATE INDEX IF NOT EXISTS recipes_name_trgm ON recipes USING GIN (to_tsvector('english', name))`);
     await db.execute(`ALTER TABLE recipes ADD COLUMN IF NOT EXISTS image_url TEXT`).catch(() => {});
     await db.execute(`ALTER TABLE recipes ADD COLUMN IF NOT EXISTS category_id INTEGER REFERENCES recipe_categories(id) ON DELETE SET NULL`).catch(() => {});
+    await db.execute(`ALTER TABLE recipes ADD COLUMN IF NOT EXISTS glass TEXT`).catch(() => {});
+    await db.execute(`ALTER TABLE recipes ADD COLUMN IF NOT EXISTS amount TEXT`).catch(() => {});
 
     // Org-local recipes — managed by each org's admin
     await db.execute(`
@@ -172,4 +174,6 @@ export async function ensureRecipeTables(): Promise<void> {
     await db.execute(`CREATE INDEX IF NOT EXISTS org_recipes_name_trgm ON org_recipes USING GIN (to_tsvector('english', name))`);
     await db.execute(`ALTER TABLE org_recipes ADD COLUMN IF NOT EXISTS image_url TEXT`).catch(() => {});
     await db.execute(`ALTER TABLE org_recipes ADD COLUMN IF NOT EXISTS category_id INTEGER REFERENCES recipe_categories(id) ON DELETE SET NULL`).catch(() => {});
+    await db.execute(`ALTER TABLE org_recipes ADD COLUMN IF NOT EXISTS glass TEXT`).catch(() => {});
+    await db.execute(`ALTER TABLE org_recipes ADD COLUMN IF NOT EXISTS amount TEXT`).catch(() => {});
 }

@@ -8,7 +8,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
 
     const id = parseInt(params.id);
     const body = await req.json();
-    const allowed = ['name', 'description', 'ingredients', 'instructions', 'category_id', 'category', 'tags', 'is_active'];
+    const allowed = ['name', 'description', 'ingredients', 'instructions', 'category_id', 'category', 'glass', 'amount', 'tags', 'is_active'];
     const sets: string[] = [];
     const vals: any[] = [];
     let idx = 1;

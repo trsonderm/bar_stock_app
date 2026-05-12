@@ -23,6 +23,8 @@ interface Recipe {
     ingredients: (Ingredient & { item?: string })[];
     instructions: string | null;
     category: string | null;
+    glass: string | null;
+    amount: string | null;
     tags: string[];
     is_active: boolean;
     source: 'local' | 'global';
@@ -30,7 +32,7 @@ interface Recipe {
 }
 
 type ImportField = 'name' | 'description' | 'instructions' | 'ingredients' | 'category' | 'tags' | 'skip';
-type PivotField = 'recipe_name' | 'ing_name' | 'ing_amount' | 'ing_unit' | 'ing_instructions' | 'instructions' | 'description' | 'category' | 'tags' | 'skip';
+type PivotField = 'recipe_name' | 'ing_name' | 'ing_amount' | 'ing_unit' | 'ing_instructions' | 'instructions' | 'description' | 'category' | 'glass' | 'amount' | 'tags' | 'skip';
 
 interface ImportPreviewRow {
     name: string;
@@ -38,6 +40,8 @@ interface ImportPreviewRow {
     instructions: string;
     ingredients: Ingredient[];
     category: string;
+    glass: string;
+    amount: string;
     tags: string[];
     issues: string[];
 }
@@ -140,6 +144,7 @@ function buildPreviewRow(raw: string[], headers: string[], mapping: Record<strin
         name, description: get('description').trim(), instructions: get('instructions').trim(),
         ingredients: parseIngredients(get('ingredients')),
         category: get('category').trim(),
+        glass: '', amount: '',
         tags: get('tags').split(/[,;]+/).map(t => t.trim()).filter(Boolean), issues,
     };
 }
@@ -154,7 +159,9 @@ const PIVOT_FIELD_ALIASES: Record<PivotField, string[]> = {
     ing_instructions: ['ingredientuse', 'ingredient_use', 'use', 'method', 'role', 'type', 'build', 'garnish'],
     instructions: ['howtomix', 'how_to_mix', 'how_to', 'directions', 'steps', 'preparation', 'instructions'],
     description: ['description', 'desc', 'summary', 'notes'],
-    category: ['category', 'glass', 'glass_type', 'style', 'class'],
+    category: ['category', 'style', 'class'],
+    glass: ['glass', 'glass_type', 'glassware', 'serve_in', 'served_in'],
+    amount: ['serving', 'yield', 'serve_size', 'serving_size', 'total_amount', 'total', 'serve'],
     tags: ['tags', 'tag', 'keywords'],
     skip: [],
 };
@@ -196,7 +203,12 @@ function buildPivotedPreview(rawRows: string[][], headers: string[], mapping: Re
         })).filter(i => i.name);
         const issues: string[] = [];
         if (!name) issues.push('Missing name');
-        result.push({ name, description: getCol(first, 'description').trim(), instructions: getCol(first, 'instructions').trim(), ingredients, category: getCol(first, 'category').trim(), tags: getCol(first, 'tags').split(/[,;]+/).map(t => t.trim()).filter(Boolean), issues });
+        result.push({
+            name, description: getCol(first, 'description').trim(), instructions: getCol(first, 'instructions').trim(),
+            ingredients, category: getCol(first, 'category').trim(),
+            glass: getCol(first, 'glass').trim(), amount: getCol(first, 'amount').trim(),
+            tags: getCol(first, 'tags').split(/[,;]+/).map(t => t.trim()).filter(Boolean), issues,
+        });
     }
     return result;
 }
@@ -215,7 +227,8 @@ const FIELD_OPTIONS: { value: ImportField; label: string }[] = [
 const PIVOT_FIELD_OPTIONS: { value: PivotField; label: string }[] = [
     { value: 'skip', label: '— Skip —' }, { value: 'recipe_name', label: 'Recipe Name *' },
     { value: 'description', label: 'Recipe Description' }, { value: 'instructions', label: 'Recipe Instructions' },
-    { value: 'category', label: 'Category' }, { value: 'tags', label: 'Tags' },
+    { value: 'category', label: 'Category' }, { value: 'glass', label: 'Glass Type' },
+    { value: 'amount', label: 'Serving Amount' }, { value: 'tags', label: 'Tags' },
     { value: 'ing_name', label: 'Ingredient Name' }, { value: 'ing_amount', label: 'Ingredient Amount' },
     { value: 'ing_unit', label: 'Ingredient Unit' }, { value: 'ing_instructions', label: 'Ingredient Use / Method' },
 ];
@@ -236,9 +249,16 @@ export default function AdminRecipesClient() {
     const [editIngredients, setEditIngredients] = useState<Ingredient[]>([{ ...EMPTY_ING }]);
     const [editInstructions, setEditInstructions] = useState('');
     const [editCategory, setEditCategory] = useState('');
+    const [editGlass, setEditGlass] = useState('');
+    const [editAmount, setEditAmount] = useState('');
     const [editTags, setEditTags] = useState('');
     const [editSaving, setEditSaving] = useState(false);
     const [editError, setEditError] = useState('');
+
+    // Bulk selection
+    const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+    const [bulkCategory, setBulkCategory] = useState('');
+    const [bulkActionOpen, setBulkActionOpen] = useState(false);
 
     // Import modal
     const [importOpen, setImportOpen] = useState(false);
@@ -271,7 +291,8 @@ export default function AdminRecipesClient() {
     function openCreate() {
         setEditId(null); setEditName(''); setEditDesc('');
         setEditIngredients([{ ...EMPTY_ING }]); setEditInstructions('');
-        setEditCategory(''); setEditTags(''); setEditError(''); setEditOpen(true);
+        setEditCategory(''); setEditGlass(''); setEditAmount('');
+        setEditTags(''); setEditError(''); setEditOpen(true);
     }
 
     function openEdit(r: Recipe) {
@@ -279,6 +300,8 @@ export default function AdminRecipesClient() {
         setEditIngredients(r.ingredients?.length ? r.ingredients.map(i => ({ name: i.name || i.item || '', amount: i.amount || '', unit: i.unit || '', instructions: i.instructions || '' })) : [{ ...EMPTY_ING }]);
         setEditInstructions(r.instructions || '');
         setEditCategory(r.category || '');
+        setEditGlass(r.glass || '');
+        setEditAmount(r.amount || '');
         setEditTags((r.tags || []).join(', '));
         setEditError(''); setEditOpen(true);
     }
@@ -291,6 +314,8 @@ export default function AdminRecipesClient() {
             ingredients: editIngredients.filter(i => i.name.trim()),
             instructions: editInstructions.trim() || null,
             category: editCategory.trim() || null,
+            glass: editGlass.trim() || null,
+            amount: editAmount.trim() || null,
             tags: editTags.split(',').map(t => t.trim()).filter(Boolean),
         };
         const url = editId ? `/api/admin/recipes/${editId}` : '/api/admin/recipes';
@@ -304,7 +329,48 @@ export default function AdminRecipesClient() {
     async function deleteRecipe(id: number) {
         if (!confirm('Delete this recipe? This cannot be undone.')) return;
         await fetch(`/api/admin/recipes/${id}`, { method: 'DELETE' });
+        setSelectedIds(prev => { const n = new Set(prev); n.delete(id); return n; });
         await load();
+    }
+
+    async function deleteAllRecipes() {
+        const localCount = recipes.filter(r => r.source === 'local').length;
+        if (!confirm(`Delete all ${localCount} recipes in your library? This cannot be undone.`)) return;
+        await Promise.all(
+            recipes.filter(r => r.source === 'local').map(r => fetch(`/api/admin/recipes/${r.id}`, { method: 'DELETE' }))
+        );
+        setSelectedIds(new Set());
+        await load();
+    }
+
+    async function deleteSelected() {
+        if (selectedIds.size === 0) return;
+        if (!confirm(`Delete ${selectedIds.size} selected recipe${selectedIds.size !== 1 ? 's' : ''}? This cannot be undone.`)) return;
+        await Promise.all([...selectedIds].map(id => fetch(`/api/admin/recipes/${id}`, { method: 'DELETE' })));
+        setSelectedIds(new Set());
+        await load();
+    }
+
+    async function updateCategorySelected() {
+        if (selectedIds.size === 0) return;
+        await Promise.all([...selectedIds].map(id =>
+            fetch(`/api/admin/recipes/${id}`, {
+                method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ category: bulkCategory || null }),
+            })
+        ));
+        setBulkActionOpen(false); setBulkCategory(''); setSelectedIds(new Set());
+        await load();
+    }
+
+    function toggleSelect(id: number) {
+        setSelectedIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+    }
+
+    function toggleSelectAll() {
+        const localIds = recipes.filter(r => r.source === 'local').map(r => r.id);
+        if (localIds.every(id => selectedIds.has(id))) setSelectedIds(new Set());
+        else setSelectedIds(new Set(localIds));
     }
 
     const updateIng = (idx: number, field: keyof Ingredient, val: string) =>
@@ -356,7 +422,9 @@ export default function AdminRecipesClient() {
         const records = validRows.map(row => ({
             name: row.name, description: row.description || null,
             ingredients: row.ingredients, instructions: row.instructions || null,
-            category: row.category || null, tags: row.tags,
+            category: row.category || null,
+            glass: row.glass || null, amount: row.amount || null,
+            tags: row.tags,
         }));
         const res = await fetch('/api/admin/recipes/import', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -374,30 +442,40 @@ export default function AdminRecipesClient() {
     const localRecipes = recipes.filter(r => r.source === 'local');
     const globalRecipes = recipes.filter(r => r.source === 'global');
 
+    const localRecipeIds = recipes.filter(r => r.source === 'local').map(r => r.id);
+    const allLocalSelected = localRecipeIds.length > 0 && localRecipeIds.every(id => selectedIds.has(id));
+
     return (
         <div>
             {/* Header */}
-            <div className={styles.pageHeader} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.5rem' }}>
+            <div className={styles.pageHeader} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem', marginBottom: '1rem' }}>
                 <div>
                     <h1 style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0 }}>Recipe Library</h1>
                     <p style={{ color: '#9ca3af', margin: '0.25rem 0 0', fontSize: '0.875rem' }}>
-                        Manage your org-local recipes. {localRecipes.length} local recipe{localRecipes.length !== 1 ? 's' : ''}.
+                        {localRecipes.length} local recipe{localRecipes.length !== 1 ? 's' : ''}
+                        {globalRecipes.length > 0 && ` · ${globalRecipes.length} global`}
                     </p>
                 </div>
                 <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
-                    <button onClick={openImport}
+                    <button type="button" onClick={openImport}
                         style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem', background: '#374151', color: 'white', border: 'none', borderRadius: '0.5rem', cursor: 'pointer', fontSize: '0.875rem', fontWeight: 500 }}>
                         <Upload size={16} /> Import CSV / JSON
                     </button>
-                    <button onClick={openCreate}
+                    <button type="button" onClick={openCreate}
                         style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '0.5rem', cursor: 'pointer', fontSize: '0.875rem', fontWeight: 500 }}>
                         <Plus size={16} /> New Recipe
                     </button>
+                    {localRecipes.length > 0 && (
+                        <button type="button" onClick={deleteAllRecipes}
+                            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem', background: 'rgba(239,68,68,0.1)', color: '#f87171', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '0.5rem', cursor: 'pointer', fontSize: '0.875rem', fontWeight: 500 }}>
+                            <Trash2 size={16} /> Delete All
+                        </button>
+                    )}
                 </div>
             </div>
 
             {/* Filters */}
-            <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
                 <div style={{ position: 'relative', flex: 1, minWidth: 200 }}>
                     <Search size={16} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#6b7280' }} />
                     <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search recipes…"
@@ -409,10 +487,46 @@ export default function AdminRecipesClient() {
                     <option value="global">Global Library</option>
                     <option value="both">Both Libraries</option>
                 </select>
-                <button onClick={load} title="Refresh" style={{ padding: '0.5rem', background: '#1f2937', border: '1px solid #374151', borderRadius: '0.5rem', color: '#9ca3af', cursor: 'pointer' }}>
+                <button type="button" onClick={load} title="Refresh" style={{ padding: '0.5rem', background: '#1f2937', border: '1px solid #374151', borderRadius: '0.5rem', color: '#9ca3af', cursor: 'pointer' }}>
                     <RefreshCw size={16} />
                 </button>
             </div>
+
+            {/* Bulk action bar */}
+            {selectedIds.size > 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.625rem 1rem', background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '0.5rem', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
+                    <span style={{ color: '#93c5fd', fontSize: '0.875rem', fontWeight: 500 }}>{selectedIds.size} selected</span>
+                    {!bulkActionOpen ? (
+                        <>
+                            <button type="button" onClick={() => setBulkActionOpen(true)}
+                                style={{ padding: '0.375rem 0.75rem', background: '#374151', color: 'white', border: 'none', borderRadius: '0.375rem', cursor: 'pointer', fontSize: '0.8rem' }}>
+                                Change Category
+                            </button>
+                            <button type="button" onClick={deleteSelected}
+                                style={{ padding: '0.375rem 0.75rem', background: 'rgba(239,68,68,0.15)', color: '#f87171', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '0.375rem', cursor: 'pointer', fontSize: '0.8rem' }}>
+                                Delete Selected
+                            </button>
+                            <button type="button" onClick={() => setSelectedIds(new Set())}
+                                style={{ marginLeft: 'auto', padding: '0.375rem 0.5rem', background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280' }}>
+                                <X size={16} />
+                            </button>
+                        </>
+                    ) : (
+                        <>
+                            <input value={bulkCategory} onChange={e => setBulkCategory(e.target.value)} placeholder="Category name (blank to clear)"
+                                style={{ flex: 1, minWidth: 180, padding: '0.375rem 0.75rem', background: '#1f2937', border: '1px solid #374151', borderRadius: '0.375rem', color: 'white', fontSize: '0.875rem' }} />
+                            <button type="button" onClick={updateCategorySelected}
+                                style={{ padding: '0.375rem 0.75rem', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '0.375rem', cursor: 'pointer', fontSize: '0.8rem' }}>
+                                Apply
+                            </button>
+                            <button type="button" onClick={() => { setBulkActionOpen(false); setBulkCategory(''); }}
+                                style={{ padding: '0.375rem 0.5rem', background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280' }}>
+                                <X size={16} />
+                            </button>
+                        </>
+                    )}
+                </div>
+            )}
 
             {/* Recipe list */}
             {loading ? (
@@ -427,8 +541,14 @@ export default function AdminRecipesClient() {
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
                         <thead>
                             <tr style={{ borderBottom: '1px solid #374151' }}>
+                                <th style={{ padding: '0.5rem 0.75rem', width: 32 }}>
+                                    <input type="checkbox" checked={allLocalSelected} onChange={toggleSelectAll}
+                                        title="Select all local recipes"
+                                        style={{ cursor: 'pointer', accentColor: '#3b82f6' }} />
+                                </th>
                                 <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: '#9ca3af', fontWeight: 600, fontSize: '0.75rem', textTransform: 'uppercase' }}>Name</th>
                                 <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: '#9ca3af', fontWeight: 600, fontSize: '0.75rem', textTransform: 'uppercase' }}>Category</th>
+                                <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: '#9ca3af', fontWeight: 600, fontSize: '0.75rem', textTransform: 'uppercase' }}>Glass</th>
                                 <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: '#9ca3af', fontWeight: 600, fontSize: '0.75rem', textTransform: 'uppercase' }}>Ingredients</th>
                                 <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', color: '#9ca3af', fontWeight: 600, fontSize: '0.75rem', textTransform: 'uppercase' }}>Source</th>
                                 <th style={{ padding: '0.5rem 0.75rem' }} />
@@ -436,13 +556,41 @@ export default function AdminRecipesClient() {
                         </thead>
                         <tbody>
                             {recipes.map(r => (
-                                <tr key={`${r.source}-${r.id}`} style={{ borderBottom: '1px solid #1f2937' }}>
-                                    <td style={{ padding: '0.625rem 0.75rem', color: 'white', fontWeight: 500, maxWidth: 220 }}>
+                                <tr key={`${r.source}-${r.id}`} style={{ borderBottom: '1px solid #1f2937', background: selectedIds.has(r.id) ? 'rgba(59,130,246,0.05)' : undefined }}>
+                                    <td style={{ padding: '0.625rem 0.75rem' }}>
+                                        {r.source === 'local' && (
+                                            <input type="checkbox" checked={selectedIds.has(r.id)} onChange={() => toggleSelect(r.id)}
+                                                title={`Select ${r.name}`}
+                                                style={{ cursor: 'pointer', accentColor: '#3b82f6' }} />
+                                        )}
+                                    </td>
+                                    <td style={{ padding: '0.625rem 0.75rem', color: 'white', fontWeight: 500, maxWidth: 240 }}>
                                         <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</div>
-                                        {r.description && <div style={{ color: '#6b7280', fontSize: '0.75rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.description}</div>}
+                                        {r.description && (
+                                            <div style={{ color: '#6b7280', fontSize: '0.75rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 2 }}>{r.description}</div>
+                                        )}
+                                        {r.amount && (
+                                            <div style={{ color: '#4b5563', fontSize: '0.7rem', marginTop: 1 }}>Serves: {r.amount}</div>
+                                        )}
                                     </td>
                                     <td style={{ padding: '0.625rem 0.75rem', color: '#9ca3af' }}>{r.category || '—'}</td>
-                                    <td style={{ padding: '0.625rem 0.75rem', color: '#9ca3af' }}>{r.ingredients?.length || 0} items</td>
+                                    <td style={{ padding: '0.625rem 0.75rem', color: '#9ca3af', fontSize: '0.8rem' }}>{r.glass || '—'}</td>
+                                    <td style={{ padding: '0.625rem 0.75rem', color: '#9ca3af' }}>
+                                        {r.ingredients?.length > 0 ? (
+                                            <details style={{ cursor: 'pointer' }}>
+                                                <summary style={{ color: '#6b7280', fontSize: '0.8rem', listStyle: 'none', userSelect: 'none' }}>
+                                                    {r.ingredients.length} ingredient{r.ingredients.length !== 1 ? 's' : ''}
+                                                </summary>
+                                                <ul style={{ margin: '0.375rem 0 0', padding: '0 0 0 1rem', listStyle: 'disc', fontSize: '0.75rem', color: '#9ca3af', lineHeight: 1.7 }}>
+                                                    {r.ingredients.map((ing, i) => (
+                                                        <li key={i}>
+                                                            {ing.amount ? `${ing.amount}${ing.unit ? ' ' + ing.unit : ''} ` : ''}{ing.name || (ing as any).item}
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            </details>
+                                        ) : '—'}
+                                    </td>
                                     <td style={{ padding: '0.625rem 0.75rem' }}>
                                         <span style={{ fontSize: '0.7rem', fontWeight: 600, padding: '0.15rem 0.5rem', borderRadius: 999, background: r.source === 'local' ? 'rgba(59,130,246,0.15)' : 'rgba(16,185,129,0.15)', color: r.source === 'local' ? '#60a5fa' : '#34d399' }}>
                                             {r.source === 'local' ? 'My Library' : 'Global'}
@@ -451,10 +599,10 @@ export default function AdminRecipesClient() {
                                     <td style={{ padding: '0.625rem 0.75rem', textAlign: 'right' }}>
                                         {r.source === 'local' && (
                                             <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
-                                                <button onClick={() => openEdit(r)} title="Edit" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', padding: '0.25rem' }}>
+                                                <button type="button" onClick={() => openEdit(r)} title="Edit" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', padding: '0.25rem' }}>
                                                     <Edit2 size={15} />
                                                 </button>
-                                                <button onClick={() => deleteRecipe(r.id)} title="Delete" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', padding: '0.25rem' }}>
+                                                <button type="button" onClick={() => deleteRecipe(r.id)} title="Delete" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', padding: '0.25rem' }}>
                                                     <Trash2 size={15} />
                                                 </button>
                                             </div>
@@ -488,6 +636,15 @@ export default function AdminRecipesClient() {
                                         style={{ width: '100%', padding: '0.5rem 0.75rem', background: '#1f2937', border: '1px solid #374151', borderRadius: '0.5rem', color: 'white', fontSize: '0.875rem', boxSizing: 'border-box' }} /></div>
                                 <div><label style={{ display: 'block', fontSize: '0.75rem', color: '#9ca3af', fontWeight: 600, marginBottom: '0.375rem' }}>TAGS</label>
                                     <input value={editTags} onChange={e => setEditTags(e.target.value)} placeholder="citrus, rum, popular"
+                                        style={{ width: '100%', padding: '0.5rem 0.75rem', background: '#1f2937', border: '1px solid #374151', borderRadius: '0.5rem', color: 'white', fontSize: '0.875rem', boxSizing: 'border-box' }} /></div>
+                            </div>
+
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                                <div><label style={{ display: 'block', fontSize: '0.75rem', color: '#9ca3af', fontWeight: 600, marginBottom: '0.375rem' }}>GLASS TYPE</label>
+                                    <input value={editGlass} onChange={e => setEditGlass(e.target.value)} placeholder="e.g. Collins glass"
+                                        style={{ width: '100%', padding: '0.5rem 0.75rem', background: '#1f2937', border: '1px solid #374151', borderRadius: '0.5rem', color: 'white', fontSize: '0.875rem', boxSizing: 'border-box' }} /></div>
+                                <div><label style={{ display: 'block', fontSize: '0.75rem', color: '#9ca3af', fontWeight: 600, marginBottom: '0.375rem' }}>SERVING SIZE</label>
+                                    <input value={editAmount} onChange={e => setEditAmount(e.target.value)} placeholder="e.g. 4 oz"
                                         style={{ width: '100%', padding: '0.5rem 0.75rem', background: '#1f2937', border: '1px solid #374151', borderRadius: '0.5rem', color: 'white', fontSize: '0.875rem', boxSizing: 'border-box' }} /></div>
                             </div>
 

@@ -95,8 +95,8 @@ export async function POST(req: NextRequest) {
 
         try {
             await db.one(
-                `INSERT INTO recipes (name, description, ingredients, instructions, category_id, category, tags)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+                `INSERT INTO recipes (name, description, ingredients, instructions, category_id, category, glass, amount, tags)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
                 [
                     name,
                     rec.description?.trim() || null,
@@ -104,6 +104,8 @@ export async function POST(req: NextRequest) {
                     rec.instructions?.trim() || null,
                     categoryId,
                     rec.category?.trim() || null,
+                    (rec as any).glass?.trim() || null,
+                    (rec as any).amount?.trim() || null,
                     Array.isArray(rec.tags) ? rec.tags : [],
                 ]
             );

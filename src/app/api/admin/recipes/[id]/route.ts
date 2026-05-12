@@ -16,7 +16,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     if (!exists) return NextResponse.json({ error: 'Recipe not found' }, { status: 404 });
 
     const body = await req.json();
-    const allowed = ['name', 'description', 'ingredients', 'instructions', 'category', 'tags', 'is_active'];
+    const allowed = ['name', 'description', 'ingredients', 'instructions', 'category', 'glass', 'amount', 'tags', 'is_active'];
     const sets: string[] = [];
     const vals: any[] = [];
     let idx = 1;
