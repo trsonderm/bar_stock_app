@@ -741,10 +741,13 @@ export default function SettingsClient() {
                             </div>
                         )}
                     </div>
-                    <div style={{ marginTop: '1rem' }}>
+                    <div style={{ marginTop: '1rem', display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
                         <button onClick={handleSubmit} style={{ padding: '0.5rem 1rem', background: '#3b82f6', color: 'white', borderRadius: '0.25rem', border: 'none', cursor: 'pointer' }}>
                             Save Settings
                         </button>
+                        <a href="/admin/recipes" style={{ padding: '0.5rem 1rem', background: '#1f2937', color: '#60a5fa', borderRadius: '0.25rem', border: '1px solid #374151', cursor: 'pointer', textDecoration: 'none', fontSize: '0.875rem' }}>
+                            Manage My Recipe Library →
+                        </a>
                     </div>
                 </div>
 

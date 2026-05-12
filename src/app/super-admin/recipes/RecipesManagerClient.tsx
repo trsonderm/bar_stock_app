@@ -40,6 +40,7 @@ interface Recipe {
 }
 
 type ImportField = 'name' | 'description' | 'instructions' | 'ingredients' | 'category' | 'tags' | 'skip';
+type PivotField = 'recipe_name' | 'ing_name' | 'ing_amount' | 'ing_unit' | 'ing_instructions' | 'instructions' | 'description' | 'category' | 'tags' | 'skip';
 
 interface ImportPreviewRow {
     name: string;
@@ -194,6 +195,86 @@ function buildPreviewRow(raw: string[], headers: string[], mapping: Record<strin
     };
 }
 
+// ─── Pivot-format helpers ─────────────────────────────────────────────────────
+
+const PIVOT_FIELD_ALIASES: Record<PivotField, string[]> = {
+    recipe_name: ['drink', 'cocktail', 'recipe', 'name', 'recipe_name', 'drink_name', 'title'],
+    ing_name: ['ingredient', 'ingredient_name', 'item', 'ing', 'component'],
+    ing_amount: ['amount', 'qty', 'quantity', 'measure', 'volume'],
+    ing_unit: ['unit', 'units'],
+    ing_instructions: ['ingredientuse', 'ingredient_use', 'use', 'method', 'role', 'type', 'build', 'garnish'],
+    instructions: ['howtomix', 'how_to_mix', 'how_to', 'directions', 'steps', 'preparation', 'instructions'],
+    description: ['description', 'desc', 'summary', 'notes'],
+    category: ['category', 'glass', 'glass_type', 'style', 'class'],
+    tags: ['tags', 'tag', 'keywords'],
+    skip: [],
+};
+
+function autoPivotMap(headers: string[]): Record<string, PivotField> {
+    const mapping: Record<string, PivotField> = {};
+    for (const h of headers) {
+        const lower = h.toLowerCase().replace(/[\s\-]+/g, '_');
+        let matched: PivotField = 'skip';
+        for (const [field, aliases] of Object.entries(PIVOT_FIELD_ALIASES)) {
+            if ((aliases as string[]).includes(lower)) { matched = field as PivotField; break; }
+        }
+        mapping[h] = matched;
+    }
+    return mapping;
+}
+
+function detectPivotFormat(headers: string[]): boolean {
+    const lower = headers.map(h => h.toLowerCase().replace(/[\s\-]+/g, '_'));
+    const hasIngredientSingular = lower.some(h => ['ingredient', 'ingredient_name', 'item', 'ing'].includes(h));
+    const hasIngredientPlural = lower.includes('ingredients');
+    return hasIngredientSingular && !hasIngredientPlural;
+}
+
+function buildPivotedPreview(
+    rawRows: string[][],
+    headers: string[],
+    mapping: Record<string, PivotField>
+): ImportPreviewRow[] {
+    const getCol = (row: string[], field: PivotField): string =>
+        headers.reduce((acc, h, i) => mapping[h] === field ? (row[i] ?? '') : acc, '');
+
+    // Group rows by recipe_name
+    const groups = new Map<string, string[][]>();
+    for (const row of rawRows) {
+        const key = getCol(row, 'recipe_name').trim();
+        if (!key) continue;
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key)!.push(row);
+    }
+
+    const result: ImportPreviewRow[] = [];
+    for (const [name, rows] of groups) {
+        const first = rows[0];
+        const ingredients: Ingredient[] = rows
+            .map(r => ({
+                name: getCol(r, 'ing_name').trim(),
+                amount: getCol(r, 'ing_amount').trim(),
+                unit: getCol(r, 'ing_unit').trim(),
+                instructions: getCol(r, 'ing_instructions').trim(),
+            }))
+            .filter(i => i.name);
+
+        const issues: string[] = [];
+        if (!name) issues.push('Missing name');
+
+        result.push({
+            name,
+            description: getCol(first, 'description').trim(),
+            instructions: getCol(first, 'instructions').trim(),
+            ingredients,
+            category: getCol(first, 'category').trim(),
+            tags: getCol(first, 'tags').split(/[,;]+/).map(t => t.trim()).filter(Boolean),
+            issues,
+        });
+    }
+    return result;
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 const EMPTY_ING: Ingredient = { name: '', amount: '', unit: '', instructions: '' };
@@ -206,6 +287,19 @@ const FIELD_OPTIONS: { value: ImportField; label: string }[] = [
     { value: 'ingredients', label: 'Ingredients' },
     { value: 'category', label: 'Category' },
     { value: 'tags', label: 'Tags' },
+];
+
+const PIVOT_FIELD_OPTIONS: { value: PivotField; label: string; group?: string }[] = [
+    { value: 'skip', label: '— Skip —' },
+    { value: 'recipe_name', label: 'Recipe Name *', group: 'Recipe' },
+    { value: 'description', label: 'Recipe Description', group: 'Recipe' },
+    { value: 'instructions', label: 'Recipe Instructions', group: 'Recipe' },
+    { value: 'category', label: 'Category', group: 'Recipe' },
+    { value: 'tags', label: 'Tags', group: 'Recipe' },
+    { value: 'ing_name', label: 'Ingredient Name', group: 'Ingredient (per row)' },
+    { value: 'ing_amount', label: 'Ingredient Amount', group: 'Ingredient (per row)' },
+    { value: 'ing_unit', label: 'Ingredient Unit', group: 'Ingredient (per row)' },
+    { value: 'ing_instructions', label: 'Ingredient Use / Method', group: 'Ingredient (per row)' },
 ];
 
 export default function RecipesManagerClient() {
@@ -256,6 +350,8 @@ export default function RecipesManagerClient() {
     const [skipDuplicates, setSkipDuplicates] = useState(true);
     const [importing, setImporting] = useState(false);
     const [importResult, setImportResult] = useState<ImportResult | null>(null);
+    const [pivotMode, setPivotMode] = useState(false);
+    const [pivotMapping, setPivotMapping] = useState<Record<string, PivotField>>({});
 
     // ── Data loading ──
     const load = useCallback(async () => {
@@ -365,6 +461,7 @@ export default function RecipesManagerClient() {
         setImportStep(1); setImportError(''); setImportHeaders([]); setImportRawRows([]);
         setImportMapping({}); setImportPreview([]); setGlobalImportCatId(null);
         setGlobalImportCat(''); setSkipDuplicates(true); setImportResult(null);
+        setPivotMode(false); setPivotMapping({});
         setImportOpen(true);
     }
 
@@ -383,6 +480,9 @@ export default function RecipesManagerClient() {
         if (!parsed.headers.length) { setImportError('No columns detected — check that the file has a header row.'); return; }
         if (!parsed.rows.length) { setImportError('No data rows found.'); return; }
 
+        const isPivot = detectPivotFormat(parsed.headers);
+        setPivotMode(isPivot);
+        setPivotMapping(autoPivotMap(parsed.headers));
         setImportHeaders(parsed.headers);
         setImportRawRows(parsed.rows);
         setImportMapping(autoMap(parsed.headers));
@@ -390,7 +490,9 @@ export default function RecipesManagerClient() {
     }
 
     function applyMapping() {
-        const rows = importRawRows.map(r => buildPreviewRow(r, importHeaders, importMapping));
+        const rows = pivotMode
+            ? buildPivotedPreview(importRawRows, importHeaders, pivotMapping)
+            : importRawRows.map(r => buildPreviewRow(r, importHeaders, importMapping));
         setImportPreview(rows);
         setImportStep(3);
     }
@@ -804,14 +906,31 @@ export default function RecipesManagerClient() {
                             {/* Step 2: Column mapping */}
                             {importStep === 2 && (
                                 <div>
-                                    <p className="text-sm text-slate-400 mb-5">
-                                        Map each detected column to a recipe field. Auto-detected below — adjust any that are wrong.
-                                        <span className="text-slate-500"> ({importRawRows.length} rows detected)</span>
-                                    </p>
+                                    {/* Format toggle */}
+                                    <div className="flex items-center gap-3 mb-5 bg-slate-800/50 border border-slate-700 rounded-xl p-3">
+                                        <div className="flex-1">
+                                            <p className="text-sm font-semibold text-slate-200">
+                                                {pivotMode ? 'Pivoted format detected' : 'Standard format'}
+                                            </p>
+                                            <p className="text-xs text-slate-500 mt-0.5">
+                                                {pivotMode
+                                                    ? 'One row per ingredient — rows will be grouped by recipe name to build each recipe.'
+                                                    : 'One row per recipe — each row becomes one recipe entry.'}
+                                                <span className="ml-1 text-slate-600">({importRawRows.length} rows)</span>
+                                            </p>
+                                        </div>
+                                        <button type="button" onClick={() => setPivotMode(m => !m)}
+                                            className="flex-shrink-0 px-3 py-1.5 text-xs border border-slate-600 text-slate-400 hover:border-slate-400 hover:text-slate-200 rounded-lg transition-colors">
+                                            Switch to {pivotMode ? 'standard' : 'pivoted'}
+                                        </button>
+                                    </div>
+
                                     <div className="space-y-2">
                                         {importHeaders.map(h => {
                                             const sampleIdx = importHeaders.indexOf(h);
                                             const sample = importRawRows.slice(0, 3).map(r => r[sampleIdx]).filter(Boolean).join(' / ');
+                                            const currentVal = pivotMode ? (pivotMapping[h] || 'skip') : (importMapping[h] || 'skip');
+                                            const isMapped = currentVal !== 'skip';
                                             return (
                                                 <div key={h} className="flex items-center gap-3 bg-slate-800/60 border border-slate-700 rounded-xl px-4 py-3">
                                                     <div className="w-44 flex-shrink-0">
@@ -819,24 +938,41 @@ export default function RecipesManagerClient() {
                                                         <p className="text-xs text-slate-500 truncate mt-0.5">{sample || '—'}</p>
                                                     </div>
                                                     <ArrowRight className="w-4 h-4 text-slate-600 flex-shrink-0" />
-                                                    <select value={importMapping[h] || 'skip'}
-                                                        onChange={e => setImportMapping(prev => ({ ...prev, [h]: e.target.value as ImportField }))}
-                                                        className="bg-slate-900 border border-slate-600 rounded-lg px-3 py-1.5 text-sm text-slate-300 focus:outline-none focus:ring-1 focus:ring-blue-500">
-                                                        {FIELD_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                                                    </select>
-                                                    {importMapping[h] !== 'skip' && (
+                                                    {pivotMode ? (
+                                                        <select title={`Map column "${h}"`} value={pivotMapping[h] || 'skip'}
+                                                            onChange={e => setPivotMapping(prev => ({ ...prev, [h]: e.target.value as PivotField }))}
+                                                            className="bg-slate-900 border border-slate-600 rounded-lg px-3 py-1.5 text-sm text-slate-300 focus:outline-none focus:ring-1 focus:ring-blue-500">
+                                                            {PIVOT_FIELD_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                                        </select>
+                                                    ) : (
+                                                        <select title={`Map column "${h}"`} value={importMapping[h] || 'skip'}
+                                                            onChange={e => setImportMapping(prev => ({ ...prev, [h]: e.target.value as ImportField }))}
+                                                            className="bg-slate-900 border border-slate-600 rounded-lg px-3 py-1.5 text-sm text-slate-300 focus:outline-none focus:ring-1 focus:ring-blue-500">
+                                                            {FIELD_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                                        </select>
+                                                    )}
+                                                    {isMapped && (
                                                         <span className="text-xs text-emerald-400 bg-emerald-900/20 border border-emerald-800/30 px-2 py-0.5 rounded-full flex-shrink-0">✓</span>
                                                     )}
                                                 </div>
                                             );
                                         })}
                                     </div>
-                                    {!Object.values(importMapping).includes('name') && (
-                                        <div className="mt-4 flex items-center gap-2 text-amber-400 text-sm bg-amber-900/20 border border-amber-800/30 rounded-xl p-3">
-                                            <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                                            Map at least one column to "Name *" to continue.
-                                        </div>
-                                    )}
+
+                                    {pivotMode
+                                        ? !Object.values(pivotMapping).includes('recipe_name') && (
+                                            <div className="mt-4 flex items-center gap-2 text-amber-400 text-sm bg-amber-900/20 border border-amber-800/30 rounded-xl p-3">
+                                                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                                                Map at least one column to "Recipe Name *" to continue.
+                                            </div>
+                                        )
+                                        : !Object.values(importMapping).includes('name') && (
+                                            <div className="mt-4 flex items-center gap-2 text-amber-400 text-sm bg-amber-900/20 border border-amber-800/30 rounded-xl p-3">
+                                                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                                                Map at least one column to "Name *" to continue.
+                                            </div>
+                                        )
+                                    }
                                 </div>
                             )}
 
@@ -847,8 +983,10 @@ export default function RecipesManagerClient() {
                                         <div>
                                             <p className="text-sm font-semibold text-slate-200">Data Preview</p>
                                             <p className="text-xs text-slate-500 mt-0.5">
-                                                Showing first {Math.min(importPreview.length, 30)} of {importRawRows.length} rows
-                                                {issueCount > 0 && <span className="text-amber-400 ml-2">· {issueCount} rows have issues and will be skipped</span>}
+                                                {pivotMode
+                                                    ? `${importRawRows.length} ingredient rows → ${importPreview.length} recipes`
+                                                    : `Showing first ${Math.min(importPreview.length, 30)} of ${importRawRows.length} rows`}
+                                                {issueCount > 0 && <span className="text-amber-400 ml-2">· {issueCount} {pivotMode ? 'recipes' : 'rows'} have issues and will be skipped</span>}
                                             </p>
                                         </div>
                                     </div>
@@ -988,7 +1126,8 @@ export default function RecipesManagerClient() {
                             {importStep < 5 && (
                                 <button
                                     disabled={
-                                        (importStep === 2 && !Object.values(importMapping).includes('name')) ||
+                                        (importStep === 2 && pivotMode && !Object.values(pivotMapping).includes('recipe_name')) ||
+                                        (importStep === 2 && !pivotMode && !Object.values(importMapping).includes('name')) ||
                                         importing
                                     }
                                     onClick={() => {
