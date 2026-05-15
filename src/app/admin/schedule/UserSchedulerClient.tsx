@@ -320,7 +320,27 @@ export default function UserSchedulerClient() {
         if (viewMode === 'timeline' && dateStr && userId !== undefined) {
             const rect = e.currentTarget.getBoundingClientRect();
             const xPct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-            const snap = findNearestShift(xPct * 24 * 60);
+            const cursorMin = xPct * 24 * 60;
+
+            // Snap to an existing occupied bar if cursor is within it
+            const cellSchedules = schedules.filter(s =>
+                s.user_id === userId &&
+                s.date.split('T')[0] === dateStr &&
+                (!draggedSchedule || s.id !== draggedSchedule.id)
+            );
+            let occupiedSnap: Shift | null = null;
+            for (const sched of cellSchedules) {
+                const [sh, sm] = sched.start_time.split(':').map(Number);
+                const [eh, em] = sched.end_time.split(':').map(Number);
+                const startMin = sh * 60 + sm;
+                const endMin = (eh * 60 + em) > startMin ? (eh * 60 + em) : 24 * 60;
+                if (cursorMin >= startMin && cursorMin <= endMin) {
+                    occupiedSnap = shifts.find(s => s.id === sched.shift_id) ?? null;
+                    break;
+                }
+            }
+
+            const snap = occupiedSnap ?? findNearestShift(cursorMin);
             setDragOverCell({ userId, dateStr, snapShiftId: snap?.id ?? null });
         }
     };
@@ -978,6 +998,8 @@ export default function UserSchedulerClient() {
                         </div>
                     </div>
 
+                    {viewMode !== 'timeline' && (
+                    <>
                     {viewMode === 'coverage' && (
                         <div className="p-4 bg-gray-800 text-sm border-l border-r border-gray-700 flex flex-wrap gap-3">
                             <span className="text-gray-400 font-bold mr-2">Legend:</span>
@@ -1208,6 +1230,8 @@ export default function UserSchedulerClient() {
                             </tbody>
                         </table>
                     </div>
+                    </>
+                    )}
 
                     {/* TIMELINE VIEW */}
                     {viewMode === 'timeline' && (
@@ -1285,7 +1309,7 @@ export default function UserSchedulerClient() {
                                                 <div
                                                     key={di}
                                                     className={`flex-1 border-r border-gray-800/60 relative ${isToday ? 'bg-blue-950/20' : ''}`}
-                                                    style={{ height: '58px' }}
+                                                    style={{ height: '58px', overflow: 'visible' }}
                                                     onDragOver={(e) => handleDragOver(e, dateStr, user.id)}
                                                     onDragLeave={handleDragLeave}
                                                     onDrop={(e) => handleDrop(e, dateStr, user.id)}
@@ -1294,6 +1318,12 @@ export default function UserSchedulerClient() {
                                                     {dragOverCell?.userId === user.id && dragOverCell?.dateStr === dateStr && (() => {
                                                         const snap = shifts.find(s => s.id === dragOverCell.snapShiftId);
                                                         if (!snap) return null;
+                                                        const isOccupied = schedules.some(s =>
+                                                            s.id !== draggedSchedule?.id &&
+                                                            s.user_id === user.id &&
+                                                            s.date.split('T')[0] === dateStr &&
+                                                            s.shift_id === dragOverCell.snapShiftId
+                                                        );
                                                         const [sh, sm] = snap.start_time.split(':').map(Number);
                                                         const [eh, em] = snap.end_time.split(':').map(Number);
                                                         const startTotal = sh * 60 + sm;
@@ -1306,10 +1336,13 @@ export default function UserSchedulerClient() {
                                                                 style={{
                                                                     top: BAR_TOP, height: BAR_H,
                                                                     left: `${snapLeft}%`, width: `${snapWidth}%`,
-                                                                    backgroundColor: snap.color,
-                                                                    opacity: 0.38,
-                                                                    border: '2px dashed rgba(255,255,255,0.85)',
-                                                                    zIndex: 6,
+                                                                    backgroundColor: isOccupied ? 'rgba(239,68,68,0.4)' : snap.color,
+                                                                    opacity: isOccupied ? 1 : 0.38,
+                                                                    border: isOccupied
+                                                                        ? '2px dashed rgba(239,68,68,0.95)'
+                                                                        : '2px dashed rgba(255,255,255,0.85)',
+                                                                    zIndex: 15,
+                                                                    boxShadow: isOccupied ? '0 0 0 1px rgba(239,68,68,0.3)' : undefined,
                                                                 }}
                                                             />
                                                         );
@@ -1349,15 +1382,16 @@ export default function UserSchedulerClient() {
                                                                 style={{
                                                                     top: BAR_TOP,
                                                                     height: BAR_H,
-                                                                    left: 0,
-                                                                    width: `${widthPct}%`,
+                                                                    left: -3,
+                                                                    width: `calc(${widthPct}% + 3px)`,
                                                                     backgroundColor: color,
-                                                                    opacity: 0.85,
+                                                                    opacity: 0.9,
                                                                     borderRadius: '0 5px 5px 0',
                                                                     border: '1px solid rgba(255,255,255,0.13)',
-                                                                    borderLeft: '2px dashed rgba(255,255,255,0.45)',
+                                                                    borderLeft: 'none',
                                                                     backgroundImage: 'linear-gradient(to bottom, rgba(255,255,255,0.13) 0%, rgba(0,0,0,0.06) 100%)',
                                                                     boxShadow: '0 2px 6px rgba(0,0,0,0.35)',
+                                                                    zIndex: 3,
                                                                 }}
                                                                 onClick={() => handleEdit(schedule)}
                                                                 title={`${schedule.shift_name} — overnight continuation, ends ${schedule.end_time}`}
@@ -1416,13 +1450,14 @@ export default function UserSchedulerClient() {
                                                                     top: BAR_TOP,
                                                                     height: BAR_H,
                                                                     left: `${leftPct}%`,
-                                                                    width: isOvernight ? `calc(${widthPct}% + 1px)` : `${widthPct}%`,
+                                                                    width: isOvernight ? `calc(${widthPct}% + 3px)` : `${widthPct}%`,
                                                                     backgroundColor: color,
                                                                     borderRadius: isOvernight ? '5px 0 0 5px' : '5px',
                                                                     border: '1px solid rgba(255,255,255,0.14)',
-                                                                    borderRight: isOvernight ? '2px dashed rgba(255,255,255,0.45)' : '1px solid rgba(255,255,255,0.14)',
+                                                                    borderRight: isOvernight ? 'none' : '1px solid rgba(255,255,255,0.14)',
                                                                     backgroundImage: 'linear-gradient(to bottom, rgba(255,255,255,0.15) 0%, rgba(0,0,0,0.06) 100%)',
                                                                     boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
+                                                                    zIndex: 3,
                                                                 }}
                                                                 onClick={() => handleEdit(schedule)}
                                                                 title={`${schedule.shift_name} · ${schedule.start_time}–${schedule.end_time}${isOvernight ? ' → midnight' : ''}`}
@@ -1480,12 +1515,12 @@ export default function UserSchedulerClient() {
                             <div className="flex border-t border-gray-700" style={{ minWidth: '800px' }}>
                                 <div className="flex-shrink-0" style={{ width: '160px' }} />
                                 {weekDays.map((_, i) => (
-                                    <div key={i} className="flex-1 relative h-5">
+                                    <div key={i} className="flex-1 relative" style={{ height: '22px', overflow: 'visible' }}>
                                         {[0, 6, 12, 18].map(h => (
                                             <div
                                                 key={h}
-                                                className="absolute text-[9px] text-gray-600 -translate-x-1/2"
-                                                style={{ left: `${(h / 24) * 100}%`, top: '3px' }}
+                                                className="absolute text-[9px] text-gray-500 -translate-x-1/2"
+                                                style={{ left: `${(h / 24) * 100}%`, top: '4px', whiteSpace: 'nowrap' }}
                                             >
                                                 {h === 0 ? '12a' : h === 12 ? '12p' : h > 12 ? `${h - 12}p` : `${h}a`}
                                             </div>
@@ -2038,8 +2073,8 @@ export default function UserSchedulerClient() {
                                     <div className="flex items-center gap-3">
                                         <Replace size={18} className="text-amber-400 flex-shrink-0" />
                                         <div>
-                                            <div className="font-semibold text-white text-sm">Replace</div>
-                                            <div className="text-gray-400 text-xs mt-0.5">Remove the existing shift and take this slot</div>
+                                            <div className="font-semibold text-white text-sm">Replace — Remove {users.find(u => u.id === dropModal.occupying!.user_id)?.first_name ?? 'existing'}'s shift</div>
+                                            <div className="text-amber-400/80 text-xs mt-0.5">⚠ {users.find(u => u.id === dropModal.occupying!.user_id)?.first_name ?? 'Their'}'s shift will be deleted</div>
                                         </div>
                                     </div>
                                 </button>
