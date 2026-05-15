@@ -958,7 +958,28 @@ CREATE INDEX IF NOT EXISTS time_off_org_idx ON time_off_requests(organization_id
 CREATE INDEX IF NOT EXISTS time_off_user_idx ON time_off_requests(user_id);
 
 -- =========================================================
--- 49. Items table — Bottle size amount and unit
+-- 49. Notifications table + user notification preferences
+-- =========================================================
+CREATE TABLE IF NOT EXISTS notifications (
+    id              SERIAL PRIMARY KEY,
+    organization_id INTEGER REFERENCES organizations(id),
+    user_id         INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    type            TEXT NOT NULL,
+    title           TEXT NOT NULL,
+    message         TEXT NOT NULL,
+    data            JSONB DEFAULT '{}',
+    is_read         BOOLEAN DEFAULT FALSE,
+    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS notifications_user_idx ON notifications(user_id, is_read);
+CREATE INDEX IF NOT EXISTS notifications_org_idx  ON notifications(organization_id);
+
+DO $$ BEGIN
+  ALTER TABLE users ADD COLUMN notification_preferences JSONB DEFAULT '{}';
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
+-- =========================================================
+-- 50. Items table — Bottle size amount and unit
 -- =========================================================
 DO $$ BEGIN
   ALTER TABLE items ADD COLUMN bottle_size_amount NUMERIC(10,2);
