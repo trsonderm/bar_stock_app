@@ -4,6 +4,21 @@ import { useState, useEffect, useCallback } from 'react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+interface DiagnosticsData {
+    schedulerRunning: boolean;
+    smtp: Record<string, { configured: boolean; host: string; user: string }>;
+    dueReports: { id: number; org_name: string; report_name: string; frequency: string; next_run_at: string | null }[];
+    lowStockOrgs: { organization_id: number; org_name: string; schedule: string | null; legacy_time: string | null; emails: string | null }[];
+    shiftReportOrgs: { organization_id: number; org_name: string; schedule: string | null; emails: string | null }[];
+    recentLogs: { id: number; email_type: string; tier: string; subject: string | null; status: string; error_message: string | null; scheduled: boolean; sent_at: string; org_display: string | null }[];
+}
+
+interface TriggerResult {
+    task: string;
+    status: string;
+    detail: string;
+}
+
 interface HistoryRow {
     id: number;
     organization_id: number | null;
@@ -97,7 +112,7 @@ function StatusBadge({ status }: { status: string }) {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function MailQueueClient() {
-    const [mainTab, setMainTab] = useState<'schedule' | 'history'>('schedule');
+    const [mainTab, setMainTab] = useState<'schedule' | 'history' | 'diagnostics'>('schedule');
     const [period, setPeriod] = useState<'today' | 'week' | 'month'>('today');
 
     // Schedule state
@@ -112,6 +127,13 @@ export default function MailQueueClient() {
     const [filterType, setFilterType] = useState('');
     const [filterStatus, setFilterStatus] = useState('');
     const [filterOrg, setFilterOrg] = useState('');
+
+    // Diagnostics state
+    const [diagData, setDiagData] = useState<DiagnosticsData | null>(null);
+    const [diagLoading, setDiagLoading] = useState(false);
+    const [triggerResults, setTriggerResults] = useState<TriggerResult[] | null>(null);
+    const [triggerSmtp, setTriggerSmtp] = useState<Record<string, { configured: boolean; host: string; user: string }> | null>(null);
+    const [triggering, setTriggering] = useState<string | null>(null);
 
     // Detail modal
     const [detailRow, setDetailRow] = useState<DetailRow | null>(null);
@@ -140,6 +162,33 @@ export default function MailQueueClient() {
         } catch (e) { console.error(e); } finally { setHistLoading(false); }
     }, [period, histPage, filterType, filterStatus, filterOrg]);
 
+    const loadDiagnostics = useCallback(async () => {
+        setDiagLoading(true);
+        try {
+            const res = await fetch('/api/super-admin/trigger-scheduler', { method: 'GET' });
+            const data = await res.json();
+            if (!data.error) setDiagData(data);
+        } catch (e) { console.error(e); } finally { setDiagLoading(false); }
+    }, []);
+
+    const triggerTask = useCallback(async (task: string) => {
+        setTriggering(task);
+        setTriggerResults(null);
+        setTriggerSmtp(null);
+        try {
+            const res = await fetch('/api/super-admin/trigger-scheduler', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ task }),
+            });
+            const data = await res.json();
+            if (data.results) setTriggerResults(data.results);
+            if (data.smtp) setTriggerSmtp(data.smtp);
+            // Refresh diagnostics after trigger
+            await loadDiagnostics();
+        } catch (e) { console.error(e); } finally { setTriggering(null); }
+    }, [loadDiagnostics]);
+
     useEffect(() => {
         if (mainTab === 'schedule') loadSchedule();
     }, [mainTab, loadSchedule]);
@@ -147,6 +196,10 @@ export default function MailQueueClient() {
     useEffect(() => {
         if (mainTab === 'history') loadHistory();
     }, [mainTab, loadHistory]);
+
+    useEffect(() => {
+        if (mainTab === 'diagnostics') loadDiagnostics();
+    }, [mainTab, loadDiagnostics]);
 
     // Auto-refresh history every 15 seconds when there are pending items
     useEffect(() => {
@@ -203,6 +256,7 @@ export default function MailQueueClient() {
             <div style={{ display: 'flex', gap: 6, marginBottom: '1.25rem', background: '#111827', borderRadius: 10, padding: 4, width: 'fit-content' }}>
                 <button style={tabStyle('schedule')} onClick={() => setMainTab('schedule')}>📅 Upcoming Schedule</button>
                 <button style={tabStyle('history')} onClick={() => setMainTab('history')}>📋 Send History</button>
+                <button style={tabStyle('diagnostics')} onClick={() => setMainTab('diagnostics')}>🔧 Diagnostics</button>
             </div>
 
             {/* Period pills */}
@@ -356,6 +410,215 @@ export default function MailQueueClient() {
                                 Next →
                             </button>
                         </div>
+                    )}
+                </div>
+            )}
+
+            {/* ── DIAGNOSTICS TAB ── */}
+            {mainTab === 'diagnostics' && (
+                <div>
+                    {/* Force Trigger Buttons */}
+                    <div style={{ background: '#111827', border: '1px solid #1f2937', borderRadius: 10, padding: '1.25rem 1.5rem', marginBottom: '1.25rem' }}>
+                        <div style={{ color: '#e5e7eb', fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.75rem' }}>⚡ Force Run Scheduler Tasks</div>
+                        <p style={{ color: '#9ca3af', fontSize: '0.82rem', margin: '0 0 1rem' }}>
+                            Runs tasks immediately regardless of scheduled time. Useful for testing that emails send correctly.
+                        </p>
+                        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                            {(['reports', 'low_stock', 'shift_reports', 'all'] as const).map(t => (
+                                <button key={t} disabled={triggering !== null} onClick={() => triggerTask(t)}
+                                    style={{ background: triggering === t ? '#1d4ed8' : '#1f2937', color: 'white', border: '1px solid #374151', borderRadius: 7, padding: '8px 18px', cursor: triggering !== null ? 'not-allowed' : 'pointer', fontWeight: 600, fontSize: '0.85rem', opacity: triggering !== null && triggering !== t ? 0.6 : 1 }}>
+                                    {triggering === t ? '⏳ Running…' : t === 'all' ? '▶ Run All' : t === 'reports' ? '▶ Reports' : t === 'low_stock' ? '▶ Low Stock' : '▶ Shift Reports'}
+                                </button>
+                            ))}
+                            <button onClick={loadDiagnostics} disabled={diagLoading}
+                                style={{ background: 'transparent', color: '#60a5fa', border: '1px solid #374151', borderRadius: 7, padding: '8px 18px', cursor: diagLoading ? 'not-allowed' : 'pointer', fontWeight: 600, fontSize: '0.85rem' }}>
+                                {diagLoading ? '⏳' : '↻'} Refresh Status
+                            </button>
+                        </div>
+
+                        {/* Trigger Results */}
+                        {triggerResults && (
+                            <div style={{ marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                {triggerResults.map((r, i) => (
+                                    <div key={i} style={{ background: r.status === 'queued' ? '#064e3b' : r.status === 'skipped' ? '#1c1917' : '#1e3a5f', border: `1px solid ${r.status === 'queued' ? '#065f46' : r.status === 'skipped' ? '#292524' : '#1d4ed8'}`, borderRadius: 7, padding: '0.6rem 0.9rem', display: 'flex', gap: '0.75rem', alignItems: 'flex-start' }}>
+                                        <span style={{ fontSize: '1rem', flexShrink: 0 }}>{r.status === 'queued' ? '✅' : r.status === 'skipped' ? '⚠️' : '🔵'}</span>
+                                        <div>
+                                            <div style={{ color: 'white', fontWeight: 600, fontSize: '0.85rem' }}>{r.task}</div>
+                                            <div style={{ color: '#9ca3af', fontSize: '0.8rem', marginTop: 2 }}>{r.detail}</div>
+                                        </div>
+                                    </div>
+                                ))}
+                                {triggerSmtp && (
+                                    <div style={{ marginTop: '0.5rem' }}>
+                                        <div style={{ color: '#6b7280', fontSize: '0.78rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.4rem' }}>SMTP Config (from last run)</div>
+                                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                                            {Object.entries(triggerSmtp).map(([tier, cfg]) => (
+                                                <div key={tier} style={{ background: cfg.configured ? '#064e3b' : '#1c1917', border: `1px solid ${cfg.configured ? '#065f46' : '#292524'}`, borderRadius: 6, padding: '4px 10px', fontSize: '0.75rem' }}>
+                                                    <span style={{ color: cfg.configured ? '#6ee7b7' : '#fca5a5', fontWeight: 700 }}>{tier}</span>
+                                                    <span style={{ color: '#6b7280', marginLeft: 6 }}>{cfg.configured ? `✓ ${cfg.user}` : '✗ not configured'}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+
+                    {diagLoading && <p style={{ color: '#9ca3af' }}>Loading diagnostics…</p>}
+
+                    {diagData && !diagLoading && (
+                        <>
+                            {/* Scheduler + SMTP Status */}
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem', marginBottom: '1.25rem' }}>
+                                {/* Scheduler running */}
+                                <div style={{ background: '#111827', border: `1px solid ${diagData.schedulerRunning ? '#065f46' : '#7f1d1d'}`, borderRadius: 10, padding: '1rem 1.25rem' }}>
+                                    <div style={{ color: '#9ca3af', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>Scheduler Status</div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                        <span style={{ width: 10, height: 10, borderRadius: '50%', background: diagData.schedulerRunning ? '#10b981' : '#ef4444', display: 'inline-block', flexShrink: 0 }} />
+                                        <span style={{ color: diagData.schedulerRunning ? '#6ee7b7' : '#fca5a5', fontWeight: 700, fontSize: '0.9rem' }}>
+                                            {diagData.schedulerRunning ? 'Running' : 'NOT Running'}
+                                        </span>
+                                    </div>
+                                    {!diagData.schedulerRunning && (
+                                        <p style={{ color: '#fca5a5', fontSize: '0.78rem', margin: '6px 0 0' }}>
+                                            Scheduler is not active — automated emails will not send. Check that the server started with instrumentation hooks enabled.
+                                        </p>
+                                    )}
+                                </div>
+
+                                {/* SMTP tiers */}
+                                <div style={{ background: '#111827', border: '1px solid #1f2937', borderRadius: 10, padding: '1rem 1.25rem' }}>
+                                    <div style={{ color: '#9ca3af', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>SMTP Tiers</div>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                                        {Object.entries(diagData.smtp).map(([tier, cfg]) => (
+                                            <div key={tier} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                <span style={{ color: '#d1d5db', fontSize: '0.82rem', fontWeight: 600, textTransform: 'capitalize' }}>{tier}</span>
+                                                <span style={{ color: cfg.configured ? '#6ee7b7' : '#6b7280', fontSize: '0.78rem' }}>
+                                                    {cfg.configured ? `✓ ${cfg.user}` : '✗ not configured'}
+                                                </span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Due Report Schedules */}
+                            <div style={{ background: '#111827', border: '1px solid #1f2937', borderRadius: 10, padding: '1rem 1.25rem', marginBottom: '1rem' }}>
+                                <div style={{ color: '#e5e7eb', fontWeight: 700, fontSize: '0.88rem', marginBottom: '0.75rem' }}>
+                                    📊 Active Report Schedules {diagData.dueReports.length === 0 && <span style={{ color: '#6b7280', fontWeight: 400 }}>(none)</span>}
+                                </div>
+                                {diagData.dueReports.length === 0 && (
+                                    <p style={{ color: '#6b7280', fontSize: '0.82rem', margin: 0 }}>No active report schedules found. Create one in Admin → Reports → Schedule Report.</p>
+                                )}
+                                {diagData.dueReports.length > 0 && (
+                                    <div style={{ overflowX: 'auto' }}>
+                                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                                            <thead>
+                                                <tr style={{ color: '#6b7280', textAlign: 'left' }}>
+                                                    <th style={{ padding: '5px 10px', fontWeight: 600 }}>Report</th>
+                                                    <th style={{ padding: '5px 10px', fontWeight: 600 }}>Org</th>
+                                                    <th style={{ padding: '5px 10px', fontWeight: 600 }}>Freq</th>
+                                                    <th style={{ padding: '5px 10px', fontWeight: 600 }}>Next Run</th>
+                                                    <th style={{ padding: '5px 10px', fontWeight: 600 }}>Due?</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {diagData.dueReports.map(r => {
+                                                    const isDue = r.next_run_at ? new Date(r.next_run_at) <= new Date() : false;
+                                                    return (
+                                                        <tr key={r.id} style={{ borderTop: '1px solid #1f2937' }}>
+                                                            <td style={{ padding: '6px 10px', color: '#e5e7eb' }}>{r.report_name ?? '(unlinked)'}</td>
+                                                            <td style={{ padding: '6px 10px', color: '#9ca3af' }}>{r.org_name}</td>
+                                                            <td style={{ padding: '6px 10px', color: '#9ca3af', textTransform: 'capitalize' }}>{r.frequency}</td>
+                                                            <td style={{ padding: '6px 10px', color: r.next_run_at ? '#d1d5db' : '#ef4444' }}>
+                                                                {r.next_run_at ? new Date(r.next_run_at).toLocaleString() : 'NULL — will never fire!'}
+                                                            </td>
+                                                            <td style={{ padding: '6px 10px' }}>
+                                                                <span style={{ color: isDue ? '#6ee7b7' : '#f59e0b', fontWeight: 700, fontSize: '0.75rem' }}>
+                                                                    {isDue ? '✓ DUE NOW' : '⏳ Not yet'}
+                                                                </span>
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Low Stock Alert Orgs */}
+                            <div style={{ background: '#111827', border: '1px solid #1f2937', borderRadius: 10, padding: '1rem 1.25rem', marginBottom: '1rem' }}>
+                                <div style={{ color: '#e5e7eb', fontWeight: 700, fontSize: '0.88rem', marginBottom: '0.75rem' }}>
+                                    ⚠️ Low Stock Alert Orgs {diagData.lowStockOrgs.length === 0 && <span style={{ color: '#6b7280', fontWeight: 400 }}>(none enabled)</span>}
+                                </div>
+                                {diagData.lowStockOrgs.length === 0 && (
+                                    <p style={{ color: '#6b7280', fontSize: '0.82rem', margin: 0 }}>No orgs have low stock alerts enabled.</p>
+                                )}
+                                {diagData.lowStockOrgs.map((s, i) => {
+                                    let timeStr = 'N/A';
+                                    try {
+                                        const raw = s.schedule || s.legacy_time;
+                                        const parsed = raw ? JSON.parse(raw) : null;
+                                        timeStr = parsed?.time || raw || '14:00';
+                                    } catch { timeStr = s.schedule || s.legacy_time || '14:00'; }
+                                    return (
+                                        <div key={i} style={{ display: 'flex', gap: '1rem', alignItems: 'center', padding: '5px 0', borderTop: i > 0 ? '1px solid #1f2937' : 'none', flexWrap: 'wrap' }}>
+                                            <span style={{ color: '#e5e7eb', fontSize: '0.82rem', fontWeight: 600, minWidth: 140 }}>{s.org_name}</span>
+                                            <span style={{ color: '#9ca3af', fontSize: '0.78rem' }}>Fires daily at <strong style={{ color: '#fbbf24' }}>{timeStr}</strong> (exact minute match)</span>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+
+                            {/* Shift Report Orgs */}
+                            <div style={{ background: '#111827', border: '1px solid #1f2937', borderRadius: 10, padding: '1rem 1.25rem', marginBottom: '1rem' }}>
+                                <div style={{ color: '#e5e7eb', fontWeight: 700, fontSize: '0.88rem', marginBottom: '0.75rem' }}>
+                                    📋 Shift Report Orgs {diagData.shiftReportOrgs.length === 0 && <span style={{ color: '#6b7280', fontWeight: 400 }}>(none enabled)</span>}
+                                </div>
+                                {diagData.shiftReportOrgs.length === 0 && (
+                                    <p style={{ color: '#6b7280', fontSize: '0.82rem', margin: 0 }}>No orgs have shift report emails enabled.</p>
+                                )}
+                                {diagData.shiftReportOrgs.map((s, i) => {
+                                    let schedParsed: any = {};
+                                    try { schedParsed = s.schedule ? JSON.parse(s.schedule) : {}; } catch { }
+                                    return (
+                                        <div key={i} style={{ display: 'flex', gap: '1rem', alignItems: 'center', padding: '5px 0', borderTop: i > 0 ? '1px solid #1f2937' : 'none', flexWrap: 'wrap' }}>
+                                            <span style={{ color: '#e5e7eb', fontSize: '0.82rem', fontWeight: 600, minWidth: 140 }}>{s.org_name}</span>
+                                            <span style={{ color: '#9ca3af', fontSize: '0.78rem' }}>
+                                                {schedParsed.frequency === 'per_shift' ? 'Per-shift (fires at shift close)' : `${schedParsed.frequency || 'daily'} at `}
+                                                {schedParsed.frequency !== 'per_shift' && <strong style={{ color: '#fbbf24' }}>{schedParsed.time || '08:00'}</strong>}
+                                            </span>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+
+                            {/* Recent Email Log */}
+                            <div style={{ background: '#111827', border: '1px solid #1f2937', borderRadius: 10, padding: '1rem 1.25rem' }}>
+                                <div style={{ color: '#e5e7eb', fontWeight: 700, fontSize: '0.88rem', marginBottom: '0.75rem' }}>📨 Recent Email Log (last 10)</div>
+                                {diagData.recentLogs.length === 0 && (
+                                    <p style={{ color: '#ef4444', fontSize: '0.82rem', margin: 0 }}>No email log entries at all — scheduler may not be running or no emails have been attempted.</p>
+                                )}
+                                {diagData.recentLogs.length > 0 && (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                                        {diagData.recentLogs.map((log, i) => {
+                                            const sc = STATUS_COLORS[log.status] ?? STATUS_COLORS.skipped;
+                                            return (
+                                                <div key={i} style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', padding: '5px 0', borderTop: i > 0 ? '1px solid #1f2937' : 'none', flexWrap: 'wrap' }}>
+                                                    <span style={{ background: sc.bg, color: sc.text, borderRadius: 10, padding: '1px 8px', fontSize: '0.72rem', fontWeight: 700, flexShrink: 0 }}>{log.status.toUpperCase()}</span>
+                                                    <TypeBadge type={log.email_type} />
+                                                    <span style={{ color: '#9ca3af', fontSize: '0.78rem' }}>{new Date(log.sent_at).toLocaleString()}</span>
+                                                    <span style={{ color: '#6b7280', fontSize: '0.78rem', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{log.subject ?? '—'}</span>
+                                                    {log.error_message && <span style={{ color: '#fca5a5', fontSize: '0.72rem' }} title={log.error_message}>⚠ {log.error_message.slice(0, 60)}</span>}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+                        </>
                     )}
                 </div>
             )}
