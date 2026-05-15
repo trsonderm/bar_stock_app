@@ -957,4 +957,15 @@ CREATE TABLE IF NOT EXISTS time_off_requests (
 CREATE INDEX IF NOT EXISTS time_off_org_idx ON time_off_requests(organization_id, status);
 CREATE INDEX IF NOT EXISTS time_off_user_idx ON time_off_requests(user_id);
 
+-- =========================================================
+-- 49. Items table — Bottle size amount and unit
+-- =========================================================
+DO $$ BEGIN
+  ALTER TABLE items ADD COLUMN bottle_size_amount NUMERIC(10,2);
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE items ADD COLUMN bottle_size_unit TEXT;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
 COMMIT;

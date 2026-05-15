@@ -1176,6 +1176,55 @@ IMPLEMENTATION NOTES FOR MOBILE:
 - Store "address" fields here for staff profile display — they are not used by
   the server for any logic.
 
+── Get user permissions and capabilities ────────────────────────────────────────
+
+GET /api/mobile/settings/permissions
+
+Returns the authenticated user's role, permissions array, org info, and a
+pre-computed "capabilities" object the app can use to show/hide admin features
+without re-implementing role logic on the client.
+
+Call this once after login and cache the result for the session.
+
+RESPONSE (200 OK):
+{
+  "user": {
+    "id": 42,
+    "role": "admin",                ← "user" or "admin"
+    "permissions": ["all"],         ← array of granted permission strings
+    "first_name": "Alex",
+    "last_name": "Smith",
+    "display_name": "Alex S.",
+    "profile_picture": null,
+    "position": "Head Bartender",
+    "phone": "5550001234"
+  },
+  "organization": {
+    "name": "The Rusty Nail",
+    "subdomain": "your-bar",
+    "subscription_plan": "pro"
+  },
+  "capabilities": {
+    "can_add_barred": true,         ← show "Add to Barred List" button
+    "can_approve_swaps": true,      ← show manager swap-approval UI
+    "can_approve_time_off": true,   ← show time-off approval UI
+    "can_view_all_schedules": true, ← always true
+    "can_post_feed": true,          ← always true
+    "can_manage_inventory": true,   ← show inventory management actions
+    "is_admin": true                ← true if role = "admin"
+  }
+}
+
+CAPABILITIES LOGIC:
+  can_add_barred      → is_admin OR permissions includes "add_barred" OR "all"
+  can_approve_swaps   → is_admin only
+  can_approve_time_off → is_admin only
+  can_manage_inventory → is_admin OR permissions includes "inventory" OR "all"
+
+ERROR RESPONSES:
+  401 { "error": "Unauthorized" }
+  404 { "error": "User not found" }
+
 
 ────────────────────────────────────────────────────────────────────────────────
 14. PUSH NOTIFICATION TYPES
@@ -1220,7 +1269,101 @@ On the mobile client:
 
 
 ────────────────────────────────────────────────────────────────────────────────
-15. ERROR HANDLING — Standard error responses
+15. RECIPES — Browse drink recipes
+────────────────────────────────────────────────────────────────────────────────
+
+The org's recipe library blends two sources:
+  • Local  — recipes created by your org's admins (org_recipes table)
+  • Global — curated recipes managed by TopShelf staff (read-only)
+
+Which sources are searched is controlled by the org's General Settings
+(recipe_search_source: "local" | "global" | "both").  The ?source param
+overrides this per request.
+
+RECIPE ID FORMAT
+  l:<id>   org-local recipe (e.g. "l:3")
+  g:<id>   global recipe    (e.g. "g:12")
+
+── List / search recipes ────────────────────────────────────────────────────────
+
+GET /api/mobile/recipes
+
+QUERY PARAMETERS (all optional):
+  ?q=margarita     Full-text search across name and description
+  ?category=Cocktail   Filter by category (Cocktail, Shot, Mocktail, Beer, Wine, Spirit, Other)
+  ?source=local    "local" | "global" | "both" — overrides org setting
+  ?limit=50        Page size (default 50, max 200)
+  ?offset=0        Page offset (default 0)
+
+RESPONSE (200 OK):
+{
+  "recipes": [
+    {
+      "id": "l:3",
+      "name": "Margarita",
+      "source": "local",
+      "description": "Classic tequila cocktail",
+      "category": "Cocktail",
+      "ingredients": [
+        { "item": "Tequila",    "amount": "1.5", "unit": "oz" },
+        { "item": "Triple Sec", "amount": "0.75", "unit": "oz" },
+        { "item": "Lime Juice", "amount": "1",   "unit": "oz" }
+      ],
+      "instructions": "Shake with ice and strain into a salted rim glass.",
+      "glass": "Rocks glass",
+      "amount": "3.5 oz",
+      "tags": ["citrus", "popular"],
+      "image_url": "/uploads/3f7a1b2c.jpg",
+      "created_at": "2026-05-01T10:00:00Z"
+    }
+  ],
+  "total": 42,
+  "limit": 50,
+  "offset": 0
+}
+
+NOTES:
+- "id" uses the l:/g: prefix to distinguish library source.
+- "source" is always "local" or "global".
+- Global recipes are included based on the org's recipe_search_source setting.
+- When source is "both", local results appear first; duplicates by name are removed.
+- "image_url" is a relative path (prepend your base URL) or null.
+
+── Get a single recipe ───────────────────────────────────────────────────────────
+
+GET /api/mobile/recipes/<id>
+
+Accepts l:<id>, g:<id>, or a plain integer (resolves local first, then global).
+
+RESPONSE (200 OK):
+{
+  "recipe": {
+    "id": "g:12",
+    "name": "Old Fashioned",
+    "source": "global",
+    "description": "A stirred whiskey cocktail.",
+    "category": "Cocktail",
+    "ingredients": [
+      { "item": "Bourbon",        "amount": "2",   "unit": "oz" },
+      { "item": "Simple Syrup",   "amount": "0.25","unit": "oz" },
+      { "item": "Angostura Bitters","amount": "2", "unit": "dashes" }
+    ],
+    "instructions": "Stir over ice and strain into a rocks glass over a large cube.",
+    "glass": "Rocks glass",
+    "amount": "2.5 oz",
+    "tags": ["whiskey", "classic"],
+    "image_url": null,
+    "created_at": "2026-01-15T00:00:00Z"
+  }
+}
+
+ERROR RESPONSES:
+  400 { "error": "Invalid recipe ID" }
+  404 { "error": "Recipe not found" }
+
+
+────────────────────────────────────────────────────────────────────────────────
+16. ERROR HANDLING — Standard error responses
 ────────────────────────────────────────────────────────────────────────────────
 
 All endpoints use standard HTTP status codes.
@@ -1245,7 +1388,7 @@ TOKEN EXPIRY HANDLING:
 
 
 ────────────────────────────────────────────────────────────────────────────────
-16. ENDPOINT QUICK REFERENCE
+17. ENDPOINT QUICK REFERENCE
 ────────────────────────────────────────────────────────────────────────────────
 
 METHOD  PATH                                      AUTH    DESCRIPTION
@@ -1279,16 +1422,19 @@ GET     /api/mobile/messages/<threadId>           Bearer  Get paginated messages
 POST    /api/mobile/messages/<threadId>           Bearer  Send a message to an existing thread
 DELETE  /api/mobile/messages/<threadId>           Bearer  Leave a thread
 GET     /api/mobile/messages/poll?since=<ISO>     Bearer  Poll for new messages across all threads
+GET     /api/mobile/recipes                       Bearer  List / search recipes (local + global)
+GET     /api/mobile/recipes/<id>                  Bearer  Get a single recipe by ID (l:, g:, or int)
 GET     /api/mobile/profile                       Bearer  Get your profile (no password fields)
 PATCH   /api/mobile/profile                       Bearer  Update name, email, phone, bio, etc.
 POST    /api/mobile/profile/picture               Bearer  Upload profile picture (base64 data-URI)
 DELETE  /api/mobile/profile/picture               Bearer  Remove profile picture
 GET     /api/mobile/settings                      Bearer  Get notification preferences + address
 PATCH   /api/mobile/settings                      Bearer  Update notification preferences + address
+GET     /api/mobile/settings/permissions          Bearer  Get role, permissions, and capability flags
 
 
 ────────────────────────────────────────────────────────────────────────────────
-17. SECURITY NOTES
+18. SECURITY NOTES
 ────────────────────────────────────────────────────────────────────────────────
 
 - Tokens are signed JWT (HS256). Never decode and trust the payload client-side
@@ -1330,7 +1476,7 @@ PATCH   /api/mobile/settings                      Bearer  Update notification pr
 ================================================================================
   TopShelf Inventory — Mobile API Reference
   Server: https://www.topshelfInventory.com
-  API Version: 3.0  |  Last updated: 2026-05-05
+  API Version: 3.1  |  Last updated: 2026-05-14
 ================================================================================
 
 
@@ -2048,7 +2194,7 @@ DELETE  /api/v1/recipes/{id}/image              recipes:write      Remove recipe
 
 
 ────────────────────────────────────────────────────────────────────────────────
-25. DEVELOPER API — DRINK RECIPES
+25. DEVELOPER API — RECIPES
 ────────────────────────────────────────────────────────────────────────────────
 
 TopShelf supports two recipe libraries:
@@ -2249,5 +2395,5 @@ RECIPE SCOPES SUMMARY
   TopShelf Inventory — Developer API Reference (v1)
   Server: https://www.topshelfInventory.com/api/v1
   Docs:   https://www.topshelfInventory.com/admin/developer
-  API Version: v1  |  Last updated: 2026-05-10
+  API Version: v1  |  Last updated: 2026-05-14
 ================================================================================

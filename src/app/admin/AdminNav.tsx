@@ -26,6 +26,7 @@ import MenuItem from '@mui/material/MenuItem';
 import Tooltip from '@mui/material/Tooltip';
 import Chip from '@mui/material/Chip';
 
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import AssessmentIcon from '@mui/icons-material/Assessment';
 import InventoryIcon from '@mui/icons-material/Inventory';
@@ -379,6 +380,16 @@ export default function AdminNav({ user, children }: { user: NavUser, children: 
                     >
                         <MenuIcon />
                     </IconButton>
+                    <Tooltip title="Go back">
+                        <IconButton
+                            color="inherit"
+                            onClick={() => router.back()}
+                            aria-label="go back"
+                            sx={{ mr: 1 }}
+                        >
+                            <ArrowBackIcon />
+                        </IconButton>
+                    </Tooltip>
                     <Box sx={{ flexGrow: 1 }} />
 
                     {myLocations.length > 0 && (

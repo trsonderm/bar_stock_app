@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import styles from '../admin.module.css';
-import { ChevronLeft, ChevronRight, Plus, Calendar, User, Clock, Trash2, Printer, X, Mail, Pencil } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, Calendar, User, Clock, Trash2, Printer, X, Mail, Pencil, ArrowLeftRight, Replace, Check } from 'lucide-react';
 import ShiftManager from './ShiftManager';
 import MonthScheduler from './MonthScheduler';
 
@@ -92,6 +92,14 @@ export default function UserSchedulerClient() {
 
     // Drag & Drop State
     const [draggedSchedule, setDraggedSchedule] = useState<Schedule | null>(null);
+    const [dragOverCell, setDragOverCell] = useState<{ userId: number; dateStr: string; snapShiftId: number | null } | null>(null);
+    const [dropModal, setDropModal] = useState<{
+        dragged: Schedule;
+        targetUserId: number;
+        targetDateStr: string;
+        snapShiftId: number;
+        occupying: Schedule | null;
+    } | null>(null);
 
     // Delete confirmation modal
     const [deleteConfirm, setDeleteConfirm] = useState<{ id: number; schedule: Schedule } | null>(null);
@@ -290,72 +298,106 @@ export default function UserSchedulerClient() {
     };
 
     // --- Drag and Drop Handlers ---
+    const findNearestShift = (timeMinutes: number): Shift | null => {
+        if (shifts.length === 0) return null;
+        return shifts.reduce((best, s) => {
+            const [sh, sm] = s.start_time.split(':').map(Number);
+            const [bh, bm] = best.start_time.split(':').map(Number);
+            return Math.abs(sh * 60 + sm - timeMinutes) < Math.abs(bh * 60 + bm - timeMinutes) ? s : best;
+        });
+    };
+
     const handleDragStart = (e: React.DragEvent, schedule: Schedule) => {
         e.dataTransfer.setData('application/json', JSON.stringify(schedule));
-        // Keep reference in state just in case
         setDraggedSchedule(schedule);
-        // Add some visual feedback
+        setDragOverCell(null);
         e.dataTransfer.effectAllowed = 'move';
     };
 
-    const handleDrop = async (e: React.DragEvent, targetDateStr: string, targetUserId?: number) => {
+    const handleDragOver = (e: React.DragEvent, dateStr?: string, userId?: number) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        if (viewMode === 'timeline' && dateStr && userId !== undefined) {
+            const rect = e.currentTarget.getBoundingClientRect();
+            const xPct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+            const snap = findNearestShift(xPct * 24 * 60);
+            setDragOverCell({ userId, dateStr, snapShiftId: snap?.id ?? null });
+        }
+    };
+
+    const handleDragLeave = (e: React.DragEvent) => {
+        const related = e.relatedTarget as Node | null;
+        if (!related || !e.currentTarget.contains(related)) setDragOverCell(null);
+    };
+
+    const handleDrop = (e: React.DragEvent, targetDateStr: string, targetUserId?: number) => {
         e.preventDefault();
         if (!draggedSchedule) return;
 
-        // Same day and user? Do nothing.
-        const d = draggedSchedule.date.split('T')[0];
-        if (d === targetDateStr && (!targetUserId || draggedSchedule.user_id === targetUserId)) {
+        const resolvedUserId = targetUserId ?? draggedSchedule.user_id;
+        const snapShiftId = dragOverCell?.snapShiftId ?? draggedSchedule.shift_id;
+        const sourceDateStr = draggedSchedule.date.split('T')[0];
+
+        // Same position — no-op
+        if (sourceDateStr === targetDateStr && draggedSchedule.user_id === resolvedUserId && draggedSchedule.shift_id === snapShiftId) {
             setDraggedSchedule(null);
+            setDragOverCell(null);
             return;
         }
 
-        const newUserId = targetUserId || draggedSchedule.user_id;
+        const occupying = schedules.find(s =>
+            s.id !== draggedSchedule.id &&
+            s.user_id === resolvedUserId &&
+            s.date.split('T')[0] === targetDateStr &&
+            s.shift_id === snapShiftId
+        ) ?? null;
 
-        // Perform PUT update specifically for this single instance move
-        await fetch('/api/admin/schedule', {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                id: draggedSchedule.id,
-                userId: newUserId,
-                shiftId: draggedSchedule.shift_id,
-                modifyStrategy: 'instance', // DND is instance only
-                date: targetDateStr // Date change involves deleting old and inserting new? 
-            })
+        setDropModal({ dragged: draggedSchedule, targetUserId: resolvedUserId, targetDateStr, snapShiftId, occupying });
+        setDraggedSchedule(null);
+        setDragOverCell(null);
+    };
+
+    const executeDropMove = async (action: 'move' | 'swap' | 'replace') => {
+        if (!dropModal) return;
+        const { dragged, targetUserId, targetDateStr, snapShiftId, occupying } = dropModal;
+        const sourceDateStr = dragged.date.split('T')[0];
+        const locParam = !scheduleSettings.globalMode && selectedLocationId ? { locationId: selectedLocationId } : {};
+
+        const deleteBody = (s: Schedule) => JSON.stringify({
+            id: s.id,
+            ...(s.recurring_group_id ? { modifyStrategy: 'instance', recurringGroupId: s.recurring_group_id, date: s.date.split('T')[0] } : {})
         });
 
-        // The PUT endpoint above only updates user/shift, NOT date right now.
-        // For DND date changes, we need to POST the new one and DELETE the old one, OR expand PUT to handle date shifts. 
-        // Simplest: Delete old, POST new.
-        if (d !== targetDateStr) {
+        if (action === 'move') {
+            await fetch('/api/admin/schedule', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: deleteBody(dragged) });
             await fetch('/api/admin/schedule', {
-                method: 'DELETE',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id: draggedSchedule.id })
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userIds: [targetUserId], shiftId: snapShiftId, dates: [targetDateStr], isRecurring: false, ...locParam })
             });
-
+        } else if (action === 'swap' && occupying) {
+            await Promise.all([
+                fetch('/api/admin/schedule', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: deleteBody(dragged) }),
+                fetch('/api/admin/schedule', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: deleteBody(occupying) }),
+            ]);
+            await Promise.all([
+                fetch('/api/admin/schedule', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userIds: [targetUserId], shiftId: dragged.shift_id, dates: [targetDateStr], isRecurring: false, ...locParam }) }),
+                fetch('/api/admin/schedule', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userIds: [dragged.user_id], shiftId: snapShiftId, dates: [sourceDateStr], isRecurring: false, ...locParam }) }),
+            ]);
+        } else if (action === 'replace' && occupying) {
+            await Promise.all([
+                fetch('/api/admin/schedule', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: deleteBody(dragged) }),
+                fetch('/api/admin/schedule', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: deleteBody(occupying) }),
+            ]);
             await fetch('/api/admin/schedule', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    userIds: [newUserId],
-                    shiftId: draggedSchedule.shift_id,
-                    dates: [targetDateStr],
-                    isRecurring: false,
-                    ...(!scheduleSettings.globalMode && selectedLocationId ? { locationId: selectedLocationId } : {})
-                })
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userIds: [targetUserId], shiftId: snapShiftId, dates: [targetDateStr], isRecurring: false, ...locParam })
             });
         }
 
-        setDraggedSchedule(null);
+        setDropModal(null);
         if (activeTab === 'weekly') fetchSchedules(weekStart, 7);
         else if (activeTab === 'monthly') fetchSchedules(currentDate, 35);
         else fetchSchedules(currentDate, 1);
-    };
-
-    const handleDragOver = (e: React.DragEvent) => {
-        e.preventDefault(); // necessary to allow dropping
-        e.dataTransfer.dropEffect = 'move';
     };
 
     function getStartOfWeek(date: Date) {
@@ -1244,9 +1286,35 @@ export default function UserSchedulerClient() {
                                                     key={di}
                                                     className={`flex-1 border-r border-gray-800/60 relative ${isToday ? 'bg-blue-950/20' : ''}`}
                                                     style={{ height: '58px' }}
-                                                    onDragOver={handleDragOver}
+                                                    onDragOver={(e) => handleDragOver(e, dateStr, user.id)}
+                                                    onDragLeave={handleDragLeave}
                                                     onDrop={(e) => handleDrop(e, dateStr, user.id)}
                                                 >
+                                                    {/* Snap target highlight while dragging */}
+                                                    {dragOverCell?.userId === user.id && dragOverCell?.dateStr === dateStr && (() => {
+                                                        const snap = shifts.find(s => s.id === dragOverCell.snapShiftId);
+                                                        if (!snap) return null;
+                                                        const [sh, sm] = snap.start_time.split(':').map(Number);
+                                                        const [eh, em] = snap.end_time.split(':').map(Number);
+                                                        const startTotal = sh * 60 + sm;
+                                                        const endTotal = eh * 60 + em > startTotal ? eh * 60 + em : 24 * 60;
+                                                        const snapLeft = (startTotal / (24 * 60)) * 100;
+                                                        const snapWidth = ((endTotal - startTotal) / (24 * 60)) * 100;
+                                                        return (
+                                                            <div
+                                                                className="absolute rounded pointer-events-none"
+                                                                style={{
+                                                                    top: BAR_TOP, height: BAR_H,
+                                                                    left: `${snapLeft}%`, width: `${snapWidth}%`,
+                                                                    backgroundColor: snap.color,
+                                                                    opacity: 0.38,
+                                                                    border: '2px dashed rgba(255,255,255,0.85)',
+                                                                    zIndex: 6,
+                                                                }}
+                                                            />
+                                                        );
+                                                    })()}
+
                                                     {/* Subtle hour grid lines */}
                                                     {[6, 12, 18].map(h => (
                                                         <div
@@ -1342,6 +1410,7 @@ export default function UserSchedulerClient() {
                                                                 key={schedule.id}
                                                                 draggable
                                                                 onDragStart={(e) => handleDragStart(e, schedule)}
+                                                                onDragEnd={() => { setDraggedSchedule(null); setDragOverCell(null); }}
                                                                 className="absolute overflow-hidden group cursor-grab active:cursor-grabbing hover:brightness-110 hover:z-10 transition-all"
                                                                 style={{
                                                                     top: BAR_TOP,
@@ -1893,6 +1962,97 @@ export default function UserSchedulerClient() {
                                 </button>
                             </div>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Drop Confirmation Modal */}
+            {dropModal && (
+                <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[70] p-4">
+                    <div className="bg-gray-800 rounded-xl max-w-sm w-full p-6 shadow-2xl border border-gray-600">
+                        <div className="flex items-center gap-3 mb-4">
+                            <div className="w-10 h-10 rounded-full bg-blue-900/50 flex items-center justify-center flex-shrink-0">
+                                <ArrowLeftRight size={18} className="text-blue-400" />
+                            </div>
+                            <div>
+                                <h3 className="text-white font-bold text-lg">Move Shift</h3>
+                                <p className="text-gray-400 text-sm">
+                                    {dropModal.dragged.first_name} {dropModal.dragged.last_name} &mdash; {dropModal.dragged.shift_name}
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="bg-gray-900 rounded-lg p-3 mb-4 text-sm space-y-1">
+                            <div className="flex items-center gap-2 text-gray-300">
+                                <span className="text-gray-500 w-8">From</span>
+                                <span>{dropModal.dragged.first_name} {dropModal.dragged.last_name}</span>
+                                <span className="text-gray-600">·</span>
+                                <span>{new Date(dropModal.dragged.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-gray-300">
+                                <span className="text-gray-500 w-8">To</span>
+                                <span>{users.find(u => u.id === dropModal.targetUserId)?.first_name} {users.find(u => u.id === dropModal.targetUserId)?.last_name}</span>
+                                <span className="text-gray-600">·</span>
+                                <span>{new Date(dropModal.targetDateStr + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                                <span className="text-gray-600">·</span>
+                                <span className="font-semibold" style={{ color: shifts.find(s => s.id === dropModal.snapShiftId)?.color }}>
+                                    {shifts.find(s => s.id === dropModal.snapShiftId)?.label}
+                                </span>
+                            </div>
+                        </div>
+
+                        {dropModal.dragged.recurring_group_id && (
+                            <div className="bg-blue-900/30 border border-blue-800/50 rounded-lg p-3 mb-4 text-xs text-blue-300">
+                                ↻ Repeating shift — only this occurrence will be moved.
+                            </div>
+                        )}
+
+                        {!dropModal.occupying ? (
+                            <button
+                                onClick={() => executeDropMove('move')}
+                                className="w-full py-3 bg-green-700 hover:bg-green-600 text-white font-bold rounded-lg flex items-center justify-center gap-2 transition-colors"
+                            >
+                                <Check size={16} /> Confirm Move
+                            </button>
+                        ) : (
+                            <div className="flex flex-col gap-2">
+                                <p className="text-amber-400 text-xs mb-1">
+                                    ⚠ {users.find(u => u.id === dropModal.occupying!.user_id)?.first_name} already has a shift in this slot.
+                                </p>
+                                <button
+                                    onClick={() => executeDropMove('swap')}
+                                    className="w-full text-left px-4 py-3 rounded-lg bg-blue-900/40 hover:bg-blue-900/60 border border-blue-700 transition-colors"
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <ArrowLeftRight size={18} className="text-blue-400 flex-shrink-0" />
+                                        <div>
+                                            <div className="font-semibold text-white text-sm">Swap Shifts</div>
+                                            <div className="text-gray-400 text-xs mt-0.5">Exchange positions — each takes the other's slot</div>
+                                        </div>
+                                    </div>
+                                </button>
+                                <button
+                                    onClick={() => executeDropMove('replace')}
+                                    className="w-full text-left px-4 py-3 rounded-lg bg-amber-900/30 hover:bg-amber-900/50 border border-amber-700/50 transition-colors"
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <Replace size={18} className="text-amber-400 flex-shrink-0" />
+                                        <div>
+                                            <div className="font-semibold text-white text-sm">Replace</div>
+                                            <div className="text-gray-400 text-xs mt-0.5">Remove the existing shift and take this slot</div>
+                                        </div>
+                                    </div>
+                                </button>
+                            </div>
+                        )}
+
+                        <button
+                            type="button"
+                            onClick={() => setDropModal(null)}
+                            className="w-full py-2 mt-3 text-sm text-gray-400 hover:text-white transition-colors"
+                        >
+                            Cancel
+                        </button>
                     </div>
                 </div>
             )}

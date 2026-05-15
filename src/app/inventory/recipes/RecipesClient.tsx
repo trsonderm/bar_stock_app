@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
+import IconButton from '@mui/material/IconButton';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import Chip from '@mui/material/Chip';
@@ -13,6 +14,8 @@ import DialogContent from '@mui/material/DialogContent';
 import DialogActions from '@mui/material/DialogActions';
 import InputAdornment from '@mui/material/InputAdornment';
 import SearchIcon from '@mui/icons-material/Search';
+import AddIcon from '@mui/icons-material/Add';
+import RemoveCircleOutlineIcon from '@mui/icons-material/RemoveCircleOutline';
 import TopNav from '@/components/TopNav';
 import NotificationBell from '@/components/NotificationBell';
 
@@ -20,7 +23,7 @@ interface Recipe {
     id: number;
     name: string;
     description: string | null;
-    ingredients: { item: string; amount: string; unit?: string }[];
+    ingredients: { item: string; amount: string; unit?: string; instructions?: string }[];
     instructions: string | null;
     category: string | null;
     glass: string | null;
@@ -30,6 +33,13 @@ interface Recipe {
     image_url?: string | null;
 }
 
+interface IngRow {
+    amount: string;
+    unit: string;
+    item: string;
+}
+
+const EMPTY_ING: IngRow = { amount: '', unit: '', item: '' };
 const CATEGORIES = ['Cocktail', 'Shot', 'Mocktail', 'Beer', 'Wine', 'Spirit', 'Other'];
 
 export default function RecipesClient({ user }: { user: any }) {
@@ -46,7 +56,8 @@ export default function RecipesClient({ user }: { user: any }) {
     // Edit/create modal
     const [editOpen, setEditOpen] = useState(false);
     const [editTarget, setEditTarget] = useState<Recipe | null>(null);
-    const [form, setForm] = useState({ name: '', description: '', instructions: '', category: '', glass: '', amount: '', tags: '', ingredients: '' });
+    const [form, setForm] = useState({ name: '', description: '', instructions: '', category: '', glass: '', amount: '', tags: '' });
+    const [ingredients, setIngredients] = useState<IngRow[]>([{ ...EMPTY_ING }]);
     const [saving, setSaving] = useState(false);
     const [deleting, setDeleting] = useState(false);
 
@@ -72,7 +83,8 @@ export default function RecipesClient({ user }: { user: any }) {
 
     const openCreate = () => {
         setEditTarget(null);
-        setForm({ name: '', description: '', instructions: '', category: '', glass: '', amount: '', tags: '', ingredients: '' });
+        setForm({ name: '', description: '', instructions: '', category: '', glass: '', amount: '', tags: '' });
+        setIngredients([{ ...EMPTY_ING }]);
         setEditOpen(true);
     };
 
@@ -87,18 +99,20 @@ export default function RecipesClient({ user }: { user: any }) {
             glass: r.glass || '',
             amount: r.amount || '',
             tags: (r.tags || []).join(', '),
-            ingredients: (r.ingredients || []).map(i => `${i.amount}${i.unit ? ' ' + i.unit : ''} ${i.item}`).join('\n'),
         });
+        setIngredients(
+            r.ingredients?.length
+                ? r.ingredients.map(i => ({ amount: i.amount || '', unit: i.unit || '', item: i.item || '' }))
+                : [{ ...EMPTY_ING }]
+        );
         setEditOpen(true);
     };
 
-    const parseIngredients = (raw: string) =>
-        raw.split('\n').map(l => l.trim()).filter(Boolean).map(line => {
-            const parts = line.split(/\s+/);
-            const amount = parts[0] || '';
-            const rest = parts.slice(1).join(' ');
-            return { amount, item: rest };
-        });
+    const updateIng = (idx: number, field: keyof IngRow, val: string) =>
+        setIngredients(prev => prev.map((ing, i) => i === idx ? { ...ing, [field]: val } : ing));
+    const addIng = () => setIngredients(prev => [...prev, { ...EMPTY_ING }]);
+    const removeIng = (idx: number) =>
+        setIngredients(prev => prev.length > 1 ? prev.filter((_, i) => i !== idx) : [{ ...EMPTY_ING }]);
 
     const handleSave = async () => {
         if (!form.name.trim()) return;
@@ -112,7 +126,11 @@ export default function RecipesClient({ user }: { user: any }) {
                 glass: form.glass || null,
                 amount: form.amount || null,
                 tags: form.tags ? form.tags.split(',').map(t => t.trim()).filter(Boolean) : [],
-                ingredients: parseIngredients(form.ingredients),
+                ingredients: ingredients.filter(i => i.item.trim()).map(i => ({
+                    item: i.item.trim(),
+                    amount: i.amount.trim(),
+                    unit: i.unit.trim(),
+                })),
             };
 
             if (editTarget) {
@@ -258,7 +276,7 @@ export default function RecipesClient({ user }: { user: any }) {
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
                             <Box>
                                 <Typography variant="h5" sx={{ fontWeight: 700 }}>{selected.name}</Typography>
-                                        {selected.category && <Chip label={selected.category} size="small" sx={{ mt: 0.5, mr: 0.5 }} />}
+                                {selected.category && <Chip label={selected.category} size="small" sx={{ mt: 0.5, mr: 0.5 }} />}
                                 {selected.glass && <Chip label={`Glass: ${selected.glass}`} size="small" variant="outlined" sx={{ mt: 0.5, mr: 0.5 }} />}
                                 {selected.amount && <Chip label={`Serves: ${selected.amount}`} size="small" variant="outlined" sx={{ mt: 0.5, mr: 0.5 }} />}
                                 {selected.tags?.map(t => <Chip key={t} label={t} size="small" sx={{ mt: 0.5, mr: 0.5 }} variant="outlined" />)}
@@ -283,14 +301,32 @@ export default function RecipesClient({ user }: { user: any }) {
 
                         {selected.ingredients?.length > 0 && (
                             <Box sx={{ mb: 3 }}>
-                                <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>Ingredients</Typography>
-                                <Box component="ul" sx={{ m: 0, pl: 2 }}>
-                                    {selected.ingredients.map((ing, i) => (
-                                        <Typography key={i} component="li" variant="body2" sx={{ mb: 0.25 }}>
-                                            <strong>{ing.amount}{ing.unit ? ` ${ing.unit}` : ''}</strong> {ing.item}
+                                <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1.5 }}>Ingredients</Typography>
+                                {/* Header row */}
+                                <Box sx={{ display: 'grid', gridTemplateColumns: '80px 1fr 1fr', gap: 1, mb: 0.5, px: 1 }}>
+                                    {['Amount', 'Ingredient', 'Notes'].map(h => (
+                                        <Typography key={h} variant="caption" sx={{ fontWeight: 600, color: 'text.disabled', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                            {h}
                                         </Typography>
                                     ))}
                                 </Box>
+                                {selected.ingredients.map((ing, i) => (
+                                    <Box key={i} sx={{
+                                        display: 'grid', gridTemplateColumns: '80px 1fr 1fr', gap: 1,
+                                        px: 1, py: 0.75,
+                                        borderRadius: 1,
+                                        bgcolor: i % 2 === 0 ? 'action.hover' : 'transparent',
+                                        alignItems: 'baseline',
+                                    }}>
+                                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                                            {ing.amount}{ing.unit ? ` ${ing.unit}` : ''}
+                                        </Typography>
+                                        <Typography variant="body2">{ing.item}</Typography>
+                                        <Typography variant="body2" color="text.secondary" sx={{ fontStyle: ing.instructions ? 'normal' : 'italic' }}>
+                                            {ing.instructions || '—'}
+                                        </Typography>
+                                    </Box>
+                                ))}
                             </Box>
                         )}
 
@@ -305,7 +341,8 @@ export default function RecipesClient({ user }: { user: any }) {
             </Box>
 
             {/* Create / Edit modal */}
-            <Dialog open={editOpen} onClose={() => setEditOpen(false)} maxWidth="sm" fullWidth>
+            <Dialog open={editOpen} onClose={() => setEditOpen(false)} maxWidth="sm" fullWidth
+                PaperProps={{ sx: { maxHeight: '90vh' } }}>
                 <DialogTitle>{editTarget ? `Edit: ${editTarget.name}` : 'New Recipe'}</DialogTitle>
                 <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '12px !important' }}>
                     <TextField label="Name *" value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} fullWidth size="small" />
@@ -321,13 +358,49 @@ export default function RecipesClient({ user }: { user: any }) {
                         <TextField label="Glass Type" value={form.glass} onChange={e => setForm(p => ({ ...p, glass: e.target.value }))} fullWidth size="small" placeholder="e.g. Collins glass" />
                         <TextField label="Serving Size" value={form.amount} onChange={e => setForm(p => ({ ...p, amount: e.target.value }))} fullWidth size="small" placeholder="e.g. 4 oz" />
                     </Box>
-                    <TextField
-                        label="Ingredients (one per line: amount unit item)"
-                        placeholder={'1.5 oz Vodka\n0.5 oz Triple Sec\n1 oz Lime Juice'}
-                        value={form.ingredients}
-                        onChange={e => setForm(p => ({ ...p, ingredients: e.target.value }))}
-                        fullWidth size="small" multiline rows={5}
-                    />
+
+                    {/* Row-based ingredient editor */}
+                    <Box>
+                        <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', mb: 1 }}>
+                            Ingredients
+                        </Typography>
+                        <Box sx={{ display: 'grid', gridTemplateColumns: '64px 56px 1fr 36px', gap: 0.75, mb: 0.75 }}>
+                            {(['Amount', 'Unit', 'Ingredient *', ''] as const).map((h, i) => (
+                                <Typography key={i} variant="caption" color="text.secondary" sx={{ px: 0.5 }}>{h}</Typography>
+                            ))}
+                        </Box>
+                        {ingredients.map((ing, idx) => (
+                            <Box key={idx} sx={{ display: 'grid', gridTemplateColumns: '64px 56px 1fr 36px', gap: 0.75, mb: 0.75, alignItems: 'center' }}>
+                                <TextField
+                                    value={ing.amount}
+                                    onChange={e => updateIng(idx, 'amount', e.target.value)}
+                                    size="small" placeholder="1.5"
+                                    inputProps={{ style: { fontSize: 13 } }}
+                                />
+                                <TextField
+                                    value={ing.unit}
+                                    onChange={e => updateIng(idx, 'unit', e.target.value)}
+                                    size="small" placeholder="oz"
+                                    inputProps={{ style: { fontSize: 13 } }}
+                                />
+                                <TextField
+                                    value={ing.item}
+                                    onChange={e => updateIng(idx, 'item', e.target.value)}
+                                    size="small" placeholder="Ingredient name"
+                                    inputProps={{ style: { fontSize: 13 } }}
+                                />
+                                <IconButton size="small" onClick={() => removeIng(idx)} tabIndex={-1}
+                                    sx={{ color: 'text.disabled', '&:hover': { color: 'error.main' } }}>
+                                    <RemoveCircleOutlineIcon fontSize="small" />
+                                </IconButton>
+                            </Box>
+                        ))}
+                        <Button size="small" startIcon={<AddIcon />} onClick={addIng}
+                            sx={{ mt: 0.5, color: 'text.secondary', textTransform: 'none', fontSize: 13 }}>
+                            Add ingredient
+                        </Button>
+                    </Box>
+
                     <TextField label="Instructions" value={form.instructions} onChange={e => setForm(p => ({ ...p, instructions: e.target.value }))} fullWidth size="small" multiline rows={4} />
                     <TextField label="Tags (comma separated)" value={form.tags} onChange={e => setForm(p => ({ ...p, tags: e.target.value }))} fullWidth size="small" placeholder="sweet, citrus, popular" />
                 </DialogContent>

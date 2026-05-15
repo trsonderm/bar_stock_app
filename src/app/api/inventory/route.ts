@@ -286,7 +286,7 @@ export async function PUT(req: NextRequest) {
 
         if (!canEdit && !canStock) return NextResponse.json({ error: 'Permission denied' }, { status: 403 });
 
-        const { id, unit_cost, sale_price, name, type, quantity, secondary_type, supplier, supplier_id, low_stock_threshold, low_stock_threshold_type, low_stock_threshold_factor, order_size, stock_options, include_in_audit, include_in_low_stock_alerts, exclude_from_smart_order, assignedLocations, stock_unit_label, stock_unit_size, order_unit_label, order_unit_size, use_category_qty_defaults, stock_display_mode, inventory_display_mode, location_supplier_id, location_sale_price, locationId: bodyLocationId, barcodes, aliases, abv, bottle_size } = await req.json();
+        const { id, unit_cost, sale_price, name, type, quantity, secondary_type, supplier, supplier_id, low_stock_threshold, low_stock_threshold_type, low_stock_threshold_factor, order_size, stock_options, include_in_audit, include_in_low_stock_alerts, exclude_from_smart_order, assignedLocations, stock_unit_label, stock_unit_size, order_unit_label, order_unit_size, use_category_qty_defaults, stock_display_mode, inventory_display_mode, location_supplier_id, location_sale_price, locationId: bodyLocationId, barcodes, aliases, abv, bottle_size, bottle_size_amount, bottle_size_unit } = await req.json();
 
         if (!id) return NextResponse.json({ error: 'Missing ID' }, { status: 400 });
 
@@ -391,6 +391,14 @@ export async function PUT(req: NextRequest) {
             if (bottle_size !== undefined) {
                 updates.push(`bottle_size = $${pIdx++} `);
                 params.push(bottle_size || null);
+            }
+            if (bottle_size_amount !== undefined) {
+                updates.push(`bottle_size_amount = $${pIdx++} `);
+                params.push(bottle_size_amount !== null && bottle_size_amount !== '' ? parseFloat(bottle_size_amount) : null);
+            }
+            if (bottle_size_unit !== undefined) {
+                updates.push(`bottle_size_unit = $${pIdx++} `);
+                params.push(bottle_size_unit || null);
             }
 
             if (updates.length > 0) {

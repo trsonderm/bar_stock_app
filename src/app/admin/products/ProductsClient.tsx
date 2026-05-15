@@ -39,6 +39,8 @@ interface Item {
     inventory_display_mode?: 'units' | 'cases' | 'cases_and_units';
     barcodes?: string[];
     aliases?: string[];
+    bottle_size_amount?: number | null;
+    bottle_size_unit?: string | null;
 }
 
 interface Category {
@@ -109,6 +111,8 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
         aliases: [] as string[],
         stock_display_mode: 'units' as 'units' | 'cases' | 'cases_and_units',
         inventory_display_mode: 'units' as 'units' | 'cases' | 'cases_and_units',
+        bottle_size_amount: '',
+        bottle_size_unit: '',
     });
 
     // Temp input for stock options
@@ -253,6 +257,8 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
             aliases: [],
             stock_display_mode: 'units' as 'units' | 'cases' | 'cases_and_units',
             inventory_display_mode: 'units' as 'units' | 'cases' | 'cases_and_units',
+            bottle_size_amount: '',
+            bottle_size_unit: '',
         });
         setTempOptionInput('');
         setTempOrderLabel('Pack');
@@ -415,6 +421,8 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
             aliases: Array.isArray(item.aliases) ? item.aliases : [],
             stock_display_mode: (item.stock_display_mode as any) || 'units',
             inventory_display_mode: (item.inventory_display_mode as any) || 'units',
+            bottle_size_amount: item.bottle_size_amount != null ? String(item.bottle_size_amount) : '',
+            bottle_size_unit: item.bottle_size_unit || '',
         });
 
         setModalTab('basic');
@@ -556,6 +564,8 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                 aliases: formData.aliases,
                 stock_display_mode: formData.stock_display_mode,
                 inventory_display_mode: formData.inventory_display_mode,
+                bottle_size_amount: formData.bottle_size_amount !== '' ? parseFloat(formData.bottle_size_amount) : null,
+                bottle_size_unit: formData.bottle_size_unit || null,
             };
 
             const url = '/api/inventory' + (overrideOrgId ? `?orgId=${overrideOrgId}` : '');
@@ -1076,6 +1086,35 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                                     }
                                     return null;
                                 })()}
+                            </div>
+
+                            {/* Bottle Size */}
+                            <div>
+                                <label className={styles.statLabel}>Bottle Size</label>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                                    <div>
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            step="any"
+                                            className={styles.input}
+                                            style={{ width: '100%', minHeight: '44px' }}
+                                            placeholder="e.g. 750"
+                                            value={formData.bottle_size_amount}
+                                            onChange={e => setFormData({ ...formData, bottle_size_amount: e.target.value })}
+                                        />
+                                    </div>
+                                    <div>
+                                        <input
+                                            type="text"
+                                            className={styles.input}
+                                            style={{ width: '100%', minHeight: '44px' }}
+                                            placeholder="e.g. ml, oz, L"
+                                            value={formData.bottle_size_unit}
+                                            onChange={e => setFormData({ ...formData, bottle_size_unit: e.target.value })}
+                                        />
+                                    </div>
+                                </div>
                             </div>
 
                             {/* Supplier */}
