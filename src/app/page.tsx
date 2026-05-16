@@ -7,41 +7,55 @@ import {
     ArrowRight, BarChart3, ShieldCheck, Smartphone, Users, TrendingUp, Check, X,
     Sparkles, DollarSign, Receipt, Brain, Activity, PieChart, MessageSquare,
     Bell, Calendar, RefreshCw, Rss, Lock, Zap, Star, ChevronRight,
+    BookOpen, Archive, Database, Code2, Building2, UserX,
 } from 'lucide-react';
 
 // ── Feature comparison table data ─────────────────────────────────────────────
 
 const FEATURES = [
-    // Core inventory
+    // Inventory
     { label: 'Unlimited Items & Users', base: true, pro: true, section: 'Inventory' },
     { label: 'Multi-Location Support', base: true, pro: true, section: 'Inventory' },
     { label: 'Stock View & Adjustments', base: true, pro: true, section: 'Inventory' },
     { label: 'Bottle Level Tracking', base: true, pro: true, section: 'Inventory' },
     { label: 'Inventory Audit & Variance', base: true, pro: true, section: 'Inventory' },
-    // Ordering
+    { label: 'Product Archiving', base: true, pro: true, section: 'Inventory' },
+    // Orders
     { label: 'Manual Ordering', base: true, pro: true, section: 'Orders' },
     { label: 'Order Tracking & Receiving', base: true, pro: true, section: 'Orders' },
     { label: 'Supplier Management', base: true, pro: true, section: 'Orders' },
     { label: 'AI Smart Ordering', base: false, pro: true, section: 'Orders' },
+    // Recipes
+    { label: 'Local Recipe Library', base: true, pro: true, section: 'Recipes' },
+    { label: 'Global Recipe Library', base: true, pro: true, section: 'Recipes' },
+    { label: 'Mobile Recipe Browser', base: true, pro: true, section: 'Recipes' },
     // Scheduling
     { label: 'Employee Scheduling (Drag & Drop)', base: true, pro: true, section: 'Scheduling' },
     { label: 'Recurring Shifts', base: true, pro: true, section: 'Scheduling' },
     { label: 'Shift Request & Swap Workflow', base: true, pro: true, section: 'Scheduling' },
     { label: 'Staff Notifications on Schedule Change', base: true, pro: true, section: 'Scheduling' },
-    // Mobile app
+    // Mobile App
     { label: 'Free Mobile App (iOS & Android)', base: true, pro: true, section: 'Mobile App' },
     { label: 'Organization Feed & Posts', base: true, pro: true, section: 'Mobile App' },
     { label: 'Direct Messaging', base: true, pro: true, section: 'Mobile App' },
     { label: 'Push Notifications & Alerts', base: true, pro: true, section: 'Mobile App' },
     { label: 'Mobile Schedule View', base: true, pro: true, section: 'Mobile App' },
     { label: 'Mobile Low Stock View', base: true, pro: true, section: 'Mobile App' },
-    // Reports & shifts
+    // Reports
     { label: 'Standard Reports', base: true, pro: true, section: 'Reports' },
     { label: 'Shift Close & Cash Reconciliation', base: true, pro: true, section: 'Reports' },
     { label: 'AI-Powered Inventory Insights', base: false, pro: true, section: 'Reports' },
     { label: 'Financial Dashboard & Analytics', base: false, pro: true, section: 'Reports' },
     { label: 'Custom Report Builder', base: false, pro: true, section: 'Reports' },
     { label: 'Report Scheduler & Auto-Delivery', base: false, pro: true, section: 'Reports' },
+    // Security
+    { label: 'Barred Persons List', base: true, pro: true, section: 'Security' },
+    { label: 'Data Backup & Restore', base: true, pro: true, section: 'Security' },
+    { label: 'Per-Org Point-in-Time Restore', base: false, pro: true, section: 'Security' },
+    // Developer
+    { label: 'Developer API (v1)', base: false, pro: true, section: 'Developer' },
+    { label: 'API Key Management', base: false, pro: true, section: 'Developer' },
+    { label: 'POS & Third-Party Integration', base: false, pro: true, section: 'Developer' },
     // Support
     { label: 'Standard Support (48h)', base: true, pro: true, section: 'Support' },
     { label: 'Same-Day Priority Support', base: false, pro: true, section: 'Support' },
@@ -50,7 +64,7 @@ const FEATURES = [
 
 // ── Phone Mockup ──────────────────────────────────────────────────────────────
 
-function PhoneMockup({ screen }: { screen: 'feed' | 'schedule' | 'messages' | 'alerts' }) {
+function PhoneMockup({ screen }: { screen: 'feed' | 'schedule' | 'messages' | 'alerts' | 'recipes' }) {
     const screens: Record<string, React.ReactNode> = {
         feed: (
             <div className="h-full overflow-hidden">
@@ -184,15 +198,45 @@ function PhoneMockup({ screen }: { screen: 'feed' | 'schedule' | 'messages' | 'a
                 </div>
             </div>
         ),
+        recipes: (
+            <div className="h-full overflow-hidden">
+                <div className="bg-gray-900 px-3 pt-3 pb-2 border-b border-gray-800 flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-white">Recipes</span>
+                    <span className="text-[9px] text-amber-400">42 recipes</span>
+                </div>
+                <div className="px-2 pt-2 space-y-1.5">
+                    <div className="bg-gray-800 rounded-lg px-2 py-1.5 flex items-center gap-1.5">
+                        <span className="text-[8px] text-gray-500">🔍</span>
+                        <span className="text-[9px] text-gray-500">Search recipes…</span>
+                    </div>
+                    {[
+                        { name: 'Margarita', cat: 'Cocktail', src: 'local', color: 'bg-amber-600' },
+                        { name: 'Old Fashioned', cat: 'Cocktail', src: 'global', color: 'bg-amber-800' },
+                        { name: 'Moscow Mule', cat: 'Cocktail', src: 'local', color: 'bg-emerald-700' },
+                        { name: 'Aperol Spritz', cat: 'Cocktail', src: 'global', color: 'bg-orange-700' },
+                    ].map((r, i) => (
+                        <div key={i} className="flex items-center gap-2 bg-gray-800 rounded-lg px-2 py-2">
+                            <div className={`w-7 h-7 ${r.color} rounded-lg flex items-center justify-center flex-shrink-0`}>
+                                <span className="text-[10px] font-bold text-white">{r.name[0]}</span>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <div className="text-[10px] font-bold text-white truncate">{r.name}</div>
+                                <div className="text-[8px] text-gray-400">{r.cat}</div>
+                            </div>
+                            <span className={`text-[7px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 ${r.src === 'local' ? 'bg-blue-900/60 text-blue-400' : 'bg-gray-700 text-gray-400'}`}>
+                                {r.src}
+                            </span>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        ),
     };
 
     return (
         <div className="relative mx-auto" style={{ width: 200, height: 400 }}>
-            {/* Phone outer frame */}
             <div className="absolute inset-0 rounded-[36px] bg-gradient-to-b from-gray-600 to-gray-800 shadow-2xl" />
-            {/* Screen bezel */}
             <div className="absolute inset-[3px] rounded-[33px] bg-gray-950 overflow-hidden">
-                {/* Status bar */}
                 <div className="bg-gray-950 px-4 pt-2 pb-1 flex justify-between items-center">
                     <span className="text-[8px] text-white font-semibold">9:41</span>
                     <div className="w-16 h-3 bg-gray-800 rounded-full mx-auto absolute left-1/2 -translate-x-1/2 top-1.5" />
@@ -202,12 +246,10 @@ function PhoneMockup({ screen }: { screen: 'feed' | 'schedule' | 'messages' | 'a
                         </div>
                     </div>
                 </div>
-                {/* App content */}
                 <div className="bg-gray-950 h-[calc(100%-24px)] overflow-hidden">
                     {screens[screen]}
                 </div>
             </div>
-            {/* Home indicator */}
             <div className="absolute bottom-1.5 left-1/2 -translate-x-1/2 w-16 h-1 bg-white/20 rounded-full" />
         </div>
     );
@@ -218,7 +260,7 @@ function PhoneMockup({ screen }: { screen: 'feed' | 'schedule' | 'messages' | 'a
 export default function LandingPage() {
     const router = useRouter();
     const [slugInput, setSlugInput] = useState('');
-    const [activeScreen, setActiveScreen] = useState<'feed' | 'schedule' | 'messages' | 'alerts'>('feed');
+    const [activeScreen, setActiveScreen] = useState<'feed' | 'schedule' | 'messages' | 'alerts' | 'recipes'>('feed');
 
     const handleGoToOrg = () => {
         const slug = slugInput.trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
@@ -256,13 +298,12 @@ export default function LandingPage() {
                     <img src="/hero-bg.png" alt="" className="w-full h-full object-cover opacity-30" />
                     <div className="absolute inset-0 bg-gradient-to-t from-gray-900 via-gray-900/75 to-transparent" />
                 </div>
-                {/* Ambient glows */}
                 <div className="absolute top-1/3 left-1/4 w-[500px] h-[500px] bg-amber-600/5 rounded-full blur-3xl pointer-events-none" />
                 <div className="absolute top-1/2 right-1/4 w-[400px] h-[400px] bg-blue-600/5 rounded-full blur-3xl pointer-events-none" />
 
                 <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
                     <div className="inline-flex items-center gap-2 py-1.5 px-4 rounded-full bg-blue-500/10 border border-blue-500/25 text-blue-400 text-sm font-semibold mb-8">
-                        <Smartphone className="w-4 h-4" /> Free Mobile App Now Available
+                        <Smartphone className="w-4 h-4" /> Free Mobile App · Recipes · Developer API — Now Live
                     </div>
                     <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight mb-6 leading-[1.05]">
                         Master Your{' '}
@@ -271,8 +312,8 @@ export default function LandingPage() {
                         <span className="text-4xl md:text-5xl font-bold text-gray-300">and Connect Your Whole Team</span>
                     </h1>
                     <p className="mt-4 max-w-2xl mx-auto text-xl text-gray-300">
-                        Real-time stock tracking, employee scheduling, shift management, and a free mobile app
-                        that keeps your entire team in sync — on and off the floor.
+                        Real-time stock tracking, employee scheduling, recipe library, barred persons management,
+                        and a free mobile app that keeps your entire team in sync — on and off the floor.
                     </p>
                     <div className="mt-10 flex flex-wrap justify-center gap-4">
                         <Link href="/register" className="flex items-center px-8 py-4 border border-transparent text-lg font-bold rounded-full text-white bg-amber-600 hover:bg-amber-500 transition-all shadow-xl hover:shadow-amber-500/30">
@@ -283,12 +324,11 @@ export default function LandingPage() {
                         </a>
                     </div>
 
-                    {/* Quick stats */}
                     <div className="mt-16 grid grid-cols-2 md:grid-cols-4 gap-4 max-w-3xl mx-auto">
                         {[
                             { value: 'Free', label: 'Mobile App', color: 'text-blue-400' },
                             { value: 'Real-Time', label: 'Inventory Sync', color: 'text-amber-400' },
-                            { value: 'Instant', label: 'Team Messaging', color: 'text-emerald-400' },
+                            { value: 'Recipe', label: 'Library Built In', color: 'text-emerald-400' },
                             { value: '14-Day', label: 'Free Trial', color: 'text-purple-400' },
                         ].map(s => (
                             <div key={s.label} className="bg-gray-800/50 backdrop-blur border border-gray-700/50 rounded-2xl p-4">
@@ -321,7 +361,7 @@ export default function LandingPage() {
                                         className="w-full bg-gray-900 border border-gray-600 rounded-lg py-3 pl-10 pr-4 text-white focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none transition-all placeholder-gray-600"
                                     />
                                 </div>
-                                <button onClick={handleGoToOrg} className="bg-amber-600 hover:bg-amber-500 text-white px-6 py-3 rounded-lg font-medium transition-colors">
+                                <button type="button" onClick={handleGoToOrg} className="bg-amber-600 hover:bg-amber-500 text-white px-6 py-3 rounded-lg font-medium transition-colors">
                                     Go
                                 </button>
                             </div>
@@ -332,7 +372,6 @@ export default function LandingPage() {
 
             {/* ── Mobile App Spotlight ── */}
             <section id="mobile" className="py-28 relative overflow-hidden">
-                {/* Background treatment */}
                 <div className="absolute inset-0 bg-gradient-to-br from-blue-950/40 via-gray-900 to-gray-900 pointer-events-none" />
                 <div className="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-blue-500/40 to-transparent" />
                 <div className="absolute -top-20 -left-20 w-96 h-96 bg-blue-600/8 rounded-full blur-3xl pointer-events-none" />
@@ -348,22 +387,22 @@ export default function LandingPage() {
                         </h2>
                         <p className="text-gray-400 max-w-2xl mx-auto text-lg">
                             The TopShelf mobile app is free for every user. It syncs live with your web dashboard —
-                            schedule, stock, messages, and alerts always in your pocket.
+                            schedule, stock, recipes, messages, and alerts always in your pocket.
                         </p>
                     </div>
 
                     <div className="grid lg:grid-cols-2 gap-16 items-center">
-                        {/* Left — feature tabs + list */}
                         <div>
-                            {/* Screen picker tabs */}
                             <div className="flex flex-wrap gap-2 mb-10">
                                 {[
                                     { key: 'feed', icon: <Rss className="w-4 h-4" />, label: 'Org Feed' },
                                     { key: 'schedule', icon: <Calendar className="w-4 h-4" />, label: 'My Schedule' },
                                     { key: 'messages', icon: <MessageSquare className="w-4 h-4" />, label: 'Messages' },
                                     { key: 'alerts', icon: <Bell className="w-4 h-4" />, label: 'Alerts' },
+                                    { key: 'recipes', icon: <BookOpen className="w-4 h-4" />, label: 'Recipes' },
                                 ].map(t => (
                                     <button
+                                        type="button"
                                         key={t.key}
                                         onClick={() => setActiveScreen(t.key as any)}
                                         className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold transition-all ${activeScreen === t.key
@@ -376,7 +415,6 @@ export default function LandingPage() {
                                 ))}
                             </div>
 
-                            {/* Feature list */}
                             <div className="space-y-5">
                                 {[
                                     {
@@ -394,7 +432,7 @@ export default function LandingPage() {
                                     {
                                         icon: <Calendar className="w-5 h-5 text-purple-400" />,
                                         title: 'Schedule View & Shift Requests',
-                                        desc: 'Staff see their upcoming shifts at a glance. Request a shift swap directly from the app — the system routes it through admin and coworker approval workflows automatically.',
+                                        desc: 'Staff see their upcoming shifts at a glance. Request a shift swap directly from the app — routed through admin and coworker approval automatically.',
                                         screen: 'schedule' as const,
                                     },
                                     {
@@ -402,6 +440,12 @@ export default function LandingPage() {
                                         title: 'Smart Alerts & Low Stock Notifications',
                                         desc: 'Push notifications for low stock, schedule changes, approved swaps, order arrivals, and any organization message. Critical alerts surface immediately.',
                                         screen: 'alerts' as const,
+                                    },
+                                    {
+                                        icon: <BookOpen className="w-5 h-5 text-rose-400" />,
+                                        title: 'Recipe Library',
+                                        desc: 'Browse local and global drink recipes from the mobile app. Search by name or category — ingredients, instructions, glass type, and serving size all included.',
+                                        screen: 'recipes' as const,
                                     },
                                 ].map(f => (
                                     <div
@@ -423,7 +467,6 @@ export default function LandingPage() {
                                 ))}
                             </div>
 
-                            {/* Free badge */}
                             <div className="mt-8 inline-flex items-center gap-3 bg-blue-950/50 border border-blue-700/40 rounded-2xl px-5 py-3">
                                 <Star className="w-5 h-5 text-blue-400 fill-blue-400" />
                                 <div>
@@ -433,14 +476,11 @@ export default function LandingPage() {
                             </div>
                         </div>
 
-                        {/* Right — phone mockup */}
                         <div className="flex flex-col items-center gap-8">
-                            {/* Glowing phone */}
                             <div className="relative">
                                 <div className="absolute inset-0 bg-blue-600/20 rounded-[40px] blur-2xl scale-110" />
                                 <PhoneMockup screen={activeScreen} />
                             </div>
-                            {/* App store badges (visual) */}
                             <div className="flex gap-3">
                                 {['App Store', 'Google Play'].map(store => (
                                     <div key={store} className="flex items-center gap-2 bg-gray-800 border border-gray-700 rounded-xl px-4 py-2.5">
@@ -462,7 +502,6 @@ export default function LandingPage() {
                 <div className="absolute inset-0 bg-gradient-to-r from-purple-950/20 to-transparent pointer-events-none" />
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
                     <div className="grid lg:grid-cols-2 gap-16 items-center">
-                        {/* Graphical schedule preview */}
                         <div className="order-2 lg:order-1">
                             <div className="bg-gray-800 rounded-2xl border border-gray-700 overflow-hidden shadow-2xl">
                                 <div className="bg-gray-850 px-5 py-3 border-b border-gray-700 flex items-center justify-between">
@@ -473,7 +512,6 @@ export default function LandingPage() {
                                         ))}
                                     </div>
                                 </div>
-                                {/* Timeline rows */}
                                 <div className="p-4 space-y-2">
                                     {[
                                         { name: 'Sarah M.', shifts: [{ left: '20%', w: '35%', color: '#2563eb', label: 'Eve Shift', time: '4p–11p' }, { left: '72%', w: '28%', color: '#7c3aed', label: 'Close', time: '7p–2a' }] },
@@ -499,7 +537,6 @@ export default function LandingPage() {
                                             </div>
                                         </div>
                                     ))}
-                                    {/* Hour labels */}
                                     <div className="flex items-center gap-3 mt-1">
                                         <div className="w-20 flex-shrink-0" />
                                         <div className="flex-1 relative">
@@ -638,6 +675,7 @@ export default function LandingPage() {
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         {[
                             { icon: <BarChart3 className="h-6 w-6" />, title: 'AI Smart Ordering', badge: 'Pro', color: 'amber', desc: 'Predictive algorithms analyze stock movement to generate automatic reorder suggestions, preventing over-ordering and stockouts.' },
+                            { icon: <BookOpen className="h-6 w-6" />, title: 'Recipe Library', badge: 'Free', color: 'blue', desc: 'Local and global drink recipes in one place. Browse ingredients, instructions, glass type, and serving size — available on desktop and the mobile app.' },
                             { icon: <Rss className="h-6 w-6" />, title: 'Organization Feed', badge: 'Free', color: 'blue', desc: 'A team-wide social feed for announcements, photos, and updates. Every member sees the same picture, whether on desktop or mobile.' },
                             { icon: <MessageSquare className="h-6 w-6" />, title: 'Direct Messaging', badge: 'Free', color: 'blue', desc: 'Built-in real-time chat for 1-on-1 and group conversations. Coordinate coverage and communicate shift changes without leaving TopShelf.' },
                             { icon: <Calendar className="h-6 w-6" />, title: 'Graphical Scheduling', badge: null, color: 'purple', desc: 'Drag-and-drop visual timeline scheduler. Overnight shifts, recurring patterns, and multi-view roster management built in.' },
@@ -645,6 +683,10 @@ export default function LandingPage() {
                             { icon: <Bell className="h-6 w-6" />, title: 'Push Notifications', badge: 'Free', color: 'blue', desc: 'Real-time push alerts for low stock, schedule changes, swap approvals, order arrivals, and all org messages. Always in the loop.' },
                             { icon: <ShieldCheck className="h-6 w-6" />, title: 'Order Tracking & Receiving', badge: null, color: 'amber', desc: 'Place orders and track them from submission to delivery. Confirm received quantities item-by-item — inventory updates automatically.' },
                             { icon: <TrendingUp className="h-6 w-6" />, title: 'Inventory Auditing', badge: null, color: 'amber', desc: 'Physical inventory audits with automatic variance reporting. Catch over-pours, theft, and waste with pinpoint accuracy.' },
+                            { icon: <Archive className="h-6 w-6" />, title: 'Product Archiving', badge: null, color: 'amber', desc: 'Archive discontinued or seasonal products with one click. Archived items are hidden from inventory, reporting, and ordering — and can be restored anytime.' },
+                            { icon: <UserX className="h-6 w-6" />, title: 'Barred Persons List', badge: null, color: 'purple', desc: 'Maintain a searchable list of barred individuals with photos, aliases, and notes. Flag formal trespass orders to ensure front-of-house staff are always informed.' },
+                            { icon: <Database className="h-6 w-6" />, title: 'Data Backup & Restore', badge: null, color: 'amber', desc: 'Automatic daily backups with point-in-time org restore. Recover from accidental changes without affecting other organizations.' },
+                            { icon: <Code2 className="h-6 w-6" />, title: 'Developer API & POS Integration', badge: 'Pro', color: 'amber', desc: 'A full REST API with scoped API keys for POS systems, accounting software, and custom dashboards. Inventory, orders, audits, and recipes — all programmatically accessible.' },
                             { icon: <Users className="h-6 w-6" />, title: 'Multi-Location & Station Mode', badge: null, color: 'amber', desc: 'Manage multiple bars from one dashboard. Secure PIN-based login for bar terminals gives fast access on shared devices.' },
                         ].map(f => {
                             const colorMap: Record<string, { ring: string; icon: string; badge: string; badgeBg: string }> = {
@@ -681,7 +723,9 @@ export default function LandingPage() {
                     <h2 className="text-3xl font-bold text-white mb-4">Simple, Transparent Pricing</h2>
                     <p className="text-gray-400 mb-12">No hidden fees. Free mobile app included. Cancel anytime.</p>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto mb-16">
+                    {/* ── Three equal-height pricing cards ── */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto mb-6">
+
                         {/* Base */}
                         <div className="flex flex-col p-8 bg-gray-800 rounded-3xl border border-gray-700 hover:border-gray-600 transition-colors">
                             <h3 className="text-xl font-medium text-gray-300 mb-2">Base Edition</h3>
@@ -691,11 +735,19 @@ export default function LandingPage() {
                                 <Smartphone className="w-3 h-3" /> Free Mobile App Included
                             </div>
                             <ul className="space-y-3 mb-8 text-left flex-1 text-sm">
-                                {FEATURES.filter(f => f.base).map(f => (
-                                    <li key={f.label} className="flex items-start text-gray-300 gap-2">
+                                {[
+                                    'Unlimited Items & Users',
+                                    'Multi-Location Support',
+                                    'Employee Scheduling',
+                                    'Recipe Library (Local & Global)',
+                                    'Barred Persons List',
+                                    'Data Backup & Restore',
+                                    'Shift Close & Cash Reports',
+                                    'Standard Support (48h)',
+                                ].map(item => (
+                                    <li key={item} className="flex items-start text-gray-300 gap-2">
                                         <Check className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
-                                        {f.label}
-                                        {f.section === 'Mobile App' && <span className="text-[10px] text-blue-400 font-bold ml-auto">FREE</span>}
+                                        {item}
                                     </li>
                                 ))}
                             </ul>
@@ -716,12 +768,20 @@ export default function LandingPage() {
                                 <Smartphone className="w-3 h-3" /> Free Mobile App Included
                             </div>
                             <ul className="space-y-3 mb-8 text-left flex-1 text-sm">
-                                {FEATURES.map(f => (
-                                    <li key={f.label} className="flex items-start text-white gap-2">
+                                {[
+                                    { label: 'Everything in Base', pro: false },
+                                    { label: 'AI Smart Ordering', pro: true },
+                                    { label: 'AI-Powered Inventory Insights', pro: true },
+                                    { label: 'Financial Dashboard & Analytics', pro: true },
+                                    { label: 'Custom Report Builder', pro: true },
+                                    { label: 'Report Scheduler & Auto-Delivery', pro: true },
+                                    { label: 'Developer API & POS Integration', pro: true },
+                                    { label: 'Same-Day Priority Support', pro: true },
+                                ].map(item => (
+                                    <li key={item.label} className="flex items-start text-white gap-2">
                                         <Check className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
-                                        {f.label}
-                                        {!f.base && <span className="text-[10px] bg-purple-900/40 text-purple-400 px-1.5 py-0.5 rounded-full ml-auto font-bold">Pro</span>}
-                                        {f.section === 'Mobile App' && f.base && <span className="text-[10px] text-blue-400 font-bold ml-auto">FREE</span>}
+                                        {item.label}
+                                        {item.pro && <span className="text-[10px] bg-purple-900/40 text-purple-400 px-1.5 py-0.5 rounded-full ml-auto font-bold flex-shrink-0">Pro</span>}
                                     </li>
                                 ))}
                             </ul>
@@ -730,23 +790,104 @@ export default function LandingPage() {
                             </Link>
                         </div>
 
-                        {/* Enterprise */}
-                        <div className="flex flex-col p-8 bg-gray-800 rounded-3xl border border-gray-700 hover:border-gray-600 transition-colors">
+                        {/* Enterprise — compact, same height */}
+                        <div className="flex flex-col p-8 bg-gray-800 rounded-3xl border border-gray-700 hover:border-gray-500 transition-colors">
                             <h3 className="text-xl font-medium text-gray-300 mb-2">Enterprise</h3>
-                            <div className="text-4xl font-bold text-white mb-6">Custom</div>
-                            <p className="text-gray-400 text-sm mb-4 flex-1">
-                                Custom integrations, white-labeling, dedicated account management, and volume pricing for large groups.
-                            </p>
-                            <ul className="space-y-2 mb-8 text-left text-sm">
-                                {['Everything in Pro', 'White-label branding', 'Custom integrations', 'Dedicated account manager', 'SLA support'].map(i => (
-                                    <li key={i} className="flex items-center text-gray-300 gap-2">
-                                        <Check className="w-4 h-4 text-gray-500 flex-shrink-0" /> {i}
+                            <div className="text-4xl font-bold text-white mb-1">Custom</div>
+                            <div className="text-sm text-gray-500 mb-2 font-medium">Volume & multi-venue pricing</div>
+                            <div className="inline-flex items-center gap-1.5 bg-gray-700/50 border border-gray-600 rounded-full px-3 py-1 text-gray-400 text-xs font-bold mb-6 w-fit mx-auto">
+                                <Building2 className="w-3 h-3" /> Built Around Your Operation
+                            </div>
+                            <ul className="space-y-3 mb-8 text-left flex-1 text-sm">
+                                {[
+                                    'Everything in Pro',
+                                    'White-Label Branding',
+                                    'SSO / Single Sign-On',
+                                    'Custom POS Integrations',
+                                    'Dedicated Account Manager',
+                                    'SLA-Backed Support',
+                                    'Volume Licensing',
+                                    'Per-Org Point-in-Time Restore',
+                                ].map(item => (
+                                    <li key={item} className="flex items-start text-gray-300 gap-2">
+                                        <Check className="w-4 h-4 text-gray-500 flex-shrink-0 mt-0.5" />
+                                        {item}
                                     </li>
                                 ))}
                             </ul>
                             <a href="mailto:sales@topshelfinventory.com" className="block w-full py-4 rounded-xl bg-gray-700 hover:bg-gray-600 text-white font-bold transition-colors text-center">
                                 Contact Sales
                             </a>
+                        </div>
+                    </div>
+
+                    {/* ── Enterprise Additional Options ── */}
+                    <div className="max-w-5xl mx-auto mb-16">
+                        <div className="text-center mb-8 mt-10">
+                            <div className="inline-flex items-center gap-2 py-1 px-3 rounded-full bg-gray-700/50 border border-gray-600 text-gray-400 text-xs font-bold mb-4">
+                                <Building2 className="w-3.5 h-3.5" /> Enterprise Add-Ons
+                            </div>
+                            <h3 className="text-2xl font-bold text-white mb-2">Tailored to Your Operation</h3>
+                            <p className="text-gray-400 text-sm max-w-xl mx-auto">Every enterprise contract is built around your specific needs. These capabilities are configured and supported by our team — not self-serve.</p>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {[
+                                {
+                                    icon: <Zap className="w-5 h-5 text-amber-400" />,
+                                    bg: 'bg-amber-500/10 border-amber-700/30',
+                                    title: 'White-Label Branding',
+                                    desc: 'Your logo, colors, and domain on every screen, email, and mobile app icon.',
+                                    why: 'Makes the platform feel native to your brand — not a third-party tool your staff has to learn.',
+                                },
+                                {
+                                    icon: <Lock className="w-5 h-5 text-blue-400" />,
+                                    bg: 'bg-blue-500/10 border-blue-700/30',
+                                    title: 'SSO / Single Sign-On',
+                                    desc: 'Connect Google Workspace, Azure AD, or Okta. Staff log in with existing company credentials.',
+                                    why: 'Eliminates password sprawl, tightens security posture, and slashes IT overhead across large teams.',
+                                },
+                                {
+                                    icon: <Code2 className="w-5 h-5 text-emerald-400" />,
+                                    bg: 'bg-emerald-500/10 border-emerald-700/30',
+                                    title: 'Custom POS & Accounting Integration',
+                                    desc: 'Purpose-built integrations with your POS, PMS, or accounting system of record.',
+                                    why: 'Eliminates manual data re-entry between systems — cutting reconciliation errors and saving hours weekly.',
+                                },
+                                {
+                                    icon: <Users className="w-5 h-5 text-purple-400" />,
+                                    bg: 'bg-purple-500/10 border-purple-700/30',
+                                    title: 'Dedicated Account Manager',
+                                    desc: 'A named contact for onboarding, training, QBRs, and direct escalation.',
+                                    why: 'Faster resolutions and proactive guidance so your team spends time operating, not troubleshooting.',
+                                },
+                                {
+                                    icon: <ShieldCheck className="w-5 h-5 text-rose-400" />,
+                                    bg: 'bg-rose-500/10 border-rose-700/30',
+                                    title: 'SLA-Backed Support',
+                                    desc: 'Guaranteed response and resolution times with 99.9% uptime SLA and priority escalation.',
+                                    why: 'Service disruptions in a busy venue are costly. An SLA turns support into a contractual guarantee.',
+                                },
+                                {
+                                    icon: <DollarSign className="w-5 h-5 text-emerald-400" />,
+                                    bg: 'bg-emerald-500/10 border-emerald-700/30',
+                                    title: 'Volume Licensing',
+                                    desc: 'Flat-rate or per-venue pricing for groups and multi-location operators with 5+ properties.',
+                                    why: 'Predictable costs that scale with your footprint — not per-user fees that penalize growth.',
+                                },
+                            ].map(opt => (
+                                <div key={opt.title} className={`flex flex-col gap-3 p-5 rounded-2xl border ${opt.bg} text-left`}>
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-9 h-9 bg-gray-800 rounded-xl flex items-center justify-center flex-shrink-0 border border-gray-700">
+                                            {opt.icon}
+                                        </div>
+                                        <h4 className="text-white font-bold text-sm">{opt.title}</h4>
+                                    </div>
+                                    <p className="text-gray-400 text-xs leading-relaxed">{opt.desc}</p>
+                                    <div className="mt-auto pt-2 border-t border-gray-700/50">
+                                        <p className="text-gray-500 text-xs"><span className="text-gray-300 font-semibold">Why it matters:</span> {opt.why}</p>
+                                    </div>
+                                </div>
+                            ))}
                         </div>
                     </div>
 
@@ -812,7 +953,7 @@ export default function LandingPage() {
                                 TOPSHELF <span className="font-light text-white">INVENTORY</span>
                             </div>
                             <p className="text-gray-500 text-sm leading-relaxed max-w-xs">
-                                The complete bar management platform with free mobile app, real-time scheduling, team messaging, and AI-powered ordering.
+                                The complete bar management platform — real-time inventory, recipe library, employee scheduling, team messaging, and a free mobile app for every user.
                             </p>
                         </div>
                         <div>
@@ -829,6 +970,7 @@ export default function LandingPage() {
                                 <li><Link href="/login" className="hover:text-white transition-colors">Sign In</Link></li>
                                 <li><Link href="/register" className="hover:text-white transition-colors">Create Account</Link></li>
                                 <li><a href="mailto:support@topshelfinventory.com" className="hover:text-white transition-colors">Contact Support</a></li>
+                                <li><a href="mailto:sales@topshelfinventory.com" className="hover:text-white transition-colors">Enterprise Sales</a></li>
                             </ul>
                         </div>
                     </div>
