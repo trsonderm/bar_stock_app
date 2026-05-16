@@ -16,6 +16,33 @@ function LoginContent() {
   const searchParams = useSearchParams();
   const registered = searchParams.get('registered');
   const verified = searchParams.get('verified');
+  const oauthError = searchParams.get('error');
+
+  const SSO_LABELS: Record<string, { label: string; bg: string; hoverBg: string; border: string }> = {
+    google:    { label: 'Continue with Google',    bg: '#fff',    hoverBg: '#f1f5f9', border: '#d1d5db' },
+    github:    { label: 'Continue with GitHub',    bg: '#24292e', hoverBg: '#2d3238', border: '#374151' },
+    microsoft: { label: 'Continue with Microsoft', bg: '#2f2f2f', hoverBg: '#3a3a3a', border: '#374151' },
+  };
+  const SSO_TEXT: Record<string, string> = { google: '#111', github: '#fff', microsoft: '#fff' };
+  const SSO_ICONS: Record<string, string> = {
+    google: 'G',
+    github: 'GH',
+    microsoft: 'M',
+  };
+  const SSO_ERRORS: Record<string, string> = {
+    oauth_denied:        'Sign-in was cancelled.',
+    oauth_invalid:       'Invalid OAuth response.',
+    oauth_state:         'Security check failed. Please try again.',
+    oauth_token:         'Failed to exchange token. Check your OAuth app configuration.',
+    oauth_no_email:      'Your account has no verified email. Please use email/password login.',
+    oauth_error:         'An unexpected error occurred during sign-in.',
+    sso_disabled:        'This sign-in provider is currently disabled.',
+    sso_not_configured:  'This provider is not fully configured yet.',
+    domain_not_allowed:  'Your email domain is not permitted to sign in here.',
+    no_account:          'No account found for this identity. Contact your administrator.',
+    account_locked:      'Your account has been locked. Contact your administrator.',
+    org_disabled:        'Your organization account is suspended.',
+  };
 
   const executeLogin = async (payload: any) => {
     setLoading(true);
@@ -111,13 +138,14 @@ function LoginContent() {
   const backspace = () => setPin(prev => prev.slice(0, -1));
 
   const [showQuickLogin, setShowQuickLogin] = useState(false);
+  const [ssoProviders, setSsoProviders] = useState<string[]>([]);
 
   useEffect(() => {
     fetch('/api/system/settings', { cache: 'no-store' })
       .then(res => res.json())
       .then(data => {
-        console.log('Quick Login Check:', data);
         setShowQuickLogin(data.quick_login_enabled);
+        setSsoProviders(data.sso_providers || []);
       })
       .catch(err => console.error('Quick Login Check Failed:', err));
   }, []);
@@ -132,6 +160,7 @@ function LoginContent() {
       {verified === 'expired' && <p className={styles.error}>Verification link has expired. Please register again or contact support.</p>}
       {verified === 'invalid' && <p className={styles.error}>Invalid verification link. Please check your email or contact support.</p>}
       {verified === 'error' && <p className={styles.error}>An error occurred during verification. Please try again or contact support.</p>}
+      {oauthError && SSO_ERRORS[oauthError] && <p className={styles.error}>{SSO_ERRORS[oauthError]}</p>}
 
       {mode === 'pin' ? (
         <div className={styles.display}>
@@ -212,6 +241,42 @@ function LoginContent() {
             {loading ? 'Logging In...' : 'Login'}
           </button>
         </form>
+      )}
+
+      {mode === 'email' && ssoProviders.length > 0 && (
+        <div style={{ marginTop: '1.25rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
+            <div style={{ flex: 1, height: '1px', background: '#374151' }} />
+            <span style={{ color: '#6b7280', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>or continue with</span>
+            <div style={{ flex: 1, height: '1px', background: '#374151' }} />
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            {ssoProviders.map(provider => {
+              const cfg = SSO_LABELS[provider];
+              if (!cfg) return null;
+              return (
+                <a
+                  key={provider}
+                  href={`/api/auth/oauth/${provider}`}
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.625rem',
+                    padding: '0.625rem 1rem', borderRadius: '8px', border: `1px solid ${cfg.border}`,
+                    background: cfg.bg, color: SSO_TEXT[provider] || '#fff',
+                    fontSize: '0.875rem', fontWeight: 600, textDecoration: 'none',
+                    transition: 'background 0.15s',
+                  }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = cfg.hoverBg; }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = cfg.bg; }}
+                >
+                  <span style={{ width: 20, height: 20, borderRadius: 4, background: 'rgba(0,0,0,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 700 }}>
+                    {SSO_ICONS[provider]}
+                  </span>
+                  {cfg.label}
+                </a>
+              );
+            })}
+          </div>
+        </div>
       )}
 
       <div className={styles.footer}>

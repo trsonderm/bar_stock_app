@@ -8,6 +8,7 @@ interface BarredPerson {
     name: string;
     aliases: string[];
     photo: string | null;
+    media?: MediaItem[];
     description: string | null;
     barred_by_name: string | null;
     barred_by_display: string | null;
@@ -196,12 +197,19 @@ export default function SecurityClient({
     const [bAliases, setBAliases] = useState<string[]>([]);
     const [bDescription, setBDescription] = useState('');
     const [bTrespassed, setBTrespassed] = useState(false);
-    const [bPhoto, setBPhoto] = useState<string | null>(null);
+    const [bPhotos, setBPhotos] = useState<MediaItem[]>([]);
+    const [bPrimaryIdx, setBPrimaryIdx] = useState(0);
     const [bCropSrc, setBCropSrc] = useState<string | null>(null);
+    const [bCropForIdx, setBCropForIdx] = useState<number | null>(null);
     const [bDuration, setBDuration] = useState<Duration>('permanent');
     const [bCustomDate, setBCustomDate] = useState('');
     const [bSaving, setBSaving] = useState(false);
     const bFileRef = useRef<HTMLInputElement>(null);
+    // Import modal
+    const [showImportBarred, setShowImportBarred] = useState(false);
+    const [importRows, setImportRows] = useState<Array<{ name: string; aliases: string[]; description: string; barred_until: string | null; trespassed: boolean; photo_filename: string }>>([]);
+    const [importing, setImporting] = useState(false);
+    const importFileRef = useRef<HTMLInputElement>(null);
 
     // Restore modal
     const [restorePerson, setRestorePerson] = useState<BarredPerson | null>(null);
@@ -245,13 +253,106 @@ export default function SecurityClient({
         }
     }, [barred]);
 
-    const handleBarredPhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleBarredMediaAdd = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = Array.from(e.target.files || []);
+        files.forEach(file => {
+            if (file.size > 50 * 1024 * 1024) { alert(`${file.name} exceeds 50MB`); return; }
+            const reader = new FileReader();
+            reader.onload = ev => {
+                const data = ev.target?.result as string;
+                const type = file.type.startsWith('video/') ? 'video' : 'image';
+                setBPhotos(prev => [...prev, { type: type as 'image' | 'video', data, name: file.name }]);
+            };
+            reader.readAsDataURL(file);
+        });
+        e.target.value = '';
+    };
+
+    const downloadImportTemplate = () => {
+        const csv = [
+            'name,aliases,description,duration,trespassed,photo_filename',
+            'John Doe,Johnny|JD,Aggressive behavior - multiple incidents,permanent,no,john_doe.jpg',
+            'Jane Smith,,Theft on 2025-01-15,30days,no,',
+            'Bob Johnson,Bobby,Trespass order issued,permanent,yes,',
+        ].join('\n');
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = 'barred_list_template.csv'; a.click();
+        URL.revokeObjectURL(url);
+    };
+
+    const parseCsvLine = (line: string): string[] => {
+        const result: string[] = [];
+        let current = ''; let inQuotes = false;
+        for (let i = 0; i < line.length; i++) {
+            const ch = line[i];
+            if (ch === '"') {
+                if (inQuotes && line[i + 1] === '"') { current += '"'; i++; }
+                else inQuotes = !inQuotes;
+            } else if (ch === ',' && !inQuotes) { result.push(current); current = ''; }
+            else { current += ch; }
+        }
+        result.push(current);
+        return result;
+    };
+
+    const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
         const reader = new FileReader();
-        reader.onload = ev => setBCropSrc(ev.target?.result as string);
-        reader.readAsDataURL(file);
+        reader.onload = ev => {
+            const text = ev.target?.result as string;
+            const lines = text.split(/\r?\n/).filter(Boolean);
+            if (lines.length < 2) { alert('CSV appears empty or has no data rows'); return; }
+            const header = lines[0].toLowerCase().split(',').map(h => h.trim());
+            const nameIdx = header.indexOf('name');
+            if (nameIdx === -1) { alert('CSV must have a "name" column'); return; }
+            const aliasIdx = header.indexOf('aliases');
+            const descIdx = header.indexOf('description');
+            const durIdx = header.indexOf('duration');
+            const tresIdx = header.indexOf('trespassed');
+            const photoIdx = header.indexOf('photo_filename');
+            const rows = lines.slice(1).map(line => {
+                const cols = parseCsvLine(line);
+                const name = cols[nameIdx]?.trim() || '';
+                if (!name) return null;
+                const aliases = aliasIdx !== -1 && cols[aliasIdx] ? cols[aliasIdx].split('|').map(a => a.trim()).filter(Boolean) : [];
+                const description = descIdx !== -1 ? cols[descIdx]?.trim() || '' : '';
+                const dur = durIdx !== -1 ? cols[durIdx]?.trim().toLowerCase() : 'permanent';
+                const trespassed = tresIdx !== -1 ? ['yes', 'true', '1'].includes((cols[tresIdx] || '').trim().toLowerCase()) : false;
+                const photo_filename = photoIdx !== -1 ? cols[photoIdx]?.trim() || '' : '';
+                let barred_until: string | null = null;
+                if (dur && dur !== 'permanent') {
+                    if (dur === '1week') { const d = new Date(); d.setDate(d.getDate() + 7); barred_until = d.toISOString(); }
+                    else if (dur === '30days') { const d = new Date(); d.setDate(d.getDate() + 30); barred_until = d.toISOString(); }
+                    else { const days = parseInt(dur); if (!isNaN(days) && days > 0) { const d = new Date(); d.setDate(d.getDate() + days); barred_until = d.toISOString(); } }
+                }
+                return { name, aliases, description, barred_until, trespassed, photo_filename };
+            }).filter(Boolean) as typeof importRows;
+            setImportRows(rows);
+        };
+        reader.readAsText(file);
         e.target.value = '';
+    };
+
+    const handleImport = async () => {
+        if (importRows.length === 0) return;
+        setImporting(true);
+        let ok = 0;
+        for (const row of importRows) {
+            const res = await fetch('/api/admin/security/barred', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: row.name, aliases: row.aliases, photo: null, media: [], description: row.description || null, trespassed: row.trespassed, barred_until: row.barred_until }),
+            });
+            if (res.ok) ok++;
+        }
+        setImporting(false);
+        setShowImportBarred(false);
+        setImportRows([]);
+        alert(`Imported ${ok} of ${importRows.length} person(s). Photos must be added manually via Edit.`);
+        load();
     };
 
     const handleMediaChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -273,15 +374,18 @@ export default function SecurityClient({
         if (!bName.trim()) return;
         setBSaving(true);
         const barred_until = computeBarredUntil(bDuration, bCustomDate);
+        const primaryPhoto = bPhotos[bPrimaryIdx]?.type === 'image' ? bPhotos[bPrimaryIdx] : bPhotos.find(m => m.type === 'image');
+        const additionalMedia = bPhotos.filter(m => m !== primaryPhoto);
         const res = await fetch('/api/admin/security/barred', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: bName.trim(), aliases: bAliases, photo: bPhoto, description: bDescription, trespassed: bTrespassed, barred_until }),
+            body: JSON.stringify({ name: bName.trim(), aliases: bAliases, photo: primaryPhoto?.data || null, media: additionalMedia, description: bDescription, trespassed: bTrespassed, barred_until }),
         });
         setBSaving(false);
         if (res.ok) {
             setShowAddBarred(false);
-            setBName(''); setBAliases([]); setBDescription(''); setBTrespassed(false); setBPhoto(null);
+            setBName(''); setBAliases([]); setBDescription(''); setBTrespassed(false);
+            setBPhotos([]); setBPrimaryIdx(0);
             setBDuration('permanent'); setBCustomDate('');
             load();
         }
@@ -344,7 +448,15 @@ export default function SecurityClient({
 
     return (
         <div style={{ maxWidth: '860px', margin: '0 auto', padding: '1.5rem 1rem', color: 'white' }}>
-            {bCropSrc && <CircleCropper src={bCropSrc} onSave={url => { setBPhoto(url); setBCropSrc(null); }} onCancel={() => setBCropSrc(null)} />}
+            {bCropSrc && <CircleCropper src={bCropSrc}
+                onSave={url => {
+                    if (bCropForIdx !== null) {
+                        setBPhotos(prev => prev.map((m, i) => i === bCropForIdx ? { ...m, data: url } : m));
+                        setBCropForIdx(null);
+                    }
+                    setBCropSrc(null);
+                }}
+                onCancel={() => { setBCropSrc(null); setBCropForIdx(null); }} />}
 
             <h1 style={{ fontSize: '1.5rem', fontWeight: 700, marginBottom: '0.25rem' }}>Security</h1>
             <p style={{ color: '#6b7280', fontSize: '0.875rem', marginBottom: '1.25rem' }}>Manage barred persons and incident reports for your venue.</p>
@@ -378,10 +490,16 @@ export default function SecurityClient({
                     ))}
                 </div>
                 {tab === 'barred' && canAddBarred && (
-                    <button onClick={() => setShowAddBarred(true)}
-                        style={{ background: '#dc2626', color: 'white', border: 'none', borderRadius: '8px', padding: '0.6rem 1rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.875rem' }}>
-                        <Plus size={15} /> Add Person
-                    </button>
+                    <>
+                        <button type="button" onClick={() => setShowImportBarred(true)}
+                            style={{ background: '#374151', color: '#d1d5db', border: '1px solid #4b5563', borderRadius: '8px', padding: '0.6rem 1rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.875rem' }}>
+                            ⬆ Import CSV
+                        </button>
+                        <button type="button" onClick={() => setShowAddBarred(true)}
+                            style={{ background: '#dc2626', color: 'white', border: 'none', borderRadius: '8px', padding: '0.6rem 1rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.875rem' }}>
+                            <Plus size={15} /> Add Person
+                        </button>
+                    </>
                 )}
                 {tab === 'incidents' && canAddIncident && (
                     <button onClick={() => setShowAddIncident(true)}
@@ -557,30 +675,50 @@ export default function SecurityClient({
                         </div>
                         <div style={{ padding: '1.25rem', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
 
-                            {/* Photo */}
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                                <div style={{ position: 'relative', cursor: 'pointer' }} onClick={() => bFileRef.current?.click()}>
-                                    <Avatar name={bName || '?'} src={bPhoto} size={72} />
-                                    <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0 }}
-                                        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.opacity = '1'; }}
-                                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.opacity = '0'; }}>
-                                        <span style={{ color: 'white', fontSize: '0.7rem', fontWeight: 700 }}>PHOTO</span>
+                            {/* Photos & Video */}
+                            <div>
+                                <label style={lbl}>Photos & Video</label>
+                                {bPhotos.length > 0 && (
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.6rem' }}>
+                                        {bPhotos.map((m, i) => (
+                                            <div key={i} style={{ position: 'relative', width: 80, height: 80, flexShrink: 0 }}>
+                                                {m.type === 'image' ? (
+                                                    <img src={m.data} alt={m.name} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '8px', border: `2px solid ${i === bPrimaryIdx ? '#10b981' : '#374151'}` }} />
+                                                ) : (
+                                                    <div style={{ width: 80, height: 80, background: '#1f2937', borderRadius: '8px', border: `2px solid ${i === bPrimaryIdx ? '#10b981' : '#374151'}`, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', fontSize: '0.6rem', color: '#9ca3af', textAlign: 'center', padding: '4px', gap: '2px' }}>
+                                                        <span>🎬</span>
+                                                        <span style={{ wordBreak: 'break-all' }}>{m.name.slice(0, 14)}</span>
+                                                    </div>
+                                                )}
+                                                {i === bPrimaryIdx && m.type === 'image' && (
+                                                    <div style={{ position: 'absolute', bottom: 3, left: 3, background: '#10b981', color: 'white', fontSize: '0.55rem', padding: '1px 5px', borderRadius: '999px', fontWeight: 700, pointerEvents: 'none' }}>PRIMARY</div>
+                                                )}
+                                                {i !== bPrimaryIdx && m.type === 'image' && (
+                                                    <button type="button" onClick={() => setBPrimaryIdx(i)}
+                                                        style={{ position: 'absolute', bottom: 3, left: 3, background: 'rgba(0,0,0,0.75)', color: '#10b981', border: '1px solid #10b981', fontSize: '0.55rem', padding: '1px 5px', borderRadius: '999px', cursor: 'pointer', fontWeight: 700 }}>
+                                                        Primary
+                                                    </button>
+                                                )}
+                                                <button type="button" onClick={() => {
+                                                    setBPhotos(prev => {
+                                                        const next = prev.filter((_, j) => j !== i);
+                                                        setBPrimaryIdx(p => p >= next.length ? Math.max(0, next.length - 1) : i < p ? p - 1 : p);
+                                                        return next;
+                                                    });
+                                                }} style={{ position: 'absolute', top: -6, right: -6, background: '#ef4444', border: 'none', borderRadius: '50%', width: 18, height: 18, color: 'white', cursor: 'pointer', fontSize: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>×</button>
+                                                {m.type === 'image' && (
+                                                    <button type="button" onClick={() => { setBCropSrc(m.data); setBCropForIdx(i); }}
+                                                        style={{ position: 'absolute', top: -6, left: -6, background: '#374151', border: '1px solid #4b5563', borderRadius: '50%', width: 18, height: 18, color: '#d1d5db', cursor: 'pointer', fontSize: '0.65rem', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }} title="Crop">✂</button>
+                                                )}
+                                            </div>
+                                        ))}
                                     </div>
-                                </div>
-                                <div>
-                                    <button onClick={() => bFileRef.current?.click()}
-                                        style={{ background: '#374151', color: '#d1d5db', border: 'none', borderRadius: '6px', padding: '6px 14px', cursor: 'pointer', fontSize: '0.8rem' }}>
-                                        Upload Photo
-                                    </button>
-                                    {bPhoto && (
-                                        <button onClick={() => setBPhoto(null)}
-                                            style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', fontSize: '0.8rem', marginLeft: '0.5rem' }}>
-                                            Remove
-                                        </button>
-                                    )}
-                                    <p style={{ color: '#6b7280', fontSize: '0.75rem', marginTop: '4px' }}>Drag & resize after upload</p>
-                                </div>
-                                <input ref={bFileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleBarredPhotoChange} />
+                                )}
+                                <button type="button" onClick={() => bFileRef.current?.click()}
+                                    style={{ background: '#374151', color: '#d1d5db', border: '1px dashed #4b5563', borderRadius: '8px', padding: '0.6rem 1rem', cursor: 'pointer', fontSize: '0.85rem', width: '100%' }}>
+                                    + Add Photos or Video
+                                </button>
+                                <input ref={bFileRef} type="file" accept="image/*,video/*" multiple style={{ display: 'none' }} onChange={handleBarredMediaAdd} />
                             </div>
 
                             {/* Name */}
@@ -680,6 +818,78 @@ export default function SecurityClient({
                             <button onClick={restoreBarred} disabled={rSaving}
                                 style={{ background: '#1d4ed8', color: 'white', border: 'none', padding: '0.6rem 1.25rem', borderRadius: '8px', fontWeight: 700, cursor: 'pointer', opacity: rSaving ? 0.5 : 1 }}>
                                 {rSaving ? 'Restoring…' : 'Restore'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ── Import CSV Modal ──────────────────────────────────────────────── */}
+            {showImportBarred && (
+                <div style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+                    <div style={{ background: '#111827', border: '1px solid #374151', borderRadius: '12px', width: '100%', maxWidth: '660px', maxHeight: '92vh', display: 'flex', flexDirection: 'column' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1rem 1.25rem', borderBottom: '1px solid #1f2937' }}>
+                            <h2 style={{ margin: 0, color: 'white', fontSize: '1.05rem', fontWeight: 700 }}>Import Barred List from CSV</h2>
+                            <button type="button" onClick={() => { setShowImportBarred(false); setImportRows([]); }} style={{ background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: '1.3rem', lineHeight: 1 }}>×</button>
+                        </div>
+                        <div style={{ padding: '1.25rem', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                            <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: '8px', padding: '0.875rem', fontSize: '0.85rem', color: '#94a3b8', lineHeight: 1.6 }}>
+                                <strong style={{ color: '#e2e8f0' }}>Columns:</strong> name · aliases (pipe-separated) · description · duration (permanent / 1week / 30days / number of days) · trespassed (yes/no) · photo_filename
+                                <br /><span style={{ color: '#64748b', fontSize: '0.8rem' }}>Photos cannot be imported via CSV — upload them manually after import.</span>
+                            </div>
+                            <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                                <button type="button" onClick={downloadImportTemplate}
+                                    style={{ background: '#374151', color: '#d1d5db', border: '1px solid #4b5563', borderRadius: '8px', padding: '0.5rem 1rem', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                    ⬇ Download Template
+                                </button>
+                                <button type="button" onClick={() => importFileRef.current?.click()}
+                                    style={{ background: '#1d4ed8', color: 'white', border: 'none', borderRadius: '8px', padding: '0.5rem 1rem', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                    📂 Choose CSV File
+                                </button>
+                                <input ref={importFileRef} type="file" accept=".csv,text/csv" style={{ display: 'none' }} onChange={handleImportFile} />
+                            </div>
+                            {importRows.length > 0 && (
+                                <>
+                                    <div style={{ color: '#10b981', fontWeight: 600, fontSize: '0.875rem' }}>
+                                        ✓ {importRows.length} person{importRows.length !== 1 ? 's' : ''} ready to import
+                                    </div>
+                                    <div style={{ overflowX: 'auto', border: '1px solid #1f2937', borderRadius: '8px' }}>
+                                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                                            <thead>
+                                                <tr style={{ borderBottom: '1px solid #374151', background: '#1f2937' }}>
+                                                    {['Name', 'Aliases', 'Duration', 'Trespass', 'Photo Ref'].map(h => (
+                                                        <th key={h} style={{ color: '#9ca3af', textAlign: 'left', padding: '0.5rem 0.75rem', fontWeight: 600 }}>{h}</th>
+                                                    ))}
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {importRows.map((r, i) => (
+                                                    <tr key={i} style={{ borderBottom: '1px solid #1f2937' }}>
+                                                        <td style={{ color: 'white', padding: '0.4rem 0.75rem', fontWeight: 500 }}>{r.name}</td>
+                                                        <td style={{ color: '#9ca3af', padding: '0.4rem 0.75rem' }}>{r.aliases.join(', ') || '—'}</td>
+                                                        <td style={{ color: '#f59e0b', padding: '0.4rem 0.75rem' }}>{r.barred_until ? new Date(r.barred_until).toLocaleDateString() : 'Permanent'}</td>
+                                                        <td style={{ padding: '0.4rem 0.75rem' }}>
+                                                            {r.trespassed ? <span style={{ color: '#ef4444', fontWeight: 700 }}>⚠ Yes</span> : <span style={{ color: '#6b7280' }}>No</span>}
+                                                        </td>
+                                                        <td style={{ color: '#6b7280', padding: '0.4rem 0.75rem', fontStyle: r.photo_filename ? 'normal' : 'italic' }}>
+                                                            {r.photo_filename || '—'}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                        <div style={{ padding: '1rem 1.25rem', borderTop: '1px solid #1f2937', display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+                            <button type="button" onClick={() => { setShowImportBarred(false); setImportRows([]); }}
+                                style={{ background: 'none', border: '1px solid #374151', color: '#9ca3af', padding: '0.6rem 1rem', borderRadius: '8px', cursor: 'pointer' }}>
+                                Cancel
+                            </button>
+                            <button type="button" onClick={handleImport} disabled={importing || importRows.length === 0}
+                                style={{ background: '#dc2626', color: 'white', border: 'none', padding: '0.6rem 1.25rem', borderRadius: '8px', fontWeight: 700, cursor: 'pointer', opacity: (importing || importRows.length === 0) ? 0.5 : 1 }}>
+                                {importing ? 'Importing…' : `Import ${importRows.length} Person${importRows.length !== 1 ? 's' : ''}`}
                             </button>
                         </div>
                     </div>

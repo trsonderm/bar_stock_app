@@ -25,6 +25,7 @@ import {
     Bell,
     ShieldCheck,
     BookOpen,
+    KeyRound,
 } from 'lucide-react';
 
 export default function SuperAdminNav() {
@@ -41,6 +42,7 @@ export default function SuperAdminNav() {
         { name: 'Database Explorer', href: '/super-admin/database', icon: Database },
         { name: 'DB Maintenance Tools', href: '/super-admin/maintenance', icon: Database },
         { name: 'Database Backups', href: '/super-admin/backups', icon: Database },
+        { name: 'Authentication', href: '/super-admin/authentication', icon: KeyRound },
         { name: 'Site Settings', href: '/super-admin/settings', icon: Settings },
         { name: 'Security', href: '/super-admin/security', icon: Shield },
         { name: 'ML Models', href: '/super-admin/ml-models', icon: Cpu },

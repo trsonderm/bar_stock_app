@@ -7,14 +7,24 @@ export const dynamic = 'force-dynamic';
 // Public GET for Login Page
 export async function GET(req: NextRequest) {
     try {
-        const setting = await db.one("SELECT value FROM system_settings WHERE key = 'quick_login_enabled'");
-        console.log('System Settings API: quick_login_enabled =', setting?.value);
+        const rows = await db.query(
+            `SELECT key, value FROM system_settings WHERE key IN ('quick_login_enabled','sso_google_enabled','sso_github_enabled','sso_microsoft_enabled')`
+        );
+        const m: Record<string, string> = {};
+        for (const r of rows) m[r.key] = r.value;
+
+        const sso_providers: string[] = [];
+        if (m['sso_google_enabled'] === 'true') sso_providers.push('google');
+        if (m['sso_github_enabled'] === 'true') sso_providers.push('github');
+        if (m['sso_microsoft_enabled'] === 'true') sso_providers.push('microsoft');
+
         return NextResponse.json({
-            quick_login_enabled: setting ? setting.value === 'true' : false
+            quick_login_enabled: m['quick_login_enabled'] === 'true',
+            sso_providers,
         });
     } catch (e) {
         console.error('System Settings API Error:', e);
-        return NextResponse.json({ quick_login_enabled: false });
+        return NextResponse.json({ quick_login_enabled: false, sso_providers: [] });
     }
 }
 

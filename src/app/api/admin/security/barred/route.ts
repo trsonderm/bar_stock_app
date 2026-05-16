@@ -35,19 +35,20 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Permission denied' }, { status: 403 });
     }
 
-    const { name, aliases, photo, description, trespassed, barred_until } = await req.json();
+    const { name, aliases, photo, media, description, trespassed, barred_until } = await req.json();
     if (!name?.trim()) return NextResponse.json({ error: 'Name is required' }, { status: 400 });
 
     const barredByName = `${session.firstName} ${session.lastName}`;
     const rows = await db.query(
         `INSERT INTO security_barred
-            (organization_id, name, aliases, photo, description, barred_by_user_id, barred_by_name, trespassed, barred_until)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+            (organization_id, name, aliases, photo, media, description, barred_by_user_id, barred_by_name, trespassed, barred_until)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
         [
             session.organizationId,
             name.trim(),
             JSON.stringify(Array.isArray(aliases) ? aliases : []),
             photo || null,
+            JSON.stringify(Array.isArray(media) ? media : []),
             description || null,
             session.id,
             barredByName,
