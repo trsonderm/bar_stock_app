@@ -37,7 +37,8 @@ CREATE TABLE IF NOT EXISTS users (
     is_archived BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     profile_picture TEXT,
-    display_name TEXT
+    display_name TEXT,
+    oauth_providers JSONB DEFAULT '[]'
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email) WHERE email IS NOT NULL;
 
@@ -91,6 +92,7 @@ CREATE TABLE IF NOT EXISTS items (
     order_unit_label VARCHAR(50) DEFAULT 'case',
     order_unit_size INT DEFAULT 1,
     use_category_qty_defaults BOOLEAN DEFAULT TRUE,
+    archived_at TIMESTAMPTZ DEFAULT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -393,6 +395,7 @@ CREATE TABLE IF NOT EXISTS security_barred (
     name TEXT NOT NULL,
     aliases JSONB DEFAULT '[]',
     photo TEXT,
+    media JSONB DEFAULT '[]',
     description TEXT,
     barred_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
     barred_by_name TEXT,

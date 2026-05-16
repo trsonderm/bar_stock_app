@@ -4,12 +4,13 @@ import { getSession } from '@/lib/auth';
 import { logActivity } from '@/lib/logger';
 import { checkAndTriggerSmartOrder } from '@/lib/smart-order';
 
-// Ensure new display-mode columns exist (runs once per cold start, no-op after)
+// Ensure new columns exist (runs once per cold start, no-op after)
 let _displayColsEnsured = false;
 async function ensureDisplayColumns() {
     if (_displayColsEnsured) return;
     await db.execute(`ALTER TABLE items ADD COLUMN IF NOT EXISTS stock_display_mode VARCHAR(20) DEFAULT 'units'`).catch(() => {});
     await db.execute(`ALTER TABLE items ADD COLUMN IF NOT EXISTS inventory_display_mode VARCHAR(20) DEFAULT 'units'`).catch(() => {});
+    await db.execute(`ALTER TABLE items ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ DEFAULT NULL`).catch(() => {});
     _displayColsEnsured = true;
 }
 
@@ -26,6 +27,8 @@ export async function GET(req: NextRequest) {
             organizationId = parseInt(searchParams.get('orgId') as string, 10);
         }
         const sort = searchParams.get('sort') || 'usage';
+        const showArchived = searchParams.get('archived') === 'true';
+        const archiveFilter = showArchived ? 'AND i.archived_at IS NOT NULL' : 'AND i.archived_at IS NULL';
 
         // Determine Location Context — explicit param wins over cookie
         const locParam = searchParams.get('locationId');
@@ -86,6 +89,7 @@ export async function GET(req: NextRequest) {
         COALESCE(i.use_category_qty_defaults, true) as use_category_qty_defaults,
         COALESCE(i.stock_display_mode, 'units') as stock_display_mode,
         COALESCE(i.inventory_display_mode, 'units') as inventory_display_mode,
+        i.archived_at,
         MAX(isp.supplier_id) as supplier_id,
         (SELECT ils.supplier_id FROM item_location_suppliers ils WHERE ils.item_id = i.id AND ils.location_id = $2 LIMIT 1) as location_supplier_id,
         COALESCE(SUM(inv.quantity), 0) as quantity,
@@ -103,7 +107,7 @@ export async function GET(req: NextRequest) {
         WHERE action = 'SUBTRACT_STOCK' AND organization_id = $1
         GROUP BY (details->>'itemId')::int
       ) usage_stats ON i.id = usage_stats.item_id
-      WHERE i.organization_id = $1
+      WHERE i.organization_id = $1 ${archiveFilter}
       GROUP BY i.id, usage_stats.usage_count
     `;
 
@@ -138,6 +142,7 @@ export async function GET(req: NextRequest) {
                 COALESCE(i.use_category_qty_defaults, true) as use_category_qty_defaults,
                 COALESCE(i.stock_display_mode, 'units') as stock_display_mode,
                 COALESCE(i.inventory_display_mode, 'units') as inventory_display_mode,
+                i.archived_at,
                 MAX(isp.supplier_id) as supplier_id,
                 NULL::int as location_supplier_id,
                 COALESCE(SUM(inv.quantity), 0) as quantity,
@@ -152,7 +157,7 @@ export async function GET(req: NextRequest) {
                 FROM activity_logs WHERE action = 'SUBTRACT_STOCK' AND organization_id = $1
                 GROUP BY (details->>'itemId')::int
               ) usage_stats ON i.id = usage_stats.item_id
-              WHERE i.organization_id = $1
+              WHERE i.organization_id = $1 ${archiveFilter}
               GROUP BY i.id, usage_stats.usage_count
               ${sort === 'usage' ? 'ORDER BY usage_count DESC, i.name ASC' : 'ORDER BY i.name ASC'}
             `;

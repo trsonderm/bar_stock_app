@@ -5,6 +5,7 @@ import {
     Database, Clock, Upload, Download, Save, RefreshCw, Server,
     AlertTriangle, RotateCcw, CheckCircle, XCircle, ChevronDown,
     ChevronRight, Table2, GitCommit, HardDrive, Layers, Info,
+    Building2, ShieldAlert, X,
 } from 'lucide-react';
 import { AdminPageHeader } from '../components/AdminPageHeader';
 
@@ -31,6 +32,14 @@ interface BackupFile {
     size: number;
     created: string;
     meta: BackupMeta | null;
+    hasOrgSnapshots?: boolean;
+}
+
+interface OrgSnapshot {
+    name: string;
+    orgId: number;
+    orgName?: string;
+    created: string;
 }
 
 function fmtSize(bytes: number) {
@@ -54,10 +63,11 @@ function triggerBadge(t: string) {
     );
 }
 
-function BackupDetail({ backup, onRestore, onDownload }: {
+function BackupDetail({ backup, onRestore, onDownload, onOrgRestore }: {
     backup: BackupFile;
     onRestore: (name: string) => void;
     onDownload: (name: string) => void;
+    onOrgRestore: (backupName: string) => void;
 }) {
     const [expanded, setExpanded] = useState(false);
     const m = backup.meta;
@@ -121,9 +131,23 @@ function BackupDetail({ backup, onRestore, onDownload }: {
                     >
                         <Download size={15} />
                     </button>
+                    {backup.hasOrgSnapshots && (
+                        <button
+                            type="button"
+                            onClick={() => onOrgRestore(backup.name)}
+                            title="Restore individual organization data"
+                            style={{
+                                padding: '6px 10px', background: '#1e3a5f', border: '1px solid #1d4ed8',
+                                borderRadius: '6px', color: '#93c5fd', cursor: 'pointer',
+                                fontSize: '0.8rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4,
+                            }}
+                        >
+                            <Building2 size={13} /> Org Restore
+                        </button>
+                    )}
                     <button
                         onClick={() => onRestore(backup.name)}
-                        title="Restore this backup"
+                        title="Restore this backup (overwrites all data)"
                         style={{
                             padding: '6px 12px', background: '#7c2d12', border: '1px solid #9a3412',
                             borderRadius: '6px', color: '#fed7aa', cursor: 'pointer',
@@ -216,9 +240,12 @@ export default function DatabaseBackupsPage() {
     const [cronEnabled, setCronEnabled] = useState(false);
     const [interval, setInterval_] = useState('weekly');
     const [backups, setBackups] = useState<BackupFile[]>([]);
+    const [orgSnapshots, setOrgSnapshots] = useState<OrgSnapshot[]>([]);
     const [loading, setLoading] = useState(true);
     const [status, setStatus] = useState<{ msg: string; type: 'idle' | 'working' | 'success' | 'error' }>({ msg: '', type: 'idle' });
     const [restoreTarget, setRestoreTarget] = useState<string | null>(null);
+    const [orgRestoreModal, setOrgRestoreModal] = useState<string | null>(null); // backup filename
+    const [orgRestoring, setOrgRestoring] = useState<string | null>(null); // snapshot file being restored
     const fileRef = useRef<HTMLInputElement>(null);
 
     const setMsg = (msg: string, type: 'idle' | 'working' | 'success' | 'error' = 'idle') => setStatus({ msg, type });
@@ -228,6 +255,7 @@ export default function DatabaseBackupsPage() {
             const res = await fetch('/api/super-admin/backups');
             const d = await res.json();
             if (d.backups) setBackups(d.backups);
+            if (d.orgSnapshots) setOrgSnapshots(d.orgSnapshots);
         } catch {}
     }, []);
 
@@ -244,6 +272,7 @@ export default function DatabaseBackupsPage() {
                 } catch {}
             }
             if (backupData.backups) setBackups(backupData.backups);
+            if (backupData.orgSnapshots) setOrgSnapshots(backupData.orgSnapshots);
         }).catch(() => {}).finally(() => setLoading(false));
     }, []);
 
@@ -320,6 +349,29 @@ export default function DatabaseBackupsPage() {
             setMsg(`Restore failed: ${e.message}`, 'error');
         } finally {
             e.target.value = '';
+        }
+    };
+
+    const restoreOrg = async (snapshotFile: string, orgId: number) => {
+        const snap = orgSnapshots.find(s => s.name === snapshotFile);
+        const orgName = snap?.orgName || `Org #${orgId}`;
+        if (!confirm(`Restore data for "${orgName}" from snapshot?\n\nThis will replace ALL of that organization's current data with the backup state. Other organizations are unaffected.`)) return;
+        setOrgRestoring(snapshotFile);
+        try {
+            const res = await fetch('/api/super-admin/backups/restore-org', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ snapshotFile, orgId }),
+            });
+            const d = await res.json();
+            if (!res.ok) throw new Error(d.error || 'Restore failed');
+            setMsg(d.message || `Restored ${orgName} successfully.`, 'success');
+            setOrgRestoreModal(null);
+            setTimeout(() => setMsg(''), 6000);
+        } catch (e: any) {
+            setMsg(`Org restore failed: ${e.message}`, 'error');
+        } finally {
+            setOrgRestoring(null);
         }
     };
 
@@ -416,12 +468,94 @@ export default function DatabaseBackupsPage() {
                                     backup={b}
                                     onRestore={restoreFromDisk}
                                     onDownload={downloadBackup}
+                                    onOrgRestore={name => setOrgRestoreModal(name)}
                                 />
                             ))}
                         </div>
                     ))
                 )}
             </div>
+
+            {/* Org Restore Modal */}
+            {orgRestoreModal && (() => {
+                const prefix = orgRestoreModal.replace(/\.sql(\.gz)?$/, '');
+                const snaps = orgSnapshots.filter(s => s.name.startsWith(prefix));
+                return (
+                    <div style={{
+                        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50,
+                    }} onClick={() => setOrgRestoreModal(null)}>
+                        <div style={{
+                            background: '#0f172a', border: '1px solid #334155', borderRadius: '12px',
+                            padding: '1.5rem', width: '100%', maxWidth: '560px', margin: '1rem',
+                        }} onClick={e => e.stopPropagation()}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                                    <Building2 size={18} style={{ color: '#60a5fa' }} />
+                                    <h2 style={{ color: 'white', fontWeight: 700, fontSize: '1rem', margin: 0 }}>Restore by Organization</h2>
+                                </div>
+                                <button type="button" onClick={() => setOrgRestoreModal(null)} aria-label="Close"
+                                    style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', padding: 4 }}>
+                                    <X size={18} aria-hidden="true" />
+                                </button>
+                            </div>
+
+                            <div style={{ background: '#1e293b', border: '1px solid #f59e0b50', borderRadius: '8px', padding: '0.75rem 1rem', marginBottom: '1.25rem', display: 'flex', gap: '0.6rem' }}>
+                                <ShieldAlert size={16} style={{ color: '#f59e0b', flexShrink: 0, marginTop: 2 }} />
+                                <div style={{ color: '#fcd34d', fontSize: '0.8rem', lineHeight: '1.5' }}>
+                                    Restoring replaces <strong>all current data</strong> for that organization with its state at backup time. Other organizations are unaffected. This cannot be undone.
+                                </div>
+                            </div>
+
+                            <div style={{ color: '#9ca3af', fontSize: '0.75rem', marginBottom: '0.75rem' }}>
+                                From: <span style={{ color: '#e2e8f0', fontFamily: 'monospace' }}>{orgRestoreModal}</span>
+                            </div>
+
+                            {snaps.length === 0 ? (
+                                <div style={{ color: '#6b7280', fontSize: '0.875rem', textAlign: 'center' as const, padding: '2rem 0' }}>
+                                    No org snapshots found for this backup.
+                                </div>
+                            ) : (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                    {snaps.map(snap => (
+                                        <div key={snap.name} style={{
+                                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                            background: '#1e293b', border: '1px solid #334155', borderRadius: '8px',
+                                            padding: '0.75rem 1rem',
+                                        }}>
+                                            <div>
+                                                <div style={{ color: 'white', fontWeight: 600, fontSize: '0.875rem' }}>
+                                                    {snap.orgName || `Org #${snap.orgId}`}
+                                                </div>
+                                                <div style={{ color: '#6b7280', fontSize: '0.75rem', marginTop: 2 }}>
+                                                    {new Date(snap.created).toLocaleString()} &bull; Org ID {snap.orgId}
+                                                </div>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => restoreOrg(snap.name, snap.orgId)}
+                                                disabled={orgRestoring === snap.name}
+                                                style={{
+                                                    padding: '6px 14px', background: orgRestoring === snap.name ? '#374151' : '#1e3a5f',
+                                                    border: '1px solid #1d4ed8', borderRadius: '6px', color: '#93c5fd',
+                                                    cursor: orgRestoring === snap.name ? 'default' : 'pointer',
+                                                    fontSize: '0.8rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5,
+                                                    opacity: orgRestoring && orgRestoring !== snap.name ? 0.5 : 1,
+                                                }}
+                                            >
+                                                {orgRestoring === snap.name
+                                                    ? <><RefreshCw size={12} className="animate-spin" /> Restoring…</>
+                                                    : <><RotateCcw size={12} /> Restore</>
+                                                }
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                );
+            })()}
         </div>
     );
 }

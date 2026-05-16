@@ -55,6 +55,7 @@ import PhoneAndroidIcon from '@mui/icons-material/PhoneAndroid';
 import NotificationsIcon from '@mui/icons-material/Notifications';
 import ApiIcon from '@mui/icons-material/Api';
 import MenuBookIcon from '@mui/icons-material/MenuBook';
+import RestoreIcon from '@mui/icons-material/Restore';
 
 const drawerWidth = 260;
 
@@ -88,7 +89,7 @@ export default function AdminNav({ user, children }: { user: NavUser, children: 
         if (pathname.startsWith('/admin/orders') || pathname.startsWith('/admin/reports/smart-order')) {
             setOrderOpen(true);
         }
-        if (pathname.startsWith('/admin/settings') || pathname.startsWith('/admin/categories') || pathname.startsWith('/admin/users') || pathname.startsWith('/admin/billing') || pathname.startsWith('/admin/suppliers')) {
+        if (pathname.startsWith('/admin/settings') || pathname.startsWith('/admin/categories') || pathname.startsWith('/admin/users') || pathname.startsWith('/admin/billing') || pathname.startsWith('/admin/suppliers') || pathname.startsWith('/admin/recipes') || pathname.startsWith('/admin/mobile-api') || pathname.startsWith('/admin/developer')) {
             setSettingsOpen(true);
         }
     }, [pathname]);
@@ -266,6 +267,7 @@ export default function AdminNav({ user, children }: { user: NavUser, children: 
                     <List component="div" disablePadding>
                         <DrawerItem text="Prices" icon={<span />} href="/admin/prices" isSub />
                         {canManageProducts && <DrawerItem text="Product List" icon={<span />} href="/admin/products" isSub />}
+                        {canManageProducts && <DrawerItem text="Archived Products" icon={<span />} href="/admin/products/archived" isSub />}
                         {canAudit && <DrawerItem text="Audit" icon={<span />} href="/admin/audit" isSub />}
                     </List>
                 </Collapse>
@@ -342,6 +344,7 @@ export default function AdminNav({ user, children }: { user: NavUser, children: 
                         <DrawerItem text="Mobile API" icon={<PhoneAndroidIcon fontSize="small" />} href="/admin/mobile-api" isSub />
                         <DrawerItem text="Developer API" icon={<ApiIcon fontSize="small" />} href="/admin/developer" isSub />
                         <DrawerItem text="Recipes" icon={<MenuBookIcon fontSize="small" />} href="/admin/recipes" isSub />
+                        <DrawerItem text="Data Restore" icon={<RestoreIcon fontSize="small" />} href="/admin/settings/restore" isSub />
                     </List>
                 </Collapse>
 

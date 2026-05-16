@@ -22,17 +22,21 @@ export async function GET(req: NextRequest) {
     if (!session?.isSuperAdmin) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const backups = scheduler.getBackups();
+    const allOrgSnaps = scheduler.getOrgSnapshots();
 
-    // Enrich each backup with metadata if available
+    // Enrich each backup with metadata and org snapshot availability
     const enriched = backups.map((b: any) => {
         const meta = loadMeta(b.name);
+        const prefix = b.name.replace(/\.sql(\.gz)?$/, '');
+        const hasOrgSnapshots = allOrgSnaps.some((s: any) => s.name.startsWith(prefix));
         return {
             ...b,
             meta: meta || null,
+            hasOrgSnapshots,
         };
     });
 
-    return NextResponse.json({ backups: enriched });
+    return NextResponse.json({ backups: enriched, orgSnapshots: allOrgSnaps });
 }
 
 export async function POST(req: NextRequest) {

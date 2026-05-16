@@ -283,7 +283,7 @@ class Scheduler {
                 SELECT i.name, i.type, i.low_stock_threshold, COALESCE(SUM(inv.quantity), 0) as current_stock
                 FROM items i
                 LEFT JOIN inventory inv ON i.id = inv.item_id
-                WHERE i.organization_id = $1
+                WHERE i.organization_id = $1 AND i.archived_at IS NULL
                 GROUP BY i.id, i.name, i.type, i.low_stock_threshold
                 HAVING COALESCE(SUM(inv.quantity), 0) <= COALESCE(i.low_stock_threshold, 5)
                 ORDER BY current_stock ASC
@@ -296,7 +296,7 @@ class Scheduler {
                        ROUND(i.unit_cost * COALESCE(SUM(inv.quantity), 0), 2) as total_value
                 FROM items i
                 LEFT JOIN inventory inv ON i.id = inv.item_id
-                WHERE i.organization_id = $1
+                WHERE i.organization_id = $1 AND i.archived_at IS NULL
                 GROUP BY i.id, i.name, i.type, i.unit_cost
                 ORDER BY total_value DESC LIMIT 50
             `, [organizationId]);
@@ -354,7 +354,7 @@ class Scheduler {
                     SELECT i.name, i.type, COALESCE(SUM(inv.quantity), 0) as quantity, i.low_stock_threshold
                     FROM items i
                     LEFT JOIN inventory inv ON i.id = inv.item_id
-                    WHERE i.organization_id = $1
+                    WHERE i.organization_id = $1 AND i.archived_at IS NULL
                     GROUP BY i.id, i.name, i.type, i.low_stock_threshold
                     HAVING COALESCE(SUM(inv.quantity), 0) <= COALESCE(i.low_stock_threshold, $2)
                     ORDER BY quantity ASC
@@ -493,9 +493,65 @@ class Scheduler {
                     console.error(`[Backup] pg_dump error: ${error.message}`, stderr);
                     return reject(error);
                 }
+                // Fire org snapshots in background — don't block the backup return
+                this.runOrgSnapshots(filename).catch(e =>
+                    console.error('[Backup] Org snapshot error:', e)
+                );
                 resolve(filename);
             });
         });
+    }
+
+    // Tables captured in org snapshots, in parent-first insert order
+    private static readonly SNAPSHOT_TABLES: { name: string; sql: string }[] = [
+        { name: 'users',                sql: 'SELECT * FROM users WHERE organization_id = $1' },
+        { name: 'locations',            sql: 'SELECT * FROM locations WHERE organization_id = $1' },
+        { name: 'categories',           sql: 'SELECT * FROM categories WHERE organization_id = $1' },
+        { name: 'settings',             sql: 'SELECT * FROM settings WHERE organization_id = $1' },
+        { name: 'items',                sql: 'SELECT * FROM items WHERE organization_id = $1' },
+        { name: 'suppliers',            sql: 'SELECT * FROM suppliers WHERE organization_id = $1' },
+        { name: 'purchase_orders',      sql: 'SELECT * FROM purchase_orders WHERE organization_id = $1' },
+        { name: 'inventory',            sql: 'SELECT * FROM inventory WHERE organization_id = $1' },
+        { name: 'item_suppliers',       sql: 'SELECT is2.* FROM item_suppliers is2 JOIN items i ON is2.item_id = i.id WHERE i.organization_id = $1' },
+        { name: 'purchase_order_items', sql: 'SELECT poi.* FROM purchase_order_items poi JOIN purchase_orders po ON poi.purchase_order_id = po.id WHERE po.organization_id = $1' },
+        { name: 'pending_orders',       sql: 'SELECT * FROM pending_orders WHERE organization_id = $1' },
+        { name: 'security_barred',      sql: 'SELECT * FROM security_barred WHERE organization_id = $1' },
+        { name: 'security_incidents',   sql: 'SELECT * FROM security_incidents WHERE organization_id = $1' },
+        { name: 'user_locations',       sql: 'SELECT * FROM user_locations WHERE organization_id = $1' },
+        { name: 'shifts',               sql: 'SELECT * FROM shifts WHERE organization_id = $1' },
+        { name: 'user_schedules',       sql: 'SELECT * FROM user_schedules WHERE organization_id = $1' },
+        { name: 'saved_reports',        sql: 'SELECT * FROM saved_reports WHERE organization_id = $1' },
+        { name: 'report_schedules',     sql: 'SELECT * FROM report_schedules WHERE organization_id = $1' },
+    ];
+
+    async runOrgSnapshots(backupFilename: string): Promise<void> {
+        const backupDir = Scheduler.BACKUP_DIR;
+        if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir, { recursive: true });
+
+        const orgs = await db.query(`SELECT id, name FROM organizations WHERE billing_status != 'cancelled'`);
+        const timestamp = backupFilename.replace(/\.sql(\.gz)?$/, '');
+
+        for (const org of orgs) {
+            try {
+                const tables: { name: string; rows: any[] }[] = [];
+                for (const { name, sql } of Scheduler.SNAPSHOT_TABLES) {
+                    const rows = await db.query(sql, [org.id]).catch(() => []);
+                    tables.push({ name, rows });
+                }
+                const snapshot = {
+                    org_id: org.id,
+                    org_name: org.name,
+                    timestamp: new Date().toISOString(),
+                    backup_file: backupFilename,
+                    tables,
+                };
+                const snapFilename = `${timestamp}-org${org.id}.json`;
+                fs.writeFileSync(path.join(backupDir, snapFilename), JSON.stringify(snapshot));
+                console.log(`[Backup] Org snapshot written: ${snapFilename}`);
+            } catch (e) {
+                console.error(`[Backup] Failed snapshot for org ${org.id}:`, e);
+            }
+        }
     }
 
     getBackups() {
@@ -506,6 +562,27 @@ class Scheduler {
             .map(f => {
                 const stat = fs.statSync(path.join(backupDir, f));
                 return { name: f, size: stat.size, created: stat.mtime };
+            })
+            .sort((a, b) => b.created.getTime() - a.created.getTime());
+    }
+
+    getOrgSnapshots(backupFilePrefix?: string): { name: string; orgId: number; orgName?: string; created: Date }[] {
+        const backupDir = Scheduler.BACKUP_DIR;
+        if (!fs.existsSync(backupDir)) return [];
+        const prefix = backupFilePrefix ? backupFilePrefix.replace(/\.sql(\.gz)?$/, '') : null;
+        return fs.readdirSync(backupDir)
+            .filter(f => f.endsWith('.json') && f.startsWith('backup-') && /-org\d+\.json$/.test(f))
+            .filter(f => !prefix || f.startsWith(prefix))
+            .map(f => {
+                const stat = fs.statSync(path.join(backupDir, f));
+                const match = f.match(/-org(\d+)\.json$/);
+                const orgId = match ? parseInt(match[1]) : 0;
+                let orgName: string | undefined;
+                try {
+                    const data = JSON.parse(fs.readFileSync(path.join(backupDir, f), 'utf8'));
+                    orgName = data.org_name;
+                } catch {}
+                return { name: f, orgId, orgName, created: stat.mtime };
             })
             .sort((a, b) => b.created.getTime() - a.created.getTime());
     }

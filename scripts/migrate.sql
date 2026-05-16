@@ -989,4 +989,25 @@ DO $$ BEGIN
   ALTER TABLE items ADD COLUMN bottle_size_unit TEXT;
 EXCEPTION WHEN duplicate_column THEN NULL; END $$;
 
+-- =========================================================
+-- 51. Users — OAuth provider links for SSO
+-- =========================================================
+DO $$ BEGIN
+  ALTER TABLE users ADD COLUMN oauth_providers JSONB DEFAULT '[]';
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
+-- =========================================================
+-- 52. Barred persons — additional media (photos/videos)
+-- =========================================================
+DO $$ BEGIN
+  ALTER TABLE security_barred ADD COLUMN media JSONB DEFAULT '[]';
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
+-- =========================================================
+-- 53. Items — archive support
+-- =========================================================
+DO $$ BEGIN
+  ALTER TABLE items ADD COLUMN archived_at TIMESTAMPTZ DEFAULT NULL;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
 COMMIT;

@@ -1272,6 +1272,19 @@ On the mobile client:
 15. RECIPES — Browse drink recipes
 ────────────────────────────────────────────────────────────────────────────────
 
+⚠ IMPORTANT — USE THE CORRECT ENDPOINT:
+
+  Mobile apps must call  GET /api/mobile/recipes
+                   NOT   GET /api/v1/recipes
+
+  /api/v1/recipes is the Developer API — it requires a static API key
+  (tsk_live_…), not a Bearer JWT, and returns a DIFFERENT response shape:
+    { "data": [...], "meta": { "api_version", "total", "limit", "offset" } }
+
+  Calling /api/v1/recipes from a mobile JWT session will return HTTP 200 but
+  the response envelope will not contain a "recipes" key, causing "Could not
+  parse JSON from server" errors in the app. Always use /api/mobile/recipes.
+
 The org's recipe library blends two sources:
   • Local  — recipes created by your org's admins (org_recipes table)
   • Global — curated recipes managed by TopShelf staff (read-only)

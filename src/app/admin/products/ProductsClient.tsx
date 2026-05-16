@@ -591,6 +591,25 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
         }
     };
 
+    const handleArchive = async (id: number) => {
+        if (!confirm('Archive this product? It will be hidden from the product list and reporting. You can restore it from Archived Products.')) return;
+        try {
+            const url = '/api/admin/products/archive' + (overrideOrgId ? `?orgId=${overrideOrgId}` : '');
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id, archive: true }),
+            });
+            if (res.ok) {
+                fetchData();
+            } else {
+                alert('Failed to archive product');
+            }
+        } catch {
+            alert('Error archiving product');
+        }
+    };
+
     const handleDelete = async (id: number) => {
         if (!confirm('Are you sure you want to delete this item?')) return;
         try {
@@ -942,6 +961,20 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                                             Edit
                                         </button>
                                         <button
+                                            onClick={() => handleArchive(item.id)}
+                                            style={{
+                                                background: '#78350f',
+                                                color: '#fde68a',
+                                                border: 'none',
+                                                padding: '4px 8px',
+                                                borderRadius: '4px',
+                                                cursor: 'pointer',
+                                                marginRight: '8px',
+                                            }}
+                                        >
+                                            Archive
+                                        </button>
+                                        <button
                                             onClick={() => handleDelete(item.id)}
                                             style={{
                                                 background: '#ef4444',
@@ -1091,8 +1124,9 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                             {/* Bottle Size */}
                             <div>
                                 <label className={styles.statLabel}>Bottle Size</label>
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: '3fr 2fr', gap: '0.75rem' }}>
                                     <div>
+                                        <label style={{ display: 'block', fontSize: '0.72rem', color: '#6b7280', marginBottom: '0.3rem' }}>Amount</label>
                                         <input
                                             type="number"
                                             min="0"
@@ -1105,11 +1139,12 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                                         />
                                     </div>
                                     <div>
+                                        <label style={{ display: 'block', fontSize: '0.72rem', color: '#6b7280', marginBottom: '0.3rem' }}>Unit</label>
                                         <input
                                             type="text"
                                             className={styles.input}
                                             style={{ width: '100%', minHeight: '44px' }}
-                                            placeholder="e.g. ml, oz, L"
+                                            placeholder="ml, oz, L"
                                             value={formData.bottle_size_unit}
                                             onChange={e => setFormData({ ...formData, bottle_size_unit: e.target.value })}
                                         />
@@ -1298,22 +1333,28 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                                             </span>
                                         ))}
                                     </div>
-                                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
-                                        {tempOrderLabel !== 'Custom' ? (
-                                            <select className={styles.input} value={tempOrderLabel} onChange={e => setTempOrderLabel(e.target.value)}
-                                                style={{ width: '90px', padding: '6px', fontSize: '0.85rem', minHeight: '40px' }}>
-                                                <option value="Unit">Unit</option>
-                                                <option value="Pack">Pack</option>
-                                                <option value="Case">Case</option>
-                                                <option value="Custom">Custom…</option>
-                                            </select>
-                                        ) : (
-                                            <input className={styles.input} placeholder="Label" autoFocus
-                                                onChange={e => setTempOrderLabel(e.target.value)}
-                                                style={{ width: '90px', padding: '6px', fontSize: '0.85rem', minHeight: '40px' }} />
-                                        )}
-                                        <input className={styles.input} value={tempOrderAmount} onChange={e => setTempOrderAmount(e.target.value)}
-                                            placeholder="Qty" type="number" style={{ width: '70px', padding: '6px', fontSize: '0.85rem', minHeight: '40px' }} />
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px auto', gap: '0.5rem', alignItems: 'end' }}>
+                                        <div>
+                                            <label style={{ display: 'block', fontSize: '0.72rem', color: '#6b7280', marginBottom: '0.25rem' }}>Label</label>
+                                            {tempOrderLabel !== 'Custom' ? (
+                                                <select className={styles.input} value={tempOrderLabel} onChange={e => setTempOrderLabel(e.target.value)}
+                                                    style={{ width: '100%', minHeight: '40px', fontSize: '0.85rem' }}>
+                                                    <option value="Unit">Unit</option>
+                                                    <option value="Pack">Pack</option>
+                                                    <option value="Case">Case</option>
+                                                    <option value="Custom">Custom…</option>
+                                                </select>
+                                            ) : (
+                                                <input className={styles.input} placeholder="Label name" autoFocus
+                                                    onChange={e => setTempOrderLabel(e.target.value)}
+                                                    style={{ width: '100%', minHeight: '40px', fontSize: '0.85rem' }} />
+                                            )}
+                                        </div>
+                                        <div>
+                                            <label style={{ display: 'block', fontSize: '0.72rem', color: '#6b7280', marginBottom: '0.25rem' }}>Qty</label>
+                                            <input className={styles.input} value={tempOrderAmount} onChange={e => setTempOrderAmount(e.target.value)}
+                                                placeholder="e.g. 12" type="number" style={{ width: '100%', minHeight: '40px', fontSize: '0.85rem' }} />
+                                        </div>
                                         <button type="button"
                                             onClick={() => {
                                                 const val = parseInt(tempOrderAmount);
@@ -1323,7 +1364,7 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                                                     if (!['Unit', 'Pack', 'Case'].includes(tempOrderLabel)) setTempOrderLabel('Pack');
                                                 }
                                             }}
-                                            style={{ background: '#10b981', color: 'white', border: 'none', borderRadius: '6px', padding: '6px 12px', cursor: 'pointer', minHeight: '40px', fontWeight: 700 }}>
+                                            style={{ background: '#10b981', color: 'white', border: 'none', borderRadius: '6px', padding: '0 14px', cursor: 'pointer', minHeight: '40px', fontWeight: 700, whiteSpace: 'nowrap' }}>
                                             + Add
                                         </button>
                                     </div>
