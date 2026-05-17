@@ -729,8 +729,8 @@ export default function LandingPage() {
                         {/* Base */}
                         <div className="flex flex-col p-8 bg-gray-800 rounded-3xl border border-gray-700 hover:border-gray-600 transition-colors">
                             <h3 className="text-xl font-medium text-gray-300 mb-2">Base Edition</h3>
-                            <div className="text-4xl font-bold text-white mb-1">$19.99<span className="text-lg text-gray-500 font-normal">/mo</span></div>
-                            <div className="text-sm text-gray-400 mb-2 font-medium">Or $200/yr (Save 15%)</div>
+                            <div className="text-4xl font-bold text-white mb-1">$120<span className="text-lg text-gray-500 font-normal">/mo</span></div>
+                            <div className="text-sm text-gray-400 mb-2 font-medium">Or $1,200/yr (Save 17%)</div>
                             <div className="inline-flex items-center gap-1.5 bg-blue-900/30 border border-blue-700/40 rounded-full px-3 py-1 text-blue-400 text-xs font-bold mb-6 w-fit mx-auto">
                                 <Smartphone className="w-3 h-3" /> Free Mobile App Included
                             </div>
@@ -762,8 +762,8 @@ export default function LandingPage() {
                                 <span className="bg-amber-500 text-black text-xs font-black px-4 py-1.5 rounded-full uppercase tracking-wide whitespace-nowrap shadow-lg">Most Popular</span>
                             </div>
                             <h3 className="text-xl font-medium text-white mb-2 mt-2">Pro Edition</h3>
-                            <div className="text-4xl font-bold text-white mb-1">$29.99<span className="text-lg text-gray-500 font-normal">/mo</span></div>
-                            <div className="text-sm text-amber-500/80 mb-2 font-medium">Or $300/yr (Save 15%)</div>
+                            <div className="text-4xl font-bold text-white mb-1">$160<span className="text-lg text-gray-500 font-normal">/mo</span></div>
+                            <div className="text-sm text-amber-500/80 mb-2 font-medium">Or $1,600/yr (Save 17%)</div>
                             <div className="inline-flex items-center gap-1.5 bg-blue-900/30 border border-blue-700/40 rounded-full px-3 py-1 text-blue-400 text-xs font-bold mb-6 w-fit mx-auto">
                                 <Smartphone className="w-3 h-3" /> Free Mobile App Included
                             </div>
