@@ -1365,55 +1365,6 @@ export default function UserSchedulerClient() {
                                                         />
                                                     )}
 
-                                                    {/* Overnight continuation block — starts at left edge of this column */}
-                                                    {overnightSpillovers.map(schedule => {
-                                                        const shiftDef = shifts.find(s => s.id === schedule.shift_id);
-                                                        const color = shiftDef?.color || '#3b82f6';
-                                                        const [eh, em] = schedule.end_time.split(':').map(Number);
-                                                        const widthPct = Math.max(((eh * 60 + em) / (24 * 60)) * 100, 3);
-                                                        const spillWide = widthPct >= 12;
-                                                        const spillMid  = widthPct >= 6;
-                                                        // Format end time as "5:00p"
-                                                        const fmtEnd = `${eh % 12 || 12}:${String(em).padStart(2,'0')}${eh >= 12 ? 'p' : 'a'}`;
-                                                        return (
-                                                            <div
-                                                                key={`spill-${schedule.id}`}
-                                                                className="absolute overflow-hidden cursor-pointer hover:brightness-110 hover:z-10 transition-all group"
-                                                                style={{
-                                                                    top: BAR_TOP,
-                                                                    height: BAR_H,
-                                                                    left: -3,
-                                                                    width: `calc(${widthPct}% + 3px)`,
-                                                                    backgroundColor: color,
-                                                                    opacity: 0.9,
-                                                                    borderRadius: '0 5px 5px 0',
-                                                                    border: '1px solid rgba(255,255,255,0.13)',
-                                                                    borderLeft: 'none',
-                                                                    backgroundImage: 'linear-gradient(to bottom, rgba(255,255,255,0.13) 0%, rgba(0,0,0,0.06) 100%)',
-                                                                    boxShadow: '0 2px 6px rgba(0,0,0,0.35)',
-                                                                    zIndex: 3,
-                                                                }}
-                                                                onClick={() => handleEdit(schedule)}
-                                                                title={`${schedule.shift_name} — overnight continuation, ends ${schedule.end_time}`}
-                                                            >
-                                                                <div className="h-full flex flex-col justify-center px-2 min-w-0">
-                                                                    {spillWide && (
-                                                                        <div className="text-white text-xs font-bold truncate leading-tight drop-shadow-sm">
-                                                                            {schedule.shift_name}
-                                                                        </div>
-                                                                    )}
-                                                                    {spillMid && (
-                                                                        <div className="text-white/80 text-[11px] truncate leading-tight drop-shadow-sm">
-                                                                            until {fmtEnd}
-                                                                        </div>
-                                                                    )}
-                                                                    {!spillMid && (
-                                                                        <div className="text-white/80 text-[10px] leading-tight drop-shadow-sm">↩</div>
-                                                                    )}
-                                                                </div>
-                                                            </div>
-                                                        );
-                                                    })}
 
                                                     {/* Shift bars — width = time span, height = fixed BAR_H */}
                                                     {daySchedules.map(schedule => {
@@ -1422,11 +1373,15 @@ export default function UserSchedulerClient() {
                                                         const [startH, startM] = schedule.start_time.split(':').map(Number);
                                                         const [endH, endM] = schedule.end_time.split(':').map(Number);
                                                         const startTotal = startH * 60 + startM;
-                                                        let endTotal = endH * 60 + endM;
+                                                        const endTotal = endH * 60 + endM;
                                                         const isOvernight = startTotal > endTotal;
-                                                        if (isOvernight) endTotal = 24 * 60;
                                                         const leftPct = (startTotal / (24 * 60)) * 100;
-                                                        const widthPct = Math.max(((endTotal - startTotal) / (24 * 60)) * 100, 3.5);
+                                                        // Overnight bars span into the next column as one box.
+                                                        // For the last day of the view there is no next column, so cap at midnight.
+                                                        const isLastDay = di === weekDays.length - 1;
+                                                        const widthPct = isOvernight && !isLastDay
+                                                            ? Math.max(((24 * 60 - startTotal + endTotal) / (24 * 60)) * 100, 3.5)
+                                                            : Math.max(((isOvernight ? 24 * 60 : endTotal) - startTotal) / (24 * 60) * 100, 3.5);
 
                                                         // Text tier based on bar width:
                                                         //  < 3%  → no text
@@ -1450,17 +1405,16 @@ export default function UserSchedulerClient() {
                                                                     top: BAR_TOP,
                                                                     height: BAR_H,
                                                                     left: `${leftPct}%`,
-                                                                    width: isOvernight ? `calc(${widthPct}% + 3px)` : `${widthPct}%`,
+                                                                    width: `${widthPct}%`,
                                                                     backgroundColor: color,
-                                                                    borderRadius: isOvernight ? '5px 0 0 5px' : '5px',
+                                                                    borderRadius: '5px',
                                                                     border: '1px solid rgba(255,255,255,0.14)',
-                                                                    borderRight: isOvernight ? 'none' : '1px solid rgba(255,255,255,0.14)',
                                                                     backgroundImage: 'linear-gradient(to bottom, rgba(255,255,255,0.15) 0%, rgba(0,0,0,0.06) 100%)',
                                                                     boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
-                                                                    zIndex: 3,
+                                                                    zIndex: isOvernight && !isLastDay ? 20 : 3,
                                                                 }}
                                                                 onClick={() => handleEdit(schedule)}
-                                                                title={`${schedule.shift_name} · ${schedule.start_time}–${schedule.end_time}${isOvernight ? ' → midnight' : ''}`}
+                                                                title={`${schedule.shift_name} · ${schedule.start_time}–${schedule.end_time}`}
                                                             >
                                                                 {/* Text content — tiered by bar width */}
                                                                 <div className="h-full flex flex-col justify-center px-2 min-w-0 pr-4">
@@ -1471,7 +1425,7 @@ export default function UserSchedulerClient() {
                                                                     )}
                                                                     {tier >= 2 && (
                                                                         <div className="text-white/90 text-[11px] truncate leading-tight drop-shadow-sm">
-                                                                            {startShort}–{endShort}{isOvernight ? ' →' : ''}
+                                                                            {startShort}–{endShort}
                                                                         </div>
                                                                     )}
                                                                     {tier === 1 && (
@@ -1481,13 +1435,6 @@ export default function UserSchedulerClient() {
                                                                     )}
                                                                     {/* tier 0: no text, just color */}
                                                                 </div>
-
-                                                                {/* Overnight pill at right edge */}
-                                                                {isOvernight && tier >= 2 && (
-                                                                    <div className="absolute right-0 top-0 bottom-0 flex items-center pr-1.5">
-                                                                        <span className="text-white/70 text-[8px] font-bold">→</span>
-                                                                    </div>
-                                                                )}
 
                                                                 {/* Recurring dot — top-left so it doesn't clash with delete button */}
                                                                 {schedule.recurring_group_id && (
@@ -1512,8 +1459,8 @@ export default function UserSchedulerClient() {
                             )}
 
                             {/* Time scale footer */}
-                            <div className="flex border-t border-gray-700" style={{ minWidth: '800px' }}>
-                                <div className="flex-shrink-0" style={{ width: '160px' }} />
+                            <div className="flex border-t border-gray-700" style={{ minWidth: '1000px' }}>
+                                <div className="flex-shrink-0" style={{ width: '180px' }} />
                                 {weekDays.map((_, i) => (
                                     <div key={i} className="flex-1 relative" style={{ height: '22px', overflow: 'visible' }}>
                                         {[0, 6, 12, 18].map(h => (
