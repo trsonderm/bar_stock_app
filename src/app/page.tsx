@@ -724,7 +724,7 @@ export default function LandingPage() {
                     <p className="text-gray-400 mb-12">No hidden fees. Free mobile app included. Cancel anytime.</p>
 
                     {/* ── Three equal-height pricing cards ── */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto mb-6">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto mb-6 pt-6 overflow-visible">
 
                         {/* Base */}
                         <div className="flex flex-col p-8 bg-gray-800 rounded-3xl border border-gray-700 hover:border-gray-600 transition-colors">
@@ -757,9 +757,9 @@ export default function LandingPage() {
                         </div>
 
                         {/* Pro — highlighted */}
-                        <div className="flex flex-col p-8 bg-gray-800 rounded-3xl border border-amber-500/40 hover:border-amber-500 transition-colors transform scale-105 shadow-2xl shadow-amber-900/10 z-10 relative">
-                            <div className="absolute -top-4 left-1/2 -translate-x-1/2">
-                                <span className="bg-amber-500 text-black text-xs font-black px-4 py-1.5 rounded-full uppercase tracking-wide">Most Popular</span>
+                        <div className="flex flex-col p-8 bg-gray-800 rounded-3xl border border-amber-500/40 hover:border-amber-500 transition-colors transform scale-105 shadow-2xl shadow-amber-900/10 z-10 relative overflow-visible">
+                            <div className="absolute -top-5 left-0 right-0 flex justify-center">
+                                <span className="bg-amber-500 text-black text-xs font-black px-4 py-1.5 rounded-full uppercase tracking-wide whitespace-nowrap shadow-lg">Most Popular</span>
                             </div>
                             <h3 className="text-xl font-medium text-white mb-2 mt-2">Pro Edition</h3>
                             <div className="text-4xl font-bold text-white mb-1">$29.99<span className="text-lg text-gray-500 font-normal">/mo</span></div>

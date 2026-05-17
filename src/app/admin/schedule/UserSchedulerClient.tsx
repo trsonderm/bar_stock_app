@@ -1237,8 +1237,8 @@ export default function UserSchedulerClient() {
                     {viewMode === 'timeline' && (
                         <div className="overflow-x-auto border border-gray-700 rounded-b-lg bg-gray-900">
                             {/* Day header row */}
-                            <div className="flex" style={{ minWidth: '800px' }}>
-                                <div className="flex-shrink-0 bg-gray-800 border-r border-b border-gray-700" style={{ width: '160px' }} />
+                            <div className="flex" style={{ minWidth: '1000px' }}>
+                                <div className="flex-shrink-0 bg-gray-800 border-r border-b border-gray-700" style={{ width: '180px' }} />
                                 {weekDays.map((day, i) => {
                                     const isToday = formatLocalDate(day) === formatLocalDate(new Date());
                                     return (
@@ -1274,15 +1274,15 @@ export default function UserSchedulerClient() {
                                 <div className="text-center text-gray-500 py-10 text-sm">No employees found for this location.</div>
                             ) : (
                                 users.map(user => (
-                                    <div key={user.id} className="flex border-b border-gray-800/80 hover:bg-white/[0.02] transition-colors" style={{ minWidth: '800px', height: '58px' }}>
+                                    <div key={user.id} className="flex border-b border-gray-800/80 hover:bg-white/[0.02] transition-colors" style={{ minWidth: '1000px', height: '76px' }}>
                                         {/* Name column — fixed, vertically centred */}
                                         <div
                                             className="flex-shrink-0 border-r border-gray-800 flex items-center px-3"
-                                            style={{ width: '160px', height: '58px' }}
+                                            style={{ width: '180px', height: '76px' }}
                                         >
                                             <div className="min-w-0">
-                                                <div className="text-white text-xs font-semibold leading-tight truncate">{user.first_name} {user.last_name}</div>
-                                                {user.position && <div className="text-blue-400 text-[10px] leading-tight truncate mt-0.5">{user.position}</div>}
+                                                <div className="text-white text-sm font-semibold leading-tight truncate">{user.first_name} {user.last_name}</div>
+                                                {user.position && <div className="text-blue-400 text-xs leading-tight truncate mt-0.5">{user.position}</div>}
                                             </div>
                                         </div>
 
@@ -1302,14 +1302,14 @@ export default function UserSchedulerClient() {
                                             });
 
                                             // Fixed bar geometry — all bars are the same height regardless of row content
-                                            const BAR_TOP = 10;   // px from top of 58px row
-                                            const BAR_H   = 38;   // px — leaves 10px bottom gap
+                                            const BAR_TOP = 12;   // px from top of 76px row
+                                            const BAR_H   = 52;   // px — leaves 12px bottom gap
 
                                             return (
                                                 <div
                                                     key={di}
                                                     className={`flex-1 border-r border-gray-800/60 relative ${isToday ? 'bg-blue-950/20' : ''}`}
-                                                    style={{ height: '58px', overflow: 'visible' }}
+                                                    style={{ height: '76px', overflow: 'visible' }}
                                                     onDragOver={(e) => handleDragOver(e, dateStr, user.id)}
                                                     onDragLeave={handleDragLeave}
                                                     onDrop={(e) => handleDrop(e, dateStr, user.id)}
@@ -1396,19 +1396,19 @@ export default function UserSchedulerClient() {
                                                                 onClick={() => handleEdit(schedule)}
                                                                 title={`${schedule.shift_name} — overnight continuation, ends ${schedule.end_time}`}
                                                             >
-                                                                <div className="h-full flex flex-col justify-center px-1.5 min-w-0">
+                                                                <div className="h-full flex flex-col justify-center px-2 min-w-0">
                                                                     {spillWide && (
-                                                                        <div className="text-white text-[10px] font-bold truncate leading-tight drop-shadow-sm">
+                                                                        <div className="text-white text-xs font-bold truncate leading-tight drop-shadow-sm">
                                                                             {schedule.shift_name}
                                                                         </div>
                                                                     )}
                                                                     {spillMid && (
-                                                                        <div className="text-white/80 text-[9px] truncate leading-tight drop-shadow-sm">
+                                                                        <div className="text-white/80 text-[11px] truncate leading-tight drop-shadow-sm">
                                                                             until {fmtEnd}
                                                                         </div>
                                                                     )}
                                                                     {!spillMid && (
-                                                                        <div className="text-white/80 text-[8px] leading-tight drop-shadow-sm">↩</div>
+                                                                        <div className="text-white/80 text-[10px] leading-tight drop-shadow-sm">↩</div>
                                                                     )}
                                                                 </div>
                                                             </div>
@@ -1429,15 +1429,15 @@ export default function UserSchedulerClient() {
                                                         const widthPct = Math.max(((endTotal - startTotal) / (24 * 60)) * 100, 3.5);
 
                                                         // Text tier based on bar width:
-                                                        //  < 4%  → no text
-                                                        //  4–9%  → start time only (short format)
-                                                        //  9–17% → "start–end" on one line
-                                                        //  ≥ 17% → shift name + time on two lines
+                                                        //  < 3%  → no text
+                                                        //  3–8%  → start time only (short format)
+                                                        //  8–15% → "start–end" on one line
+                                                        //  ≥ 15% → shift name + time on two lines
                                                         const fmtShort = (h: number, m: number) =>
                                                             `${h % 12 || 12}:${String(m).padStart(2,'0')}${h >= 12 ? 'p' : 'a'}`;
                                                         const startShort = fmtShort(startH, startM);
                                                         const endShort   = fmtShort(endH, endM);
-                                                        const tier = widthPct < 4 ? 0 : widthPct < 9 ? 1 : widthPct < 17 ? 2 : 3;
+                                                        const tier = widthPct < 3 ? 0 : widthPct < 8 ? 1 : widthPct < 15 ? 2 : 3;
 
                                                         return (
                                                             <div
@@ -1465,17 +1465,17 @@ export default function UserSchedulerClient() {
                                                                 {/* Text content — tiered by bar width */}
                                                                 <div className="h-full flex flex-col justify-center px-2 min-w-0 pr-4">
                                                                     {tier >= 3 && (
-                                                                        <div className="text-white text-[10px] font-bold truncate leading-tight drop-shadow-sm">
+                                                                        <div className="text-white text-xs font-bold truncate leading-tight drop-shadow-sm">
                                                                             {schedule.shift_name}
                                                                         </div>
                                                                     )}
                                                                     {tier >= 2 && (
-                                                                        <div className="text-white/85 text-[9px] truncate leading-tight drop-shadow-sm">
+                                                                        <div className="text-white/90 text-[11px] truncate leading-tight drop-shadow-sm">
                                                                             {startShort}–{endShort}{isOvernight ? ' →' : ''}
                                                                         </div>
                                                                     )}
                                                                     {tier === 1 && (
-                                                                        <div className="text-white text-[8px] font-semibold truncate leading-tight drop-shadow-sm">
+                                                                        <div className="text-white text-[10px] font-semibold truncate leading-tight drop-shadow-sm">
                                                                             {startShort}
                                                                         </div>
                                                                     )}
