@@ -9,5 +9,11 @@ export default async function AdminDashboardPage() {
         redirect('/admin/login');
     }
 
-    return <AdminDashboardClient subscriptionPlan={session.subscriptionPlan || 'base'} />;
+    return (
+        <AdminDashboardClient
+            subscriptionPlan={session.subscriptionPlan || 'base'}
+            role={session.role}
+            permissions={session.permissions || []}
+        />
+    );
 }
