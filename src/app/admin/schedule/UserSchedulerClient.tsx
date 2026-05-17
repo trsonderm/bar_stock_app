@@ -1035,92 +1035,71 @@ export default function UserSchedulerClient() {
                                             <div className="font-medium text-white print:text-black">{user.first_name} {user.last_name}</div>
                                             {user.position && <div style={{ color: '#60a5fa', fontSize: '0.75rem' }}>{user.position}</div>}
                                         </td>
-                                        {weekDays.map(d => {
+                                        {weekDays.map((d, di) => {
                                             const dateStr = formatLocalDate(d);
-
-                                            // Shifts starting today
+                                            const isLastDay = di === weekDays.length - 1;
                                             const todaysSchedules = schedules.filter(s => s.user_id === user.id && s.date.split('T')[0] === dateStr);
-
-                                            // Overnight spillovers from previous day
-                                            const prevDateStr = formatLocalDate(new Date(d.getFullYear(), d.getMonth(), d.getDate() - 1));
-                                            const spilloverSchedules = schedules.filter(s => {
-                                                if (s.user_id !== user.id || s.date.split('T')[0] !== prevDateStr) return false;
-                                                const start = parseInt(s.start_time.replace(':', ''));
-                                                const end = parseInt(s.end_time.replace(':', ''));
-                                                return start > end;
-                                            });
 
                                             return (
                                                 <td
                                                     key={dateStr}
-                                                    className="p-2 border-b border-gray-800 border-r border-gray-800 relative h-24 align-top print:border-black"
-                                                    onDragOver={handleDragOver}
+                                                    className="border-b border-gray-800 border-r border-gray-800 relative h-24 print:border-black"
+                                                    style={{ overflow: 'visible', padding: 0 }}
+                                                    onDragOver={(e) => handleDragOver(e, dateStr, user.id)}
+                                                    onDragLeave={handleDragLeave}
                                                     onDrop={(e) => handleDrop(e, dateStr, user.id)}
                                                 >
-                                                    <div className="relative w-full h-full">
-                                                        {/* Overnight spillovers — visual only, no text */}
-                                                        {spilloverSchedules.map(schedule => {
-                                                            const shiftDef = shifts.find(s => s.id === schedule.shift_id);
-                                                            const color = shiftDef?.color || '#3b82f6';
-                                                            const [endH, endM] = schedule.end_time.split(':').map(Number);
-                                                            const widthPct = ((endH * 60 + endM) / (24 * 60)) * 100;
-                                                            return (
-                                                                <div
-                                                                    key={`spill-${schedule.id}`}
-                                                                    className="absolute top-0 h-1/3 rounded-r opacity-50 cursor-pointer"
-                                                                    style={{ left: 0, width: `${widthPct}%`, backgroundColor: color, zIndex: 5 }}
-                                                                    onClick={() => handleEdit(schedule)}
-                                                                />
-                                                            );
-                                                        })}
+                                                    <div className="relative w-full h-full" style={{ overflow: 'visible' }}>
+                                                        {/* Subtle hour grid lines */}
+                                                        {[6, 12, 18].map(h => (
+                                                            <div key={h} className="absolute inset-y-0 border-l border-gray-700/30" style={{ left: `${(h / 24) * 100}%` }} />
+                                                        ))}
 
-                                                        {/* Render Today's Shifts */}
                                                         {todaysSchedules.map(schedule => {
                                                             const shiftDef = shifts.find(s => s.id === schedule.shift_id);
                                                             const color = shiftDef?.color || '#3b82f6';
-
-                                                            const startH = parseInt(schedule.start_time.split(':')[0]);
-                                                            const startM = parseInt(schedule.start_time.split(':')[1]);
+                                                            const [startH, startM] = schedule.start_time.split(':').map(Number);
+                                                            const [endH, endM] = schedule.end_time.split(':').map(Number);
                                                             const startTotal = startH * 60 + startM;
-
-                                                            let endH = parseInt(schedule.end_time.split(':')[0]);
-                                                            const endM = parseInt(schedule.end_time.split(':')[1]);
-                                                            let endTotal = endH * 60 + endM;
-
-                                                            let isOvernight = startTotal > endTotal;
-                                                            if (isOvernight) endTotal = 24 * 60; // Helper for width calc on this day
-
+                                                            const endTotal = endH * 60 + endM;
+                                                            const isOvernight = startTotal > endTotal;
                                                             const leftPct = (startTotal / (24 * 60)) * 100;
-                                                            const widthPct = ((endTotal - startTotal) / (24 * 60)) * 100;
+                                                            const widthPct = isOvernight && !isLastDay
+                                                                ? Math.max(((24 * 60 - startTotal + endTotal) / (24 * 60)) * 100, 3.5)
+                                                                : Math.max(((isOvernight ? 24 * 60 : endTotal) - startTotal) / (24 * 60) * 100, 3.5);
+                                                            const fmtShort = (h: number, m: number) =>
+                                                                `${h % 12 || 12}:${String(m).padStart(2, '0')}${h >= 12 ? 'p' : 'a'}`;
 
                                                             return (
                                                                 <div
                                                                     key={schedule.id}
                                                                     draggable
                                                                     onDragStart={(e) => handleDragStart(e, schedule)}
-                                                                    className="absolute h-1/2 rounded px-2 text-xs flex flex-col justify-center overflow-hidden group cursor-grab active:cursor-grabbing hover:brightness-110 hover:z-20 transition-all shadow-sm"
+                                                                    onDragEnd={() => { setDraggedSchedule(null); setDragOverCell(null); }}
+                                                                    className="absolute rounded px-2 flex flex-col justify-center overflow-hidden group cursor-grab active:cursor-grabbing hover:brightness-110 transition-all"
                                                                     style={{
                                                                         left: `${leftPct}%`,
                                                                         width: `${widthPct}%`,
-                                                                        top: '30%',
+                                                                        top: '12%',
+                                                                        height: '76%',
                                                                         backgroundColor: color,
-                                                                        color: 'white',
-                                                                        border: '1px solid white'
+                                                                        border: '1px solid rgba(255,255,255,0.14)',
+                                                                        backgroundImage: 'linear-gradient(to bottom, rgba(255,255,255,0.15) 0%, rgba(0,0,0,0.06) 100%)',
+                                                                        boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
+                                                                        zIndex: isOvernight && !isLastDay ? 20 : 3,
                                                                     }}
-                                                                    // On Click -> Edit
                                                                     onClick={() => handleEdit(schedule)}
+                                                                    title={`${schedule.shift_name} · ${schedule.start_time}–${schedule.end_time}`}
                                                                 >
-                                                                    <div className="font-bold truncate">{schedule.shift_name}</div>
-                                                                    <div className="text-[10px] truncate">{(() => { const fT = (t: string) => { const [h, m] = t.split(':').map(Number); return `${h % 12 || 12}:${String(m).padStart(2,'0')}${h >= 12 ? 'p' : 'a'}`; }; return `${fT(schedule.start_time)}–${fT(schedule.end_time)}`; })()}</div>
-                                                                    {schedule.recurring_group_id && <div className="absolute right-1 bottom-1 w-1.5 h-1.5 rounded-full bg-white opacity-80" title="Repeating Shift" />}
-
-                                                                    {/* Hover Delete */}
+                                                                    <div className="text-white text-xs font-bold truncate leading-tight drop-shadow-sm">{schedule.shift_name}</div>
+                                                                    <div className="text-white/90 text-[11px] truncate leading-tight drop-shadow-sm">{fmtShort(startH, startM)}–{fmtShort(endH, endM)}</div>
+                                                                    {schedule.recurring_group_id && <div className="absolute left-1.5 top-1.5 w-1.5 h-1.5 rounded-full bg-white/60" title="Recurring" />}
                                                                     <button
-                                                                        onClick={(e) => { e.stopPropagation(); handleDelete(schedule.id, schedule); }}
-                                                                        className="absolute right-0 top-0 bottom-0 bg-red-600 px-1 opacity-0 group-hover:opacity-100 transition-opacity flex items-center"
                                                                         title="Delete"
+                                                                        onClick={(e) => { e.stopPropagation(); handleDelete(schedule.id, schedule); }}
+                                                                        className="absolute right-0 top-0 bottom-0 bg-black/40 px-1.5 opacity-0 group-hover:opacity-100 transition-opacity flex items-center rounded-r-[4px] backdrop-blur-sm"
                                                                     >
-                                                                        <Trash2 size={10} />
+                                                                        <Trash2 size={9} className="text-white" />
                                                                     </button>
                                                                 </div>
                                                             );
