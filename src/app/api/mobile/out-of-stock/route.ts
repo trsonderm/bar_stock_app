@@ -22,7 +22,8 @@ export async function GET(req: NextRequest) {
                  FROM items i
                  LEFT JOIN inventory inv ON inv.item_id = i.id AND inv.location_id = $2
                  WHERE i.organization_id = $1
-                   AND i.include_in_low_stock_alerts = TRUE
+                   AND i.archived_at IS NULL
+                   AND COALESCE(i.include_in_low_stock_alerts, TRUE) = TRUE
                    AND (
                      COALESCE(inv.quantity, 0) = 0
                      OR (i.low_stock_threshold IS NOT NULL AND COALESCE(inv.quantity, 0) <= i.low_stock_threshold)
@@ -38,7 +39,8 @@ export async function GET(req: NextRequest) {
                  FROM items i
                  LEFT JOIN inventory inv ON inv.item_id = i.id
                  WHERE i.organization_id = $1
-                   AND i.include_in_low_stock_alerts = TRUE
+                   AND i.archived_at IS NULL
+                   AND COALESCE(i.include_in_low_stock_alerts, TRUE) = TRUE
                  GROUP BY i.id, i.name, i.type, i.secondary_type, i.low_stock_threshold, i.order_size, i.supplier
                  HAVING COALESCE(SUM(inv.quantity), 0) = 0
                      OR (i.low_stock_threshold IS NOT NULL AND COALESCE(SUM(inv.quantity), 0) <= i.low_stock_threshold)
