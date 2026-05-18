@@ -42,6 +42,8 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
     const [canAddIncident, setCanAddIncident] = useState(false);
     const [isAdmin, setIsAdmin] = useState(false);
     const [hideFromScheduler, setHideFromScheduler] = useState(false);
+    const [canApproveSchedule, setCanApproveSchedule] = useState(false);
+    const [scheduleApprovalLocations, setScheduleApprovalLocations] = useState<number[]>([]);
     const [submitting, setSubmitting] = useState(false);
 
     // Locations & Shifts
@@ -165,6 +167,13 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
         if (canAddBarred) permissions.push('add_barred');
         if (canDeleteBarred) permissions.push('delete_barred');
         if (canAddIncident) permissions.push('add_incident');
+        if (canApproveSchedule) {
+            if (scheduleApprovalLocations.length > 0) {
+                scheduleApprovalLocations.forEach(locId => permissions.push(`approve_schedule_${locId}`));
+            } else {
+                permissions.push('approve_schedule');
+            }
+        }
 
         const role = isAdmin ? 'admin' : 'user';
 
@@ -233,6 +242,8 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
         setCanAddIncident(false);
         setIsAdmin(false);
         setHideFromScheduler(false);
+        setCanApproveSchedule(false);
+        setScheduleApprovalLocations([]);
         setEditingId(null);
         setAssignedLocations([]);
         setAssignedShifts([]);
@@ -269,8 +280,11 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
             if (!Array.isArray(p)) return '';
 
             if (p.includes('all')) return 'Full Admin';
-            const map: any = { 'add_stock': 'Add Stock', 'subtract_stock': 'Subtract Stock', 'add_item_name': 'Add Items', 'audit': 'Audit', 'view_reports': 'View Reports', 'manage_products': 'Manage Products', 'add_barred': 'Add Barred', 'delete_barred': 'Remove Barred', 'add_incident': 'Add Incident' };
-            return p.map((perm: string) => map[perm] || perm).join(', ');
+            const map: any = { 'add_stock': 'Add Stock', 'subtract_stock': 'Subtract Stock', 'add_item_name': 'Add Items', 'audit': 'Audit', 'view_reports': 'View Reports', 'manage_products': 'Manage Products', 'add_barred': 'Add Barred', 'delete_barred': 'Remove Barred', 'add_incident': 'Add Incident', 'approve_schedule': 'Approve Schedule' };
+            return p.map((perm: string) => {
+                if (perm.startsWith('approve_schedule_')) return 'Approve Schedule';
+                return map[perm] || perm;
+            }).filter((v, i, a) => a.indexOf(v) === i).join(', ');
         } catch (e) {
             console.error('parsePerms fatal:', e);
             return '';
@@ -309,6 +323,9 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
         setCanAddIncident(perms.includes('add_incident') || perms.includes('all'));
         setIsAdmin(u.role === 'admin');
         setHideFromScheduler(u.hide_from_scheduler || false);
+        const approveLocs = perms.filter((p: string) => p.startsWith('approve_schedule_')).map((p: string) => Number(p.split('_').pop()));
+        setCanApproveSchedule(perms.includes('approve_schedule') || approveLocs.length > 0);
+        setScheduleApprovalLocations(approveLocs);
         setAssignedLocations(u.assigned_locations || []);
 
         // The API now returns assigned_shifts
@@ -316,10 +333,9 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
     };
 
     return (
-        <>
-            {/* Top row: form + invite sidebar */}
-            <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-start', marginBottom: '1.5rem' }}>
-            <div className={styles.card} style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-start' }}>
+            {/* Left: form */}
+            <div className={styles.card} style={{ flex: '0 0 55%', minWidth: 0 }}>
                     <div className={styles.cardTitle}>{editingId ? 'Edit User' : 'Create New User'}</div>
                     <form onSubmit={handleSubmit}>
                         <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
@@ -531,6 +547,38 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
                                     <input type="checkbox" checked={isAdmin} readOnly style={{ width: '18px', height: '18px', accentColor: 'white', cursor: 'pointer' }} />
                                     <span style={{ fontWeight: 500 }}>Administrator</span>
                                 </div>
+                                <div
+                                    onClick={() => { setCanApproveSchedule(!canApproveSchedule); if (canApproveSchedule) setScheduleApprovalLocations([]); }}
+                                    style={{
+                                        background: canApproveSchedule ? '#059669' : '#374151', color: 'white',
+                                        padding: '0.75rem', borderRadius: '0.5rem', cursor: 'pointer',
+                                        display: 'flex', alignItems: 'center', gap: '0.75rem', transition: 'all 0.2s', border: '1px solid #4b5563'
+                                    }}>
+                                    <input type="checkbox" checked={canApproveSchedule} readOnly style={{ width: '18px', height: '18px', accentColor: 'white', cursor: 'pointer' }} />
+                                    <span style={{ fontWeight: 500 }}>Approve Schedules</span>
+                                </div>
+                                {canApproveSchedule && locations.length > 0 && (
+                                    <div style={{ gridColumn: '1 / -1', background: '#111827', borderRadius: '0.5rem', padding: '0.75rem', border: '1px solid #374151' }}>
+                                        <div style={{ color: '#9ca3af', fontSize: '0.78rem', marginBottom: '0.5rem' }}>
+                                            Restrict approval to specific locations: <span style={{ color: '#6b7280' }}>(leave unchecked for all locations)</span>
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                                            {locations.map(loc => (
+                                                <label key={loc.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'white', cursor: 'pointer' }}>
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={scheduleApprovalLocations.includes(loc.id)}
+                                                        onChange={e => {
+                                                            if (e.target.checked) setScheduleApprovalLocations([...scheduleApprovalLocations, loc.id]);
+                                                            else setScheduleApprovalLocations(scheduleApprovalLocations.filter(id => id !== loc.id));
+                                                        }}
+                                                    />
+                                                    {loc.name}
+                                                </label>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
 
@@ -555,8 +603,10 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
                     </form>
                 </div>
 
-                {/* ── Invite by Email sidebar ──────────────────────────────────── */}
-                <div className={styles.card} style={{ width: '280px', flexShrink: 0 }}>
+            {/* Right column: invite + users list */}
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '1.5rem', minWidth: 0 }}>
+                {/* ── Invite by Email ──────────────────────────────────── */}
+                <div className={styles.card}>
                     <div className={styles.cardTitle} style={{ marginBottom: '0.75rem', fontSize: '0.9rem' }}>✉ Invite by Email</div>
                     <p style={{ color: '#9ca3af', fontSize: '0.78rem', margin: '0 0 0.75rem' }}>
                         Send a registration link. The recipient sets up their own name, password, and PIN.
@@ -611,13 +661,11 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
                         </div>
                     )}
                 </div>
-            </div>{/* end top row */}
 
-            {/* Users table */}
-            <div className={styles.grid}>
-                <div className={styles.card} style={{ gridColumn: 'span 2' }}>
+                {/* Existing Users */}
+                <div className={styles.card}>
                     <div className={styles.cardTitle}>Existing Users</div>
-                    <div className={styles.tableContainer}>
+                    <div className={styles.tableContainer} style={{ maxHeight: '520px', overflowY: 'auto' }}>
                         <table className={styles.table}>
                             <thead>
                                 <tr>
@@ -663,7 +711,7 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
                         </table>
                     </div>
                 </div>
-            </div >
-        </>
+            </div>
+        </div>
     );
 }

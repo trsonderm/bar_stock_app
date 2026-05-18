@@ -382,8 +382,10 @@ RESPONSE (200 OK):
 
 
 ────────────────────────────────────────────────────────────────────────────────
-7. OUT-OF-STOCK / LOW STOCK ITEMS
+7. STOCK — Out-of-stock alerts and quantity adjustments
 ────────────────────────────────────────────────────────────────────────────────
+
+── Get low/out-of-stock items ──────────────────────────────────────────────────
 
 GET /api/mobile/out-of-stock
 
@@ -413,6 +415,46 @@ NOTES:
 - "out_of_stock" = items with quantity exactly 0
 - "low_stock" = items with quantity > 0 but <= low_stock_threshold
 - Items sorted by quantity ascending (most urgent first)
+- Only items with include_in_low_stock_alerts = true are returned
+
+── Adjust stock quantity ───────────────────────────────────────────────────────
+
+POST /api/mobile/stock/adjust
+
+Required permissions: add_stock (for positive change) or subtract_stock (for negative change).
+Admins (role = "admin" or permissions includes "all") can always adjust.
+
+REQUEST BODY:
+{
+  "item_id": 88,           ← required
+  "change": -1,            ← required, non-zero; negative = subtract, positive = add
+  "location_id": 2,        ← optional — defaults to the user's first assigned location
+  "note": "spilled bottle" ← optional, recorded in activity log
+}
+
+RESPONSE (200 OK):
+{
+  "item_id": 88,
+  "item_name": "Tito's Vodka 750ml",
+  "location_id": 2,
+  "change": -1,
+  "quantity_after": 4
+}
+
+ERROR RESPONSES:
+  400 { "error": "item_id is required" }
+  400 { "error": "change must be a non-zero number" }
+  400 { "error": "No locations configured" }
+  403 { "error": "Permission denied: add_stock required" }
+  403 { "error": "Permission denied: subtract_stock required" }
+  404 { "error": "Item not found" }
+  404 { "error": "Location not found" }
+
+NOTES:
+- Quantity is floored at 0 (will never go negative).
+- Each adjustment is written to the activity log (action: ADD_STOCK or SUBTRACT_STOCK).
+- Do NOT call /api/v1/inventory/adjust from mobile — that endpoint requires an
+  API key (tsk_live_...) and will reject JWT Bearer tokens with 401.
 
 
 ────────────────────────────────────────────────────────────────────────────────
@@ -1422,6 +1464,7 @@ DELETE  /api/mobile/feed/comments?id=…            Bearer  Delete a comment
 GET     /api/mobile/barred                        Bearer  Barred persons list
 POST    /api/mobile/barred                        Bearer  Add a barred person (admin/permission)
 GET     /api/mobile/out-of-stock                  Bearer  Low/out-of-stock inventory
+POST    /api/mobile/stock/adjust                  Bearer  Add or subtract stock quantity
 GET     /api/mobile/schedule                      Bearer  Full org schedule with pending swaps
 GET     /api/mobile/schedule/swap                 Bearer  List my shift swap requests
 POST    /api/mobile/schedule/swap                 Bearer  Create a shift swap request
