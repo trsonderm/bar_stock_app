@@ -40,6 +40,7 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
     const [canAddBarred, setCanAddBarred] = useState(false);
     const [canDeleteBarred, setCanDeleteBarred] = useState(false);
     const [canAddIncident, setCanAddIncident] = useState(false);
+    const [canReviewIncidents, setCanReviewIncidents] = useState(false);
     const [isAdmin, setIsAdmin] = useState(false);
     const [hideFromScheduler, setHideFromScheduler] = useState(false);
     const [canApproveSchedule, setCanApproveSchedule] = useState(false);
@@ -167,6 +168,7 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
         if (canAddBarred) permissions.push('add_barred');
         if (canDeleteBarred) permissions.push('delete_barred');
         if (canAddIncident) permissions.push('add_incident');
+        if (canReviewIncidents) permissions.push('review_incidents');
         if (canApproveSchedule) {
             if (scheduleApprovalLocations.length > 0) {
                 scheduleApprovalLocations.forEach(locId => permissions.push(`approve_schedule_${locId}`));
@@ -240,6 +242,7 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
         setCanAddBarred(false);
         setCanDeleteBarred(false);
         setCanAddIncident(false);
+        setCanReviewIncidents(false);
         setIsAdmin(false);
         setHideFromScheduler(false);
         setCanApproveSchedule(false);
@@ -280,7 +283,7 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
             if (!Array.isArray(p)) return '';
 
             if (p.includes('all')) return 'Full Admin';
-            const map: any = { 'add_stock': 'Add Stock', 'subtract_stock': 'Subtract Stock', 'add_item_name': 'Add Items', 'audit': 'Audit', 'view_reports': 'View Reports', 'manage_products': 'Manage Products', 'add_barred': 'Add Barred', 'delete_barred': 'Remove Barred', 'add_incident': 'Add Incident', 'approve_schedule': 'Approve Schedule' };
+            const map: any = { 'add_stock': 'Add Stock', 'subtract_stock': 'Subtract Stock', 'add_item_name': 'Add Items', 'audit': 'Audit', 'view_reports': 'View Reports', 'manage_products': 'Manage Products', 'add_barred': 'Add Barred', 'delete_barred': 'Remove Barred', 'add_incident': 'Add Incident', 'review_incidents': 'Review Incidents', 'approve_schedule': 'Approve Schedule' };
             return p.map((perm: string) => {
                 if (perm.startsWith('approve_schedule_')) return 'Approve Schedule';
                 return map[perm] || perm;
@@ -321,6 +324,7 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
         setCanAddBarred(perms.includes('add_barred') || perms.includes('all'));
         setCanDeleteBarred(perms.includes('delete_barred') || perms.includes('all'));
         setCanAddIncident(perms.includes('add_incident') || perms.includes('all'));
+        setCanReviewIncidents(perms.includes('review_incidents') || perms.includes('all'));
         setIsAdmin(u.role === 'admin');
         setHideFromScheduler(u.hide_from_scheduler || false);
         const approveLocs = perms.filter((p: string) => p.startsWith('approve_schedule_')).map((p: string) => Number(p.split('_').pop()));
@@ -445,140 +449,110 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
                         </div>
 
                         <div style={{ marginBottom: '1rem' }}>
-                            <div className={styles.statLabel} style={{ marginBottom: '0.5rem' }}>Permissions & Access</div>
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '0.75rem' }}>
-                                <div
-                                    onClick={() => setCanAddStock(!canAddStock)}
-                                    style={{
-                                        background: canAddStock ? '#3b82f6' : '#374151', color: 'white',
-                                        padding: '0.75rem', borderRadius: '0.5rem', cursor: 'pointer',
-                                        display: 'flex', alignItems: 'center', gap: '0.75rem', transition: 'all 0.2s', border: '1px solid #4b5563'
-                                    }}>
-                                    <input type="checkbox" checked={canAddStock} readOnly style={{ width: '18px', height: '18px', accentColor: 'white', cursor: 'pointer' }} />
-                                    <span style={{ fontWeight: 500 }}>Add Stock (+)</span>
+                            <div className={styles.statLabel} style={{ marginBottom: '0.75rem' }}>Permissions & Access</div>
+
+                            {/* Inventory */}
+                            <div style={{ marginBottom: '1rem' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                                    <div style={{ width: '3px', height: '14px', borderRadius: '2px', background: '#0ea5e9' }} />
+                                    <span style={{ color: '#0ea5e9', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Inventory</span>
                                 </div>
-                                <div
-                                    onClick={() => setCanSubtractStock(!canSubtractStock)}
-                                    style={{
-                                        background: canSubtractStock ? '#3b82f6' : '#374151', color: 'white',
-                                        padding: '0.75rem', borderRadius: '0.5rem', cursor: 'pointer',
-                                        display: 'flex', alignItems: 'center', gap: '0.75rem', transition: 'all 0.2s', border: '1px solid #4b5563'
-                                    }}>
-                                    <input type="checkbox" checked={canSubtractStock} readOnly style={{ width: '18px', height: '18px', accentColor: 'white', cursor: 'pointer' }} />
-                                    <span style={{ fontWeight: 500 }}>Subtract Stock (-)</span>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(175px, 1fr))', gap: '0.5rem' }}>
+                                    {([
+                                        { label: 'Add Stock (+)', val: canAddStock, set: setCanAddStock },
+                                        { label: 'Subtract Stock (−)', val: canSubtractStock, set: setCanSubtractStock },
+                                        { label: 'Create Products', val: canAddItem, set: setCanAddItem },
+                                        { label: 'Manage Products', val: canManageProducts, set: setCanManageProducts },
+                                        { label: 'Perform Audits', val: canAudit, set: setCanAudit },
+                                        { label: 'View Reporting', val: canViewReports, set: setCanViewReports },
+                                    ] as { label: string; val: boolean; set: (v: boolean) => void }[]).map(({ label, val, set }) => (
+                                        <div key={label} onClick={() => set(!val)} style={{ background: val ? '#0c4a6e' : '#1e293b', color: 'white', padding: '0.6rem 0.75rem', borderRadius: '0.5rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.6rem', transition: 'all 0.15s', border: `1px solid ${val ? '#0ea5e9' : '#334155'}` }}>
+                                            <input type="checkbox" checked={val} readOnly style={{ width: '15px', height: '15px', accentColor: '#0ea5e9', cursor: 'pointer', flexShrink: 0 }} />
+                                            <span style={{ fontWeight: 500, fontSize: '0.85rem' }}>{label}</span>
+                                        </div>
+                                    ))}
                                 </div>
-                                <div
-                                    onClick={() => setCanAddItem(!canAddItem)}
-                                    style={{
-                                        background: canAddItem ? '#3b82f6' : '#374151', color: 'white',
-                                        padding: '0.75rem', borderRadius: '0.5rem', cursor: 'pointer',
-                                        display: 'flex', alignItems: 'center', gap: '0.75rem', transition: 'all 0.2s', border: '1px solid #4b5563'
-                                    }}>
-                                    <input type="checkbox" checked={canAddItem} readOnly style={{ width: '18px', height: '18px', accentColor: 'white', cursor: 'pointer' }} />
-                                    <span style={{ fontWeight: 500 }}>Create Products</span>
+                            </div>
+
+                            {/* Barred List */}
+                            <div style={{ marginBottom: '1rem' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                                    <div style={{ width: '3px', height: '14px', borderRadius: '2px', background: '#a78bfa' }} />
+                                    <span style={{ color: '#a78bfa', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Barred List</span>
                                 </div>
-                                <div
-                                    onClick={() => setCanAudit(!canAudit)}
-                                    style={{
-                                        background: canAudit ? '#3b82f6' : '#374151', color: 'white',
-                                        padding: '0.75rem', borderRadius: '0.5rem', cursor: 'pointer',
-                                        display: 'flex', alignItems: 'center', gap: '0.75rem', transition: 'all 0.2s', border: '1px solid #4b5563'
-                                    }}>
-                                    <input type="checkbox" checked={canAudit} readOnly style={{ width: '18px', height: '18px', accentColor: 'white', cursor: 'pointer' }} />
-                                    <span style={{ fontWeight: 500 }}>Perform Audits</span>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(175px, 1fr))', gap: '0.5rem' }}>
+                                    {([
+                                        { label: 'Add to Barred List', val: canAddBarred, set: setCanAddBarred },
+                                        { label: 'Remove from Barred List', val: canDeleteBarred, set: setCanDeleteBarred },
+                                    ] as { label: string; val: boolean; set: (v: boolean) => void }[]).map(({ label, val, set }) => (
+                                        <div key={label} onClick={() => set(!val)} style={{ background: val ? '#2e1065' : '#1e293b', color: 'white', padding: '0.6rem 0.75rem', borderRadius: '0.5rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.6rem', transition: 'all 0.15s', border: `1px solid ${val ? '#a78bfa' : '#334155'}` }}>
+                                            <input type="checkbox" checked={val} readOnly style={{ width: '15px', height: '15px', accentColor: '#a78bfa', cursor: 'pointer', flexShrink: 0 }} />
+                                            <span style={{ fontWeight: 500, fontSize: '0.85rem' }}>{label}</span>
+                                        </div>
+                                    ))}
                                 </div>
-                                <div
-                                    onClick={() => setCanViewReports(!canViewReports)}
-                                    style={{
-                                        background: canViewReports ? '#3b82f6' : '#374151', color: 'white',
-                                        padding: '0.75rem', borderRadius: '0.5rem', cursor: 'pointer',
-                                        display: 'flex', alignItems: 'center', gap: '0.75rem', transition: 'all 0.2s', border: '1px solid #4b5563'
-                                    }}>
-                                    <input type="checkbox" checked={canViewReports} readOnly style={{ width: '18px', height: '18px', accentColor: 'white', cursor: 'pointer' }} />
-                                    <span style={{ fontWeight: 500 }}>View Reporting</span>
+                            </div>
+
+                            {/* Incident Reports */}
+                            <div style={{ marginBottom: '1rem' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                                    <div style={{ width: '3px', height: '14px', borderRadius: '2px', background: '#fb923c' }} />
+                                    <span style={{ color: '#fb923c', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Incident Reports</span>
                                 </div>
-                                <div
-                                    onClick={() => setCanManageProducts(!canManageProducts)}
-                                    style={{
-                                        background: canManageProducts ? '#3b82f6' : '#374151', color: 'white',
-                                        padding: '0.75rem', borderRadius: '0.5rem', cursor: 'pointer',
-                                        display: 'flex', alignItems: 'center', gap: '0.75rem', transition: 'all 0.2s', border: '1px solid #4b5563'
-                                    }}>
-                                    <input type="checkbox" checked={canManageProducts} readOnly style={{ width: '18px', height: '18px', accentColor: 'white', cursor: 'pointer' }} />
-                                    <span style={{ fontWeight: 500 }}>Manage Products</span>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(175px, 1fr))', gap: '0.5rem' }}>
+                                    {([
+                                        { label: 'File Incident Report', val: canAddIncident, set: setCanAddIncident },
+                                        { label: 'Review Incident Reports', val: canReviewIncidents, set: setCanReviewIncidents },
+                                    ] as { label: string; val: boolean; set: (v: boolean) => void }[]).map(({ label, val, set }) => (
+                                        <div key={label} onClick={() => set(!val)} style={{ background: val ? '#431407' : '#1e293b', color: 'white', padding: '0.6rem 0.75rem', borderRadius: '0.5rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.6rem', transition: 'all 0.15s', border: `1px solid ${val ? '#fb923c' : '#334155'}` }}>
+                                            <input type="checkbox" checked={val} readOnly style={{ width: '15px', height: '15px', accentColor: '#fb923c', cursor: 'pointer', flexShrink: 0 }} />
+                                            <span style={{ fontWeight: 500, fontSize: '0.85rem' }}>{label}</span>
+                                        </div>
+                                    ))}
                                 </div>
-                                <div
-                                    onClick={() => setCanAddBarred(!canAddBarred)}
-                                    style={{
-                                        background: canAddBarred ? '#7c3aed' : '#374151', color: 'white',
-                                        padding: '0.75rem', borderRadius: '0.5rem', cursor: 'pointer',
-                                        display: 'flex', alignItems: 'center', gap: '0.75rem', transition: 'all 0.2s', border: '1px solid #4b5563'
-                                    }}>
-                                    <input type="checkbox" checked={canAddBarred} readOnly style={{ width: '18px', height: '18px', accentColor: 'white', cursor: 'pointer' }} />
-                                    <span style={{ fontWeight: 500 }}>Add to Barred List</span>
+                            </div>
+
+                            {/* Scheduling */}
+                            <div style={{ marginBottom: '1rem' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                                    <div style={{ width: '3px', height: '14px', borderRadius: '2px', background: '#34d399' }} />
+                                    <span style={{ color: '#34d399', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Scheduling</span>
                                 </div>
-                                <div
-                                    onClick={() => setCanDeleteBarred(!canDeleteBarred)}
-                                    style={{
-                                        background: canDeleteBarred ? '#7c3aed' : '#374151', color: 'white',
-                                        padding: '0.75rem', borderRadius: '0.5rem', cursor: 'pointer',
-                                        display: 'flex', alignItems: 'center', gap: '0.75rem', transition: 'all 0.2s', border: '1px solid #4b5563'
-                                    }}>
-                                    <input type="checkbox" checked={canDeleteBarred} readOnly style={{ width: '18px', height: '18px', accentColor: 'white', cursor: 'pointer' }} />
-                                    <span style={{ fontWeight: 500 }}>Remove from Barred List</span>
-                                </div>
-                                <div
-                                    onClick={() => setCanAddIncident(!canAddIncident)}
-                                    style={{
-                                        background: canAddIncident ? '#7c3aed' : '#374151', color: 'white',
-                                        padding: '0.75rem', borderRadius: '0.5rem', cursor: 'pointer',
-                                        display: 'flex', alignItems: 'center', gap: '0.75rem', transition: 'all 0.2s', border: '1px solid #4b5563'
-                                    }}>
-                                    <input type="checkbox" checked={canAddIncident} readOnly style={{ width: '18px', height: '18px', accentColor: 'white', cursor: 'pointer' }} />
-                                    <span style={{ fontWeight: 500 }}>Add Incident Report</span>
-                                </div>
-                                <div
-                                    onClick={() => setIsAdmin(!isAdmin)}
-                                    style={{
-                                        background: isAdmin ? '#ef4444' : '#374151', color: 'white',
-                                        padding: '0.75rem', borderRadius: '0.5rem', cursor: 'pointer',
-                                        display: 'flex', alignItems: 'center', gap: '0.75rem', transition: 'all 0.2s', border: '1px solid #4b5563'
-                                    }}>
-                                    <input type="checkbox" checked={isAdmin} readOnly style={{ width: '18px', height: '18px', accentColor: 'white', cursor: 'pointer' }} />
-                                    <span style={{ fontWeight: 500 }}>Administrator</span>
-                                </div>
-                                <div
-                                    onClick={() => { setCanApproveSchedule(!canApproveSchedule); if (canApproveSchedule) setScheduleApprovalLocations([]); }}
-                                    style={{
-                                        background: canApproveSchedule ? '#059669' : '#374151', color: 'white',
-                                        padding: '0.75rem', borderRadius: '0.5rem', cursor: 'pointer',
-                                        display: 'flex', alignItems: 'center', gap: '0.75rem', transition: 'all 0.2s', border: '1px solid #4b5563'
-                                    }}>
-                                    <input type="checkbox" checked={canApproveSchedule} readOnly style={{ width: '18px', height: '18px', accentColor: 'white', cursor: 'pointer' }} />
-                                    <span style={{ fontWeight: 500 }}>Approve Schedules</span>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(175px, 1fr))', gap: '0.5rem' }}>
+                                    <div onClick={() => { setCanApproveSchedule(!canApproveSchedule); if (canApproveSchedule) setScheduleApprovalLocations([]); }} style={{ background: canApproveSchedule ? '#052e16' : '#1e293b', color: 'white', padding: '0.6rem 0.75rem', borderRadius: '0.5rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.6rem', transition: 'all 0.15s', border: `1px solid ${canApproveSchedule ? '#34d399' : '#334155'}` }}>
+                                        <input type="checkbox" checked={canApproveSchedule} readOnly style={{ width: '15px', height: '15px', accentColor: '#34d399', cursor: 'pointer', flexShrink: 0 }} />
+                                        <span style={{ fontWeight: 500, fontSize: '0.85rem' }}>Approve Schedules</span>
+                                    </div>
                                 </div>
                                 {canApproveSchedule && locations.length > 0 && (
-                                    <div style={{ gridColumn: '1 / -1', background: '#111827', borderRadius: '0.5rem', padding: '0.75rem', border: '1px solid #374151' }}>
-                                        <div style={{ color: '#9ca3af', fontSize: '0.78rem', marginBottom: '0.5rem' }}>
-                                            Restrict approval to specific locations: <span style={{ color: '#6b7280' }}>(leave unchecked for all locations)</span>
+                                    <div style={{ marginTop: '0.5rem', background: '#0a0f1a', borderRadius: '0.5rem', padding: '0.65rem 0.75rem', border: '1px solid #1e3a2f' }}>
+                                        <div style={{ color: '#6b7280', fontSize: '0.75rem', marginBottom: '0.4rem' }}>
+                                            Restrict to specific locations <span style={{ color: '#4b5563' }}>(leave unchecked = all locations)</span>
                                         </div>
                                         <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
                                             {locations.map(loc => (
-                                                <label key={loc.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'white', cursor: 'pointer' }}>
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={scheduleApprovalLocations.includes(loc.id)}
-                                                        onChange={e => {
-                                                            if (e.target.checked) setScheduleApprovalLocations([...scheduleApprovalLocations, loc.id]);
-                                                            else setScheduleApprovalLocations(scheduleApprovalLocations.filter(id => id !== loc.id));
-                                                        }}
-                                                    />
+                                                <label key={loc.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#d1d5db', cursor: 'pointer', fontSize: '0.85rem' }}>
+                                                    <input type="checkbox" checked={scheduleApprovalLocations.includes(loc.id)} onChange={e => { if (e.target.checked) setScheduleApprovalLocations([...scheduleApprovalLocations, loc.id]); else setScheduleApprovalLocations(scheduleApprovalLocations.filter(id => id !== loc.id)); }} />
                                                     {loc.name}
                                                 </label>
                                             ))}
                                         </div>
                                     </div>
                                 )}
+                            </div>
+
+                            {/* Admin */}
+                            <div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                                    <div style={{ width: '3px', height: '14px', borderRadius: '2px', background: '#f87171' }} />
+                                    <span style={{ color: '#f87171', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Admin</span>
+                                </div>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(175px, 1fr))', gap: '0.5rem' }}>
+                                    <div onClick={() => setIsAdmin(!isAdmin)} style={{ background: isAdmin ? '#450a0a' : '#1e293b', color: 'white', padding: '0.6rem 0.75rem', borderRadius: '0.5rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.6rem', transition: 'all 0.15s', border: `1px solid ${isAdmin ? '#f87171' : '#334155'}` }}>
+                                        <input type="checkbox" checked={isAdmin} readOnly style={{ width: '15px', height: '15px', accentColor: '#f87171', cursor: 'pointer', flexShrink: 0 }} />
+                                        <span style={{ fontWeight: 500, fontSize: '0.85rem' }}>Administrator</span>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 

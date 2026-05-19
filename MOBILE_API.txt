@@ -78,6 +78,66 @@ USAGE AFTER LOGIN:
   Save the "token" value and send it on every future request:
     Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
+── Who am I? — Get identity and permissions ─────────────────────────────────
+
+GET /api/mobile/auth/me
+
+Returns the authenticated user's full identity, permission strings, and
+pre-computed capability flags. Call once after login to determine which features
+to show. Cache the result for the session; call again after a permission change.
+
+RESPONSE (200 OK):
+{
+  "user": {
+    "id": 42,
+    "role": "admin",
+    "permissions": ["all"],
+    "first_name": "Alex",
+    "last_name": "Smith",
+    "display_name": "Alex S.",
+    "profile_picture": null,
+    "position": "Head Bartender",
+    "phone": "5550001234",
+    "email": "alex@yourbar.com"
+  },
+  "organization": {
+    "name": "The Rusty Nail",
+    "subdomain": "your-bar",
+    "subscription_plan": "pro"
+  },
+  "capabilities": {
+    "can_add_stock": true,
+    "can_subtract_stock": true,
+    "can_add_barred": true,
+    "can_delete_barred": true,
+    "can_view_barred": true,
+    "can_add_incident": true,
+    "can_review_incidents": true,
+    "can_receive_orders": true,
+    "can_approve_swaps": true,
+    "can_approve_time_off": true,
+    "can_approve_schedule": true,
+    "can_manage_inventory": true,
+    "can_view_reports": true,
+    "is_admin": true
+  }
+}
+
+CAPABILITY LOGIC:
+  can_add_stock         → is_admin OR permissions includes add_stock OR all
+  can_subtract_stock    → is_admin OR permissions includes subtract_stock OR all
+  can_view_barred       → is_admin OR add_barred OR delete_barred OR all
+  can_add_incident      → is_admin OR permissions includes add_incident OR all
+  can_review_incidents  → is_admin OR permissions includes review_incidents OR all
+  can_receive_orders    → is_admin OR add_stock OR all
+  can_approve_swaps     → is_admin only
+  can_approve_time_off  → is_admin only
+  is_admin              → role = "admin"
+
+NOTE: Use this endpoint (not token decoding) to drive show/hide logic.
+      JWT payloads are signed but decoding them client-side for auth decisions
+      is a security anti-pattern. The server re-validates on every request.
+
 
 ────────────────────────────────────────────────────────────────────────────────
 2. REGISTRATION — Join via admin invite link
@@ -1247,21 +1307,24 @@ RESPONSE (200 OK):
     "subscription_plan": "pro"
   },
   "capabilities": {
-    "can_add_barred": true,         ← show "Add to Barred List" button
-    "can_approve_swaps": true,      ← show manager swap-approval UI
-    "can_approve_time_off": true,   ← show time-off approval UI
-    "can_view_all_schedules": true, ← always true
-    "can_post_feed": true,          ← always true
-    "can_manage_inventory": true,   ← show inventory management actions
-    "is_admin": true                ← true if role = "admin"
+    "can_add_stock": true,
+    "can_subtract_stock": true,
+    "can_add_barred": true,
+    "can_delete_barred": true,
+    "can_view_barred": true,
+    "can_add_incident": true,
+    "can_review_incidents": true,
+    "can_receive_orders": true,
+    "can_approve_swaps": true,
+    "can_approve_time_off": true,
+    "can_manage_inventory": true,
+    "can_view_reports": true,
+    "is_admin": true
   }
 }
 
-CAPABILITIES LOGIC:
-  can_add_barred      → is_admin OR permissions includes "add_barred" OR "all"
-  can_approve_swaps   → is_admin only
-  can_approve_time_off → is_admin only
-  can_manage_inventory → is_admin OR permissions includes "inventory" OR "all"
+NOTE: Prefer GET /api/mobile/auth/me which has an expanded capabilities set
+      and also returns the user's email. This endpoint is kept for compatibility.
 
 ERROR RESPONSES:
   401 { "error": "Unauthorized" }
@@ -1269,7 +1332,188 @@ ERROR RESPONSES:
 
 
 ────────────────────────────────────────────────────────────────────────────────
-14. PUSH NOTIFICATION TYPES
+14. INCIDENT REPORTS — File and review security incidents
+────────────────────────────────────────────────────────────────────────────────
+
+Required permissions:
+  GET  → add_incident OR review_incidents OR admin
+  POST → add_incident OR admin
+
+── List incident reports ────────────────────────────────────────────────────────
+
+GET /api/mobile/incidents
+
+Returns up to 50 most recent incidents for the org, newest first.
+
+RESPONSE (200 OK):
+{
+  "incidents": [
+    {
+      "id": 1,
+      "person_name": "John Doe",
+      "barred_person_name": null,     ← linked barred record name, if any
+      "description": "Altercation at the bar around 11pm.",
+      "submitted_by_name": "Alex Smith",
+      "created_at": "2026-05-14T23:05:00Z"
+    }
+  ]
+}
+
+── File a new incident report ───────────────────────────────────────────────────
+
+POST /api/mobile/incidents
+
+REQUEST BODY:
+{
+  "person_name": "John Doe",          ← optional — name or description of person involved
+  "description": "Describe the incident..."   ← required
+}
+
+RESPONSE (200 OK):
+{
+  "incident": {
+    "id": 2,
+    "person_name": "John Doe",
+    "description": "Describe the incident...",
+    "submitted_by_name": "Alex Smith",
+    "created_at": "2026-05-15T01:20:00Z"
+  }
+}
+
+ERROR RESPONSES:
+  400 { "error": "Description is required" }
+  403 { "error": "Permission denied" }
+
+
+────────────────────────────────────────────────────────────────────────────────
+15. ORDERS — View and check in incoming stock deliveries
+────────────────────────────────────────────────────────────────────────────────
+
+Orders are purchase orders created by admins or the AI ordering system.
+Mobile staff use these endpoints to see what deliveries are expected and to
+check in items when a delivery arrives (updating inventory automatically).
+
+Check-in requires the add_stock permission or admin role.
+
+── List orders ──────────────────────────────────────────────────────────────────
+
+GET /api/mobile/orders
+
+Returns orders sorted by urgency (IN_TRANSIT first, then PARTIALLY_RECEIVED,
+then PENDING), then by expected delivery date.
+
+QUERY PARAMETERS (all optional):
+  ?status=PENDING           Filter by status. Comma-separate multiple:
+                              ?status=PENDING,IN_TRANSIT
+                            Use ?status=all for all statuses.
+                            Default: PENDING,IN_TRANSIT,PARTIALLY_RECEIVED
+  ?location_id=2            Filter to a specific location
+  ?limit=50                 Page size (default: 50, max: 100)
+  ?offset=0                 Pagination offset
+
+Valid statuses: PENDING | IN_TRANSIT | PARTIALLY_RECEIVED | DELIVERED | CANCELLED
+
+RESPONSE (200 OK):
+{
+  "orders": [
+    {
+      "id": 10,
+      "status": "IN_TRANSIT",
+      "location_id": 2,
+      "location_name": "Main Bar",
+      "expected_delivery": "2026-05-20",
+      "notes": "Call supplier if not arrived by noon",
+      "item_count": 5,
+      "total_units": 60,
+      "units_received": 0,
+      "created_at": "2026-05-15T09:00:00Z",
+      "updated_at": "2026-05-15T09:00:00Z"
+    }
+  ],
+  "total": 3,
+  "limit": 50,
+  "offset": 0
+}
+
+── Get order details ────────────────────────────────────────────────────────────
+
+GET /api/mobile/orders/<id>
+
+RESPONSE (200 OK):
+{
+  "order": {
+    "id": 10,
+    "status": "IN_TRANSIT",
+    "location_id": 2,
+    "location_name": "Main Bar",
+    "expected_delivery": "2026-05-20",
+    "notes": null,
+    "created_at": "2026-05-15T09:00:00Z",
+    "updated_at": "2026-05-15T09:00:00Z",
+    "items": [
+      {
+        "id": 55,              ← order_item_id (use this in the check-in POST)
+        "item_id": 88,
+        "item_name": "Tito's Vodka 750ml",
+        "type": "Liquor",
+        "supplier": "Southern Glazers",
+        "quantity_ordered": 12,
+        "quantity_received": null,  ← null = not yet received
+        "unit_cost": 14.50
+      }
+    ]
+  }
+}
+
+── Check in / receive an order ──────────────────────────────────────────────────
+
+POST /api/mobile/orders/<id>
+
+Requires add_stock permission or admin.
+
+For each item in the body, sets quantity_received and adds that amount to
+inventory at the order's location. The order status updates automatically:
+  All items fully received  → DELIVERED
+  Some items received       → PARTIALLY_RECEIVED
+
+Call multiple times (partial deliveries) — quantities accumulate.
+
+REQUEST BODY:
+{
+  "items": [
+    { "order_item_id": 55, "quantity_received": 12 },
+    { "order_item_id": 56, "quantity_received": 6 }
+  ]
+}
+
+quantity_received is capped at the ordered quantity per item.
+
+RESPONSE (200 OK):
+{
+  "ok": true,
+  "order_id": 10,
+  "status": "DELIVERED",
+  "items_received": [
+    { "order_item_id": 55, "item_id": 88, "quantity_received": 12 },
+    { "order_item_id": 56, "item_id": 91, "quantity_received": 6 }
+  ]
+}
+
+ERROR RESPONSES:
+  400 { "error": "items must be a non-empty array" }
+  403 { "error": "Permission denied: add_stock required" }
+  404 { "error": "Order not found" }
+  409 { "error": "Cannot receive items on a DELIVERED order" }
+  409 { "error": "Cannot receive items on a CANCELLED order" }
+
+NOTES:
+- Each received quantity is written to the activity_log as ADD_STOCK.
+- Inventory is updated at the order's location_id (not the user's location).
+- Items omitted from the POST body are not modified.
+
+
+────────────────────────────────────────────────────────────────────────────────
+17. PUSH NOTIFICATION TYPES
 ────────────────────────────────────────────────────────────────────────────────
 
 Each push notification (and in-app notification) includes a "type" field:
@@ -1443,12 +1687,13 @@ TOKEN EXPIRY HANDLING:
 
 
 ────────────────────────────────────────────────────────────────────────────────
-17. ENDPOINT QUICK REFERENCE
+18. ENDPOINT QUICK REFERENCE
 ────────────────────────────────────────────────────────────────────────────────
 
 METHOD  PATH                                      AUTH    DESCRIPTION
 ──────  ────────────────────────────────────────  ──────  ────────────────────────────────────────────
 POST    /api/mobile/auth                          No      Login → get Bearer token
+GET     /api/mobile/auth/me                       Bearer  Who am I? — identity, permissions, capabilities
 GET     /api/mobile/register?token=…              No      Validate invite token
 POST    /api/mobile/register                      No      Complete registration
 POST    /api/mobile/device-token                  Bearer  Register device for push notifications
@@ -1462,9 +1707,15 @@ GET     /api/mobile/feed/comments?postId=…        Bearer  Load comments for a 
 POST    /api/mobile/feed/comments?postId=…        Bearer  Add a comment (notifies author + engaged)
 DELETE  /api/mobile/feed/comments?id=…            Bearer  Delete a comment
 GET     /api/mobile/barred                        Bearer  Barred persons list
-POST    /api/mobile/barred                        Bearer  Add a barred person (admin/permission)
-GET     /api/mobile/out-of-stock                  Bearer  Low/out-of-stock inventory
+POST    /api/mobile/barred                        Bearer  Add a barred person (permission: add_barred)
+GET     /api/mobile/incidents                     Bearer  List incident reports (permission: add/review)
+POST    /api/mobile/incidents                     Bearer  File an incident report (permission: add_incident)
+GET     /api/mobile/inventory                     Bearer  Full inventory with per-item thresholds
+GET     /api/mobile/out-of-stock                  Bearer  Low/out-of-stock items only
 POST    /api/mobile/stock/adjust                  Bearer  Add or subtract stock quantity
+GET     /api/mobile/orders                        Bearer  List pending/in-transit orders for check-in
+GET     /api/mobile/orders/<id>                   Bearer  Order details with line items
+POST    /api/mobile/orders/<id>                   Bearer  Check in / receive items (permission: add_stock)
 GET     /api/mobile/schedule                      Bearer  Full org schedule with pending swaps
 GET     /api/mobile/schedule/swap                 Bearer  List my shift swap requests
 POST    /api/mobile/schedule/swap                 Bearer  Create a shift swap request
@@ -1486,11 +1737,11 @@ POST    /api/mobile/profile/picture               Bearer  Upload profile picture
 DELETE  /api/mobile/profile/picture               Bearer  Remove profile picture
 GET     /api/mobile/settings                      Bearer  Get notification preferences + address
 PATCH   /api/mobile/settings                      Bearer  Update notification preferences + address
-GET     /api/mobile/settings/permissions          Bearer  Get role, permissions, and capability flags
+GET     /api/mobile/settings/permissions          Bearer  Legacy alias — prefer GET /api/mobile/auth/me
 
 
 ────────────────────────────────────────────────────────────────────────────────
-18. SECURITY NOTES
+19. SECURITY NOTES
 ────────────────────────────────────────────────────────────────────────────────
 
 - Tokens are signed JWT (HS256). Never decode and trust the payload client-side
@@ -1532,7 +1783,7 @@ GET     /api/mobile/settings/permissions          Bearer  Get role, permissions,
 ================================================================================
   TopShelf Inventory — Mobile API Reference
   Server: https://www.topshelfInventory.com
-  API Version: 3.1  |  Last updated: 2026-05-14
+  API Version: 3.2  |  Last updated: 2026-05-18
 ================================================================================
 
 
