@@ -94,3 +94,52 @@ button {
 [data-theme='light'] a.text-white {
     color: #ffffff !important;
 }
+
+/* --- LIGHT MODE: SCHEDULER FIXES --- */
+/* Opacity-variant Tailwind classes that the glue rules can't reach */
+[data-theme='light'] .bg-gray-800\/50,
+[data-theme='light'] .bg-gray-800\/30 {
+    background-color: rgba(209, 213, 219, 0.45) !important;
+}
+[data-theme='light'] .hover\:bg-white\/\[0\.02\]:hover {
+    background-color: rgba(0, 0, 0, 0.04) !important;
+}
+[data-theme='light'] .bg-blue-950\/20 {
+    background-color: rgba(191, 219, 254, 0.3) !important;
+}
+[data-theme='light'] .bg-blue-900\/30 {
+    background-color: rgba(147, 197, 253, 0.35) !important;
+}
+[data-theme='light'] .bg-red-900\/30 {
+    background-color: rgba(254, 202, 202, 0.5) !important;
+}
+[data-theme='light'] .bg-red-900\/50 {
+    background-color: rgba(254, 202, 202, 0.7) !important;
+}
+[data-theme='light'] .bg-amber-900\/30 {
+    background-color: rgba(253, 230, 138, 0.45) !important;
+}
+[data-theme='light'] .bg-amber-900\/50 {
+    background-color: rgba(253, 230, 138, 0.65) !important;
+}
+[data-theme='light'] .bg-black\/80 {
+    background-color: rgba(0, 0, 0, 0.6) !important;
+}
+[data-theme='light'] .border-gray-800\/80,
+[data-theme='light'] .border-gray-800\/60,
+[data-theme='light'] .border-gray-800\/50 {
+    border-color: rgba(209, 213, 219, 0.7) !important;
+}
+[data-theme='light'] .border-gray-700\/30 {
+    border-color: rgba(209, 213, 219, 0.5) !important;
+}
+[data-theme='light'] .border-dashed.border-gray-800\/50 {
+    border-color: rgba(156, 163, 175, 0.5) !important;
+}
+/* Scheduler text colours in light mode */
+[data-theme='light'] .text-gray-600 {
+    color: #9ca3af !important;
+}
+[data-theme='light'] .text-gray-700 {
+    color: #6b7280 !important;
+}

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import styles from '../admin.module.css';
-import { ChevronLeft, ChevronRight, Plus, Calendar, User, Clock, Trash2, Printer, X, Mail, Pencil, ArrowLeftRight, Replace, Check } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, Calendar, User, Clock, Trash2, Printer, X, Mail, Pencil, ArrowLeftRight, Replace, Check, Palette } from 'lucide-react';
 import ShiftManager from './ShiftManager';
 import MonthScheduler from './MonthScheduler';
 
@@ -104,6 +104,10 @@ export default function UserSchedulerClient() {
     // Delete confirmation modal
     const [deleteConfirm, setDeleteConfirm] = useState<{ id: number; schedule: Schedule } | null>(null);
 
+    // User schedule colors (custom per-employee colors, persisted to localStorage)
+    const [userColors, setUserColors] = useState<Record<number, string>>({});
+    const [colorPickerUserId, setColorPickerUserId] = useState<number | null>(null);
+
     // Location state
     const [myLocations, setMyLocations] = useState<{ id: number, name: string }[]>([]);
     const [selectedLocationId, setSelectedLocationId] = useState<number | null>(null);
@@ -161,8 +165,16 @@ export default function UserSchedulerClient() {
     // Derived: selected location name — users are already fetched scoped to this location
     const selectedLocationName = myLocations.find(l => l.id === selectedLocationId)?.name || '';
 
+    useEffect(() => {
+        try {
+            const stored = localStorage.getItem('schedule_user_colors');
+            if (stored) setUserColors(JSON.parse(stored));
+        } catch {}
+    }, []);
+
     // --- Stable User Colors ---
     const getUserColor = (userId: number, name: string) => {
+        if (userColors[userId]) return userColors[userId];
         let hash = 0;
         const str = `${userId}-${name}`;
         for (let i = 0; i < str.length; i++) {
@@ -170,6 +182,16 @@ export default function UserSchedulerClient() {
         }
         const h = Math.abs(hash) % 360;
         return `hsl(${h}, 70%, 50%)`;
+    };
+
+    const setUserColor = (userId: number, color: string | null) => {
+        setUserColors(prev => {
+            const next = { ...prev };
+            if (color === null) delete next[userId];
+            else next[userId] = color;
+            try { localStorage.setItem('schedule_user_colors', JSON.stringify(next)); } catch {}
+            return next;
+        });
     };
 
     // --- Bulk Actions ---
@@ -1254,15 +1276,19 @@ export default function UserSchedulerClient() {
                             ) : (
                                 users.map(user => (
                                     <div key={user.id} className="flex border-b border-gray-800/80 hover:bg-white/[0.02] transition-colors" style={{ minWidth: '1000px', height: '76px' }}>
-                                        {/* Name column — fixed, vertically centred */}
+                                        {/* Name column — fixed, vertically centred, click to change color */}
                                         <div
-                                            className="flex-shrink-0 border-r border-gray-800 flex items-center px-3"
+                                            className="flex-shrink-0 border-r border-gray-800 flex items-center group cursor-pointer hover:bg-white/5 transition-colors relative overflow-hidden"
                                             style={{ width: '180px', height: '76px' }}
+                                            onClick={() => setColorPickerUserId(colorPickerUserId === user.id ? null : user.id)}
+                                            title="Click to change employee color"
                                         >
-                                            <div className="min-w-0">
+                                            <div className="absolute left-0 top-0 bottom-0 w-1" style={{ backgroundColor: getUserColor(user.id, user.first_name) }} />
+                                            <div className="min-w-0 pl-3 flex-1 pr-1">
                                                 <div className="text-white text-sm font-semibold leading-tight truncate">{user.first_name} {user.last_name}</div>
                                                 {user.position && <div className="text-blue-400 text-xs leading-tight truncate mt-0.5">{user.position}</div>}
                                             </div>
+                                            <Palette size={11} className="text-gray-700 group-hover:text-gray-400 flex-shrink-0 mr-2 transition-colors" />
                                         </div>
 
                                         {/* Day columns */}
@@ -1495,9 +1521,17 @@ export default function UserSchedulerClient() {
 
                                 return (
                                     <div key={user.id} className="relative h-14 flex items-center bg-gray-800/50 rounded p-2 print:bg-white print:border print:border-gray-200">
-                                        <div className="w-40 z-10 shrink-0">
-                                            <div className="font-bold text-white print:text-black text-sm leading-tight">{user.first_name} {user.last_name}</div>
-                                            {user.position && <div className="text-blue-400 text-xs">{user.position}</div>}
+                                        <div
+                                            className="w-40 z-10 shrink-0 group cursor-pointer flex items-center gap-2"
+                                            onClick={() => setColorPickerUserId(colorPickerUserId === user.id ? null : user.id)}
+                                            title="Click to change employee color"
+                                        >
+                                            <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: getUserColor(user.id, user.first_name) }} />
+                                            <div>
+                                                <div className="font-bold text-white print:text-black text-sm leading-tight">{user.first_name} {user.last_name}</div>
+                                                {user.position && <div className="text-blue-400 text-xs">{user.position}</div>}
+                                            </div>
+                                            <Palette size={10} className="text-gray-700 group-hover:text-gray-400 transition-colors flex-shrink-0" />
                                         </div>
 
                                         {/* Track Background */}
@@ -2017,6 +2051,73 @@ export default function UserSchedulerClient() {
                     </div>
                 </div>
             )}
+
+            {/* User Color Picker */}
+            {colorPickerUserId !== null && (() => {
+                const colorUser = users.find(u => u.id === colorPickerUserId);
+                if (!colorUser) return null;
+                const currentColor = getUserColor(colorPickerUserId, colorUser.first_name);
+                const hasCustomColor = !!userColors[colorPickerUserId];
+                const PALETTE = [
+                    '#ef4444','#f97316','#eab308','#22c55e',
+                    '#06b6d4','#3b82f6','#8b5cf6','#ec4899',
+                    '#14b8a6','#84cc16','#6366f1','#a855f7',
+                    '#f43f5e','#64748b','#0ea5e9','#10b981',
+                ];
+                return (
+                    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setColorPickerUserId(null)}>
+                        <div className="bg-gray-800 border border-gray-600 rounded-xl shadow-2xl p-5 w-64" onClick={e => e.stopPropagation()}>
+                            <div className="flex items-center justify-between mb-1">
+                                <div className="flex items-center gap-2">
+                                    <div className="w-4 h-4 rounded-full border border-white/20" style={{ backgroundColor: currentColor }} />
+                                    <span className="text-white font-semibold text-sm">{colorUser.first_name} {colorUser.last_name}</span>
+                                </div>
+                                <button type="button" aria-label="Close" onClick={() => setColorPickerUserId(null)} className="text-gray-400 hover:text-white">
+                                    <X size={16} />
+                                </button>
+                            </div>
+                            <p className="text-gray-500 text-xs mb-3">Schedule color for this employee</p>
+
+                            <div className="grid grid-cols-8 gap-1.5 mb-3">
+                                {PALETTE.map(c => (
+                                    <button
+                                        type="button"
+                                        key={c}
+                                        onClick={() => { setUserColor(colorPickerUserId, c); setColorPickerUserId(null); }}
+                                        className="w-6 h-6 rounded-full hover:scale-125 transition-transform relative flex items-center justify-center"
+                                        style={{ backgroundColor: c }}
+                                        title={c}
+                                        aria-label={`Set color to ${c}`}
+                                    >
+                                        {currentColor === c && <Check size={12} className="text-white drop-shadow" />}
+                                    </button>
+                                ))}
+                            </div>
+
+                            <div className="flex items-center gap-2 pt-3 border-t border-gray-700">
+                                <label className="flex items-center gap-2 cursor-pointer flex-1">
+                                    <input
+                                        type="color"
+                                        value={hasCustomColor ? currentColor : '#4f46e5'}
+                                        onChange={e => setUserColor(colorPickerUserId, e.target.value)}
+                                        className="w-8 h-8 rounded cursor-pointer border-0 p-0.5 bg-gray-700"
+                                    />
+                                    <span className="text-gray-400 text-xs">Custom</span>
+                                </label>
+                                {hasCustomColor && (
+                                    <button
+                                        type="button"
+                                        onClick={() => { setUserColor(colorPickerUserId, null); setColorPickerUserId(null); }}
+                                        className="text-xs text-gray-500 hover:text-red-400 transition-colors"
+                                    >
+                                        Reset
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                );
+            })()}
         </div>
     );
 }
