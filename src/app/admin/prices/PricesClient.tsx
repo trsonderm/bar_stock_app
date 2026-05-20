@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { Printer } from 'lucide-react';
 import styles from '../admin.module.css';
 
 interface Item {
@@ -151,6 +152,221 @@ export default function PricesClient() {
         }
     };
 
+    const printPackageMenu = () => {
+        const packageItems = items.filter(i => i.package_sale_enabled && i.package_price != null && Number(i.package_price) > 0);
+        if (packageItems.length === 0) {
+            alert('No items have a package price set. Mark products as "Package Sale Eligible" and set a price first.');
+            return;
+        }
+
+        const types = orderedTypes.filter(t => packageItems.some(i => i.type === t));
+        const grouped: Record<string, Item[]> = {};
+        types.forEach(t => { grouped[t] = packageItems.filter(i => i.type === t); });
+
+        const getOrderLabel = (item: Item): string => {
+            if (Array.isArray(item.order_size) && item.order_size.length > 0) {
+                const first = item.order_size[0];
+                if (first && typeof first === 'object' && first.label) return first.label;
+            }
+            return '';
+        };
+
+        // Pack categories into pages (~16 items each)
+        const ITEMS_PER_PAGE = 16;
+        const pages: { type: string; items: Item[] }[][] = [];
+        let currentPage: { type: string; items: Item[] }[] = [];
+        let currentCount = 0;
+        types.forEach(type => {
+            const typeItems = grouped[type];
+            if (currentCount + typeItems.length > ITEMS_PER_PAGE && currentPage.length > 0) {
+                pages.push(currentPage);
+                currentPage = [];
+                currentCount = 0;
+            }
+            currentPage.push({ type, items: typeItems });
+            currentCount += typeItems.length;
+        });
+        if (currentPage.length > 0) pages.push(currentPage);
+
+        const totalPages = pages.length;
+
+        const pagesHTML = pages.map((page, pageIdx) => `
+<div class="page">
+  <div class="border-outer"></div>
+  <div class="border-inner"></div>
+  ${pageIdx === 0 ? `
+  <div class="cover-header">
+    <div class="eyebrow">Premium Selection</div>
+    <div class="main-title">Package Price Menu</div>
+    <div class="subtitle">Bulk &amp; Wholesale Pricing</div>
+    <div class="ornament">&#9670;&nbsp;&nbsp;&#9671;&nbsp;&nbsp;&#9670;</div>
+    <div class="divider"></div>
+  </div>` : `
+  <div class="continuation-header">
+    <span class="cont-title">Package Price Menu</span>
+  </div>`}
+  <div class="categories">
+    ${page.map(({ type, items: typeItems }) => `
+    <div class="cat-section">
+      <div class="cat-header">
+        <div class="cat-rule"></div>
+        <div class="cat-name">${escapeHtml(type)}</div>
+        <div class="cat-rule"></div>
+      </div>
+      <div class="item-list">
+        ${typeItems.map(item => {
+            const label = getOrderLabel(item);
+            return `
+        <div class="item-row">
+          <div class="item-left">
+            <span class="item-name">${escapeHtml(item.name)}</span>
+            ${label ? `<span class="item-label">${escapeHtml(label)}</span>` : ''}
+          </div>
+          <div class="item-dots"></div>
+          <div class="item-price">$${Number(item.package_price).toFixed(2)}</div>
+        </div>`;
+        }).join('')}
+      </div>
+    </div>`).join('')}
+  </div>
+  <div class="page-footer">
+    <span class="footer-note">Prices are per order quantity &middot; Subject to change without notice</span>
+    <span class="footer-page">${pageIdx + 1} / ${totalPages}</span>
+  </div>
+</div>`).join('');
+
+        const escapeHtmlFn = `function escapeHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}`;
+        void escapeHtmlFn; // used above as a plain js function, not needed in the print window
+
+        const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Package Price Menu</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=Lato:wght@300;400;700;900&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+@page{margin:0;size:letter portrait;}
+body{font-family:'Lato',sans-serif;background:#fff;color:#111;}
+
+.page{
+  width:8.5in;min-height:11in;padding:.55in .8in;
+  page-break-after:always;position:relative;
+  display:flex;flex-direction:column;background:#fff;
+}
+.page:last-child{page-break-after:avoid;}
+
+/* Double border frame */
+.border-outer{
+  position:absolute;inset:.28in;
+  border:2.5px solid #b45309;pointer-events:none;
+}
+.border-inner{
+  position:absolute;inset:calc(.28in + 7px);
+  border:1px solid rgba(180,83,9,.3);pointer-events:none;
+}
+
+/* Cover header */
+.cover-header{
+  text-align:center;
+  margin-bottom:.38in;padding-bottom:.28in;
+  position:relative;
+}
+.eyebrow{
+  font-size:7.5pt;letter-spacing:.5em;text-transform:uppercase;
+  color:#9ca3af;margin-bottom:10px;
+}
+.main-title{
+  font-family:'Playfair Display',serif;font-size:42pt;font-weight:900;
+  letter-spacing:.04em;text-transform:uppercase;color:#111;line-height:1;
+}
+.subtitle{
+  font-size:9pt;letter-spacing:.38em;text-transform:uppercase;
+  color:#b45309;margin-top:11px;font-weight:700;
+}
+.ornament{
+  font-size:10pt;color:#b45309;margin-top:14px;letter-spacing:.6em;
+}
+.divider{
+  width:100%;height:1.5px;
+  background:linear-gradient(to right,transparent 0%,#111 20%,#111 80%,transparent 100%);
+  margin-top:.25in;
+}
+
+/* Continuation header */
+.continuation-header{
+  text-align:center;margin-bottom:.3in;padding-bottom:.15in;
+  border-bottom:1.5px solid #111;
+}
+.cont-title{
+  font-family:'Playfair Display',serif;font-size:13pt;
+  font-weight:700;letter-spacing:.28em;text-transform:uppercase;color:#6b7280;
+}
+
+/* Category */
+.categories{flex:1;}
+.cat-section{margin-bottom:.28in;}
+.cat-header{
+  display:flex;align-items:center;gap:10px;margin-bottom:.1in;
+}
+.cat-rule{flex:1;height:1.5px;background:#b45309;}
+.cat-name{
+  font-family:'Playfair Display',serif;font-size:14pt;font-weight:700;
+  color:#b45309;letter-spacing:.14em;text-transform:uppercase;white-space:nowrap;
+}
+
+/* Items */
+.item-list{}
+.item-row{
+  display:flex;align-items:baseline;padding:6.5px 6px;
+  border-bottom:1px solid #f3f4f6;
+}
+.item-row:nth-child(odd){background:#fdfaf6;}
+.item-row:last-child{border-bottom:none;}
+.item-left{display:flex;align-items:baseline;gap:8px;flex-shrink:0;max-width:65%;}
+.item-name{font-size:11pt;font-weight:700;color:#111;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.item-label{font-size:8pt;color:#9ca3af;font-style:italic;white-space:nowrap;}
+.item-dots{
+  flex:1;min-width:20px;
+  border-bottom:1px dotted #d1d5db;
+  margin:0 10px;position:relative;top:-4px;
+}
+.item-price{
+  font-family:'Playfair Display',serif;font-size:13.5pt;font-weight:700;
+  color:#111;white-space:nowrap;letter-spacing:-.01em;
+}
+
+/* Footer */
+.page-footer{
+  margin-top:.28in;padding-top:.15in;
+  border-top:1px solid #e5e7eb;
+  display:flex;justify-content:space-between;align-items:center;
+}
+.footer-note{font-size:7pt;color:#9ca3af;font-style:italic;}
+.footer-page{font-size:7pt;color:#6b7280;font-weight:700;letter-spacing:.12em;text-transform:uppercase;}
+
+@media print{
+  body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+}
+</style>
+</head>
+<body>
+${pagesHTML}
+</body>
+</html>`;
+
+        const win = window.open('', '_blank', 'width=960,height=760');
+        if (!win) { alert('Please allow pop-ups to open the print menu.'); return; }
+        win.document.write(html);
+        win.document.close();
+        win.focus();
+        setTimeout(() => win.print(), 900);
+    };
+
+    const escapeHtml = (s: string) =>
+        String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
     const togglePerLocationPricing = async (enabled: boolean) => {
         setPerLocationPricing(enabled);
         await fetch('/api/admin/settings', {
@@ -190,13 +406,33 @@ export default function PricesClient() {
         <div className={styles.card}>
             {/* Header controls */}
             <div style={{ marginBottom: '1.5rem' }}>
-                <p style={{ color: '#9ca3af', fontSize: '0.9rem', margin: '0 0 1rem 0' }}>
-                    Unit prices are set on the{' '}
-                    <Link href="/admin/products" style={{ color: '#3b82f6', textDecoration: 'underline' }}>
-                        Product List
-                    </Link>
-                    {' '}and are read-only here. Set a sale price per item to enable profit reporting.
-                </p>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                    <p style={{ color: '#9ca3af', fontSize: '0.9rem', margin: 0 }}>
+                        Unit prices are set on the{' '}
+                        <Link href="/admin/products" style={{ color: '#3b82f6', textDecoration: 'underline' }}>
+                            Product List
+                        </Link>
+                        {' '}and are read-only here. Set a sale price per item to enable profit reporting.
+                    </p>
+                    {packageSaleEnabled && (
+                        <button
+                            type="button"
+                            onClick={printPackageMenu}
+                            style={{
+                                display: 'flex', alignItems: 'center', gap: '6px',
+                                padding: '0.45rem 1rem',
+                                background: 'linear-gradient(135deg, #d97706, #b45309)',
+                                color: 'white', border: 'none', borderRadius: '6px',
+                                cursor: 'pointer', fontWeight: 700, fontSize: '0.875rem',
+                                whiteSpace: 'nowrap', flexShrink: 0,
+                                boxShadow: '0 2px 8px rgba(180,83,9,0.35)'
+                            }}
+                        >
+                            <Printer size={15} />
+                            Print Package Menu
+                        </button>
+                    )}
+                </div>
 
                 <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center', marginBottom: '1rem' }}>
                     <input
