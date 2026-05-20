@@ -206,7 +206,7 @@ export default function PricesClient() {
     };
 
     const printPackageMenu = () => {
-        const packageItems = items.filter(i => i.package_sale_enabled && i.package_price != null && Number(i.package_price) > 0);
+        const packageItems = items.filter(i => i.package_sale_enabled === true && i.package_price != null && Number(i.package_price) > 0);
         if (packageItems.length === 0) {
             alert('No items have a package price set. Mark products as "Package Sale Eligible" and set a price first.');
             return;
@@ -432,7 +432,12 @@ ${pagesHTML}
             return [{ label: '', price: item.sale_price ?? null }];
         };
 
-        const rowsHTML = orderedTypes.map(type => {
+        const printTypes = orderedTypes.filter(t => {
+            const l = t.toLowerCase();
+            return l.includes('liquor') || l.includes('beer') || l.includes('spirit');
+        });
+
+        const rowsHTML = printTypes.map(type => {
             const typeItems = filteredItems.filter(i => i.type === type);
             if (!typeItems.length) return '';
             const itemRows = typeItems.map(item => {
