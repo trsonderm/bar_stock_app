@@ -120,8 +120,26 @@ export default function AdminNav({ user, children }: { user: NavUser, children: 
     }, []);
 
     const isPro = user?.subscriptionPlan === 'pro' || user?.subscriptionPlan === 'free_trial' || user?.role === 'super_admin';
-    const canAudit = user?.role === 'admin' || user?.permissions?.includes('audit') || user?.permissions?.includes('all');
-    const canManageProducts = user?.role === 'admin' || user?.permissions?.includes('manage_products') || user?.permissions?.includes('all');
+
+    // Full admin = role admin with no restrictions (empty perms = legacy full access) OR explicit 'all' grant
+    const isFullAdmin = !user?.permissions?.length || user?.permissions?.includes('all');
+    // hasPerm: true if full admin OR has specific permission(s)
+    const hasPerm = (...perms: string[]) =>
+        isFullAdmin || perms.some(p =>
+            p === 'approve_schedule'
+                ? (user?.permissions?.includes('approve_schedule') || user?.permissions?.some((x: string) => x.startsWith('approve_schedule_')))
+                : user?.permissions?.includes(p)
+        );
+
+    const canAudit = hasPerm('audit');
+    const canManageProducts = hasPerm('manage_products', 'add_item_name');
+    const canManageEmployees = hasPerm('manage_employees');
+    const canViewReports = hasPerm('view_reports');
+    const canSecurity = hasPerm('add_barred', 'delete_barred', 'add_incident', 'review_incidents');
+    const canSchedule = hasPerm('approve_schedule');
+    const canStock = hasPerm('add_stock', 'subtract_stock', 'manage_products', 'audit', 'add_item_name');
+    const showProductFolder = canStock || canManageProducts || canAudit;
+    const showSettingsFolder = isFullAdmin || canManageEmployees;
 
     useEffect(() => {
         fetch('/api/user/locations')
@@ -232,8 +250,8 @@ export default function AdminNav({ user, children }: { user: NavUser, children: 
             <List sx={{ pt: 1 }}>
                 <DrawerItem text="Dashboard" icon={<DashboardIcon />} href="/admin/dashboard" />
 
-                {/* REPORTING FOLDER (Pro only) */}
-                {isPro ? (
+                {/* REPORTING FOLDER (Pro + view_reports) */}
+                {isPro && canViewReports ? (
                     <>
                         <ListItem disablePadding sx={{ display: 'block' }}>
                             <ListItemButton onClick={() => setReportingOpen(!reportingOpen)} sx={{ minHeight: 48, pl: 2 }}>
@@ -251,102 +269,114 @@ export default function AdminNav({ user, children }: { user: NavUser, children: 
                             </List>
                         </Collapse>
                     </>
-                ) : (
+                ) : isPro ? null : (
                     <ProLockedItem text="Reporting" icon={<AssessmentIcon />} />
                 )}
 
                 {/* PRODUCT FOLDER */}
-                <ListItem disablePadding sx={{ display: 'block' }}>
-                    <ListItemButton onClick={() => setProductOpen(!productOpen)} sx={{ minHeight: 48, pl: 2 }}>
-                        <ListItemIcon sx={{ minWidth: 40 }}><InventoryIcon /></ListItemIcon>
-                        <ListItemText primary="Product" primaryTypographyProps={{ fontSize: '0.9rem' }} />
-                        {productOpen ? <ExpandLess /> : <ExpandMore />}
-                    </ListItemButton>
-                </ListItem>
-                <Collapse in={productOpen} timeout="auto" unmountOnExit>
-                    <List component="div" disablePadding>
-                        <DrawerItem text="Prices" icon={<span />} href="/admin/prices" isSub />
-                        {canManageProducts && <DrawerItem text="Product List" icon={<span />} href="/admin/products" isSub />}
-                        {canManageProducts && <DrawerItem text="Archived Products" icon={<span />} href="/admin/products/archived" isSub />}
-                        {canAudit && <DrawerItem text="Audit" icon={<span />} href="/admin/audit" isSub />}
-                    </List>
-                </Collapse>
+                {showProductFolder && (
+                    <>
+                        <ListItem disablePadding sx={{ display: 'block' }}>
+                            <ListItemButton onClick={() => setProductOpen(!productOpen)} sx={{ minHeight: 48, pl: 2 }}>
+                                <ListItemIcon sx={{ minWidth: 40 }}><InventoryIcon /></ListItemIcon>
+                                <ListItemText primary="Product" primaryTypographyProps={{ fontSize: '0.9rem' }} />
+                                {productOpen ? <ExpandLess /> : <ExpandMore />}
+                            </ListItemButton>
+                        </ListItem>
+                        <Collapse in={productOpen} timeout="auto" unmountOnExit>
+                            <List component="div" disablePadding>
+                                {isFullAdmin && <DrawerItem text="Prices" icon={<span />} href="/admin/prices" isSub />}
+                                {canManageProducts && <DrawerItem text="Product List" icon={<span />} href="/admin/products" isSub />}
+                                {canManageProducts && <DrawerItem text="Archived Products" icon={<span />} href="/admin/products/archived" isSub />}
+                                {canAudit && <DrawerItem text="Audit" icon={<span />} href="/admin/audit" isSub />}
+                            </List>
+                        </Collapse>
+                    </>
+                )}
 
-                <DrawerItem text="Activity Search" icon={<SearchIcon />} href="/admin/query" />
-                <DrawerItem text="Stock View" icon={<StoreIcon />} href="/inventory" />
-                <DrawerItem text="Security" icon={<SecurityIcon />} href="/admin/security" />
+                {(isFullAdmin || canViewReports || canAudit) && <DrawerItem text="Activity Search" icon={<SearchIcon />} href="/admin/query" />}
+                {canStock && <DrawerItem text="Stock View" icon={<StoreIcon />} href="/inventory" />}
+                {canSecurity && <DrawerItem text="Security" icon={<SecurityIcon />} href="/admin/security" />}
 
                 {/* ORDER FOLDER */}
-                <ListItem disablePadding sx={{ display: 'block' }}>
-                    <ListItemButton onClick={() => setOrderOpen(!orderOpen)} sx={{ minHeight: 48, pl: 2 }}>
-                        <ListItemIcon sx={{ minWidth: 40 }}><ShoppingCartIcon /></ListItemIcon>
-                        <ListItemText primary="Order" primaryTypographyProps={{ fontSize: '0.9rem' }} />
-                        {orderOpen ? <ExpandLess /> : <ExpandMore />}
-                    </ListItemButton>
-                </ListItem>
-                <Collapse in={orderOpen} timeout="auto" unmountOnExit>
-                    <List component="div" disablePadding>
-                        <DrawerItem text="Manual Order" icon={<span />} href="/admin/orders/manual" isSub />
-                        <DrawerItem text="Order Tracking" icon={<TrackChangesIcon fontSize="small" />} href="/admin/orders/tracking" isSub />
-                        {isPro ? (
-                            <DrawerItem text="Smart Order" icon={<span />} href="/admin/reports/smart-order" isSub />
-                        ) : (
-                            <ProLockedItem text="Smart Order" icon={<span />} isSub />
-                        )}
-                        <DrawerItem text="Order History" icon={<span />} href="/admin/orders/history" isSub />
-                    </List>
-                </Collapse>
+                {isFullAdmin && (
+                    <>
+                        <ListItem disablePadding sx={{ display: 'block' }}>
+                            <ListItemButton onClick={() => setOrderOpen(!orderOpen)} sx={{ minHeight: 48, pl: 2 }}>
+                                <ListItemIcon sx={{ minWidth: 40 }}><ShoppingCartIcon /></ListItemIcon>
+                                <ListItemText primary="Order" primaryTypographyProps={{ fontSize: '0.9rem' }} />
+                                {orderOpen ? <ExpandLess /> : <ExpandMore />}
+                            </ListItemButton>
+                        </ListItem>
+                        <Collapse in={orderOpen} timeout="auto" unmountOnExit>
+                            <List component="div" disablePadding>
+                                <DrawerItem text="Manual Order" icon={<span />} href="/admin/orders/manual" isSub />
+                                <DrawerItem text="Order Tracking" icon={<TrackChangesIcon fontSize="small" />} href="/admin/orders/tracking" isSub />
+                                {isPro ? (
+                                    <DrawerItem text="Smart Order" icon={<span />} href="/admin/reports/smart-order" isSub />
+                                ) : (
+                                    <ProLockedItem text="Smart Order" icon={<span />} isSub />
+                                )}
+                                <DrawerItem text="Order History" icon={<span />} href="/admin/orders/history" isSub />
+                            </List>
+                        </Collapse>
+                    </>
+                )}
 
-                {/* SCHEDULER (Pro only) */}
-                {isPro ? (
+                {/* SCHEDULER (Pro + approve_schedule) */}
+                {isPro && canSchedule ? (
                     <DrawerItem text="Scheduler" icon={<EventIcon />} href="/admin/schedule" />
-                ) : (
+                ) : isPro ? null : (
                     <ProLockedItem text="Scheduler" icon={<ScheduleIcon />} />
                 )}
 
-                {/* INSIGHTS (Pro only) */}
-                {isPro ? (
+                {/* INSIGHTS (Pro + view_reports) */}
+                {isPro && canViewReports ? (
                   <DrawerItem text="Insights" icon={<AutoGraphIcon />} href="/admin/insights" badge="AI" />
-                ) : (
+                ) : isPro ? null : (
                   <ProLockedItem text="Insights" icon={<AutoGraphIcon />} />
                 )}
 
                 {/* SHIFT CLOSE */}
-                <DrawerItem text="Shift Close" icon={<ReceiptLongIcon />} href="/admin/shift-reports" />
+                {isFullAdmin && <DrawerItem text="Shift Close" icon={<ReceiptLongIcon />} href="/admin/shift-reports" />}
 
                 {/* FINANCES */}
-                {isPro ? (
+                {isPro && (isFullAdmin || canViewReports) ? (
                     <DrawerItem text="Finances" icon={<AttachMoneyIcon />} href="/admin/finances" />
-                ) : (
+                ) : isPro ? null : (
                     <ProLockedItem text="Finances" icon={<AttachMoneyIcon />} />
                 )}
 
                 {/* SETTINGS FOLDER */}
-                <ListItem disablePadding sx={{ display: 'block' }}>
-                    <ListItemButton onClick={() => setSettingsOpen(!settingsOpen)} sx={{ minHeight: 48, pl: 2 }}>
-                        <ListItemIcon sx={{ minWidth: 40 }}><SettingsIcon /></ListItemIcon>
-                        <ListItemText primary="Settings" primaryTypographyProps={{ fontSize: '0.9rem' }} />
-                        {settingsOpen ? <ExpandLess /> : <ExpandMore />}
-                    </ListItemButton>
-                </ListItem>
-                <Collapse in={settingsOpen} timeout="auto" unmountOnExit>
-                    <List component="div" disablePadding>
-                        <DrawerItem text="General" icon={<SettingsIcon fontSize="small" />} href="/admin/settings" isSub />
-                        <DrawerItem text="Categories" icon={<CategoryIcon fontSize="small" />} href="/admin/categories" isSub />
-                        <DrawerItem text="Ordering" icon={<LocalShippingIcon fontSize="small" />} href="/admin/settings/ordering" isSub />
-                        <DrawerItem text="Users" icon={<GroupIcon fontSize="small" />} href="/admin/users" isSub />
-                        <DrawerItem text="Billing" icon={<PaymentIcon fontSize="small" />} href="/admin/billing" isSub />
-                        <DrawerItem text="Help" icon={<HelpIcon fontSize="small" />} href="/admin/help" isSub />
-                        <DrawerItem text="Suppliers" icon={<LocalShippingIcon fontSize="small" />} href="/admin/suppliers" isSub />
-                        <DrawerItem text="Locations" icon={<LocationOnIcon fontSize="small" />} href="/admin/settings/locations" isSub />
-                        <DrawerItem text="Shift Calculator" icon={<ReceiptLongIcon fontSize="small" />} href="/admin/settings/shift-calculator" isSub />
-                        <DrawerItem text="Notifications" icon={<NotificationsIcon fontSize="small" />} href="/admin/settings/notifications" isSub />
-                        <DrawerItem text="Mobile API" icon={<PhoneAndroidIcon fontSize="small" />} href="/admin/mobile-api" isSub />
-                        <DrawerItem text="Developer API" icon={<ApiIcon fontSize="small" />} href="/admin/developer" isSub />
-                        <DrawerItem text="Recipes" icon={<MenuBookIcon fontSize="small" />} href="/admin/recipes" isSub />
-                        <DrawerItem text="Data Restore" icon={<RestoreIcon fontSize="small" />} href="/admin/settings/restore" isSub />
-                    </List>
-                </Collapse>
+                {showSettingsFolder && (
+                    <>
+                        <ListItem disablePadding sx={{ display: 'block' }}>
+                            <ListItemButton onClick={() => setSettingsOpen(!settingsOpen)} sx={{ minHeight: 48, pl: 2 }}>
+                                <ListItemIcon sx={{ minWidth: 40 }}><SettingsIcon /></ListItemIcon>
+                                <ListItemText primary="Settings" primaryTypographyProps={{ fontSize: '0.9rem' }} />
+                                {settingsOpen ? <ExpandLess /> : <ExpandMore />}
+                            </ListItemButton>
+                        </ListItem>
+                        <Collapse in={settingsOpen} timeout="auto" unmountOnExit>
+                            <List component="div" disablePadding>
+                                {isFullAdmin && <DrawerItem text="General" icon={<SettingsIcon fontSize="small" />} href="/admin/settings" isSub />}
+                                {isFullAdmin && <DrawerItem text="Categories" icon={<CategoryIcon fontSize="small" />} href="/admin/categories" isSub />}
+                                {isFullAdmin && <DrawerItem text="Ordering" icon={<LocalShippingIcon fontSize="small" />} href="/admin/settings/ordering" isSub />}
+                                {(isFullAdmin || canManageEmployees) && <DrawerItem text="Users" icon={<GroupIcon fontSize="small" />} href="/admin/users" isSub />}
+                                {isFullAdmin && <DrawerItem text="Billing" icon={<PaymentIcon fontSize="small" />} href="/admin/billing" isSub />}
+                                {isFullAdmin && <DrawerItem text="Help" icon={<HelpIcon fontSize="small" />} href="/admin/help" isSub />}
+                                {isFullAdmin && <DrawerItem text="Suppliers" icon={<LocalShippingIcon fontSize="small" />} href="/admin/suppliers" isSub />}
+                                {isFullAdmin && <DrawerItem text="Locations" icon={<LocationOnIcon fontSize="small" />} href="/admin/settings/locations" isSub />}
+                                {isFullAdmin && <DrawerItem text="Shift Calculator" icon={<ReceiptLongIcon fontSize="small" />} href="/admin/settings/shift-calculator" isSub />}
+                                {isFullAdmin && <DrawerItem text="Notifications" icon={<NotificationsIcon fontSize="small" />} href="/admin/settings/notifications" isSub />}
+                                {isFullAdmin && <DrawerItem text="Mobile API" icon={<PhoneAndroidIcon fontSize="small" />} href="/admin/mobile-api" isSub />}
+                                {isFullAdmin && <DrawerItem text="Developer API" icon={<ApiIcon fontSize="small" />} href="/admin/developer" isSub />}
+                                {isFullAdmin && <DrawerItem text="Recipes" icon={<MenuBookIcon fontSize="small" />} href="/admin/recipes" isSub />}
+                                {isFullAdmin && <DrawerItem text="Data Restore" icon={<RestoreIcon fontSize="small" />} href="/admin/settings/restore" isSub />}
+                            </List>
+                        </Collapse>
+                    </>
+                )}
 
                 <ListItem disablePadding sx={{ display: 'block', mt: 2 }}>
                     <ListItemButton onClick={handleLogout} sx={{ minHeight: 48, pl: 2, color: 'error.main' }}>

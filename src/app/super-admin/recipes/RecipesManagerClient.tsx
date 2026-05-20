@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import {
     BookOpen, Plus, Upload, Search, Edit2, Trash2, X, RefreshCw,
     ChevronRight, AlertCircle, CheckCircle, ArrowRight, Tag,
-    UtensilsCrossed, FileText,
+    UtensilsCrossed, FileText, Building2,
 } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -350,6 +350,19 @@ export default function RecipesManagerClient() {
     const [showNewCat, setShowNewCat] = useState(false);
     const [savingCat, setSavingCat] = useState(false);
 
+    // ── Org import modal ──
+    const [orgImportOpen, setOrgImportOpen] = useState(false);
+    const [orgImportOrgs, setOrgImportOrgs] = useState<{ id: number; name: string; recipe_count: number }[]>([]);
+    const [orgImportOrgId, setOrgImportOrgId] = useState<number | null>(null);
+    const [orgImportRecipes, setOrgImportRecipes] = useState<ImportPreviewRow[]>([]);
+    const [orgImportRawRecipes, setOrgImportRawRecipes] = useState<any[]>([]);
+    const [orgImportSelected, setOrgImportSelected] = useState<Set<number>>(new Set());
+    const [orgImportLoading, setOrgImportLoading] = useState(false);
+    const [orgImportImporting, setOrgImportImporting] = useState(false);
+    const [orgImportResult, setOrgImportResult] = useState<ImportResult | null>(null);
+    const [orgImportStep, setOrgImportStep] = useState<1 | 2 | 3>(1);
+    const [orgSkipDuplicates, setOrgSkipDuplicates] = useState(true);
+
     // ── Import modal ──
     const [importOpen, setImportOpen] = useState(false);
     const [importStep, setImportStep] = useState(1);
@@ -542,6 +555,86 @@ export default function RecipesManagerClient() {
         if ((data.imported || 0) > 0) await load();
     }
 
+    // ── Org import handlers ──
+    async function openOrgImport() {
+        setOrgImportStep(1);
+        setOrgImportOrgId(null);
+        setOrgImportRecipes([]);
+        setOrgImportRawRecipes([]);
+        setOrgImportSelected(new Set());
+        setOrgImportResult(null);
+        setOrgSkipDuplicates(true);
+        setOrgImportLoading(true);
+        setOrgImportOpen(true);
+        const res = await fetch('/api/super-admin/recipes/org-import');
+        const data = await res.json();
+        setOrgImportOrgs(data.orgs || []);
+        setOrgImportLoading(false);
+    }
+
+    async function loadOrgRecipes(id: number) {
+        setOrgImportOrgId(id);
+        setOrgImportLoading(true);
+        setOrgImportRecipes([]);
+        setOrgImportRawRecipes([]);
+        setOrgImportSelected(new Set());
+        const res = await fetch(`/api/super-admin/recipes/org-import?orgId=${id}`);
+        const data = await res.json();
+        const raw = data.recipes || [];
+        setOrgImportRawRecipes(raw);
+        const preview: ImportPreviewRow[] = raw.map((r: any) => ({
+            name: r.name,
+            description: r.description || '',
+            instructions: r.instructions || '',
+            ingredients: Array.isArray(r.ingredients) ? r.ingredients : [],
+            category: r.category || '',
+            glass: r.glass || '',
+            amount: r.amount || '',
+            tags: Array.isArray(r.tags) ? r.tags : [],
+            issues: r.name ? [] : ['Missing name'],
+        }));
+        setOrgImportRecipes(preview);
+        setOrgImportSelected(new Set(raw.map((_: any, i: number) => i)));
+        setOrgImportLoading(false);
+        setOrgImportStep(2);
+    }
+
+    async function runOrgImport() {
+        setOrgImportImporting(true);
+        const records = [...orgImportSelected].map(i => {
+            const r = orgImportRawRecipes[i];
+            return {
+                name: r.name,
+                description: r.description || null,
+                ingredients: Array.isArray(r.ingredients) ? r.ingredients : [],
+                instructions: r.instructions || null,
+                category: r.category || null,
+                glass: r.glass || null,
+                amount: r.amount || null,
+                tags: Array.isArray(r.tags) ? r.tags : [],
+            };
+        });
+        const res = await fetch('/api/super-admin/recipes/import', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ records, skipDuplicates: orgSkipDuplicates }),
+        });
+        const data = await res.json();
+        setOrgImportImporting(false);
+        setOrgImportResult({ imported: data.imported || 0, skipped: data.skipped || 0, errors: data.errors || [] });
+        setOrgImportStep(3);
+        if ((data.imported || 0) > 0) await load();
+    }
+
+    function toggleOrgRecipe(idx: number) {
+        setOrgImportSelected(prev => {
+            const next = new Set(prev);
+            if (next.has(idx)) next.delete(idx);
+            else next.add(idx);
+            return next;
+        });
+    }
+
     // ── Ingredient editor helpers ──
     const updateIng = (idx: number, field: keyof Ingredient, val: string) =>
         setEditIngredients(prev => prev.map((ing, i) => i === idx ? { ...ing, [field]: val } : ing));
@@ -577,6 +670,10 @@ export default function RecipesManagerClient() {
                     </button>
                 </div>
                 <div className="flex items-center gap-2">
+                    <button onClick={openOrgImport}
+                        className="flex items-center gap-2 px-3 py-2 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg text-sm font-medium transition-colors">
+                        <Building2 className="w-4 h-4" /> Import from Org
+                    </button>
                     <button onClick={openImport}
                         className="flex items-center gap-2 px-3 py-2 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg text-sm font-medium transition-colors">
                         <Upload className="w-4 h-4" /> Import CSV / JSON
@@ -1187,6 +1284,153 @@ export default function RecipesManagerClient() {
                                     {importStep === 4
                                         ? `Import ${validImportCount} Recipe${validImportCount !== 1 ? 's' : ''}`
                                         : 'Continue →'}
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ── Org Import Modal ────────────────────────────────────────────────── */}
+            {orgImportOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+                    <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-3xl max-h-[92vh] flex flex-col shadow-2xl">
+                        <div className="border-b border-slate-800 px-6 py-4 flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <Building2 className="w-5 h-5 text-emerald-400" />
+                                <h2 className="text-lg font-bold text-white">Import from Organization</h2>
+                            </div>
+                            <button type="button" title="Close" onClick={() => setOrgImportOpen(false)} className="text-slate-400 hover:text-white"><X className="w-5 h-5" /></button>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto p-6">
+                            {/* Step 1: Pick org */}
+                            {orgImportStep === 1 && (
+                                <div className="space-y-3">
+                                    {orgImportLoading ? (
+                                        <p className="text-slate-400 text-sm">Loading organizations…</p>
+                                    ) : orgImportOrgs.length === 0 ? (
+                                        <div className="text-center py-16">
+                                            <Building2 className="w-10 h-10 text-slate-700 mx-auto mb-3" />
+                                            <p className="text-slate-400 font-medium">No organizations have recipes yet</p>
+                                            <p className="text-slate-600 text-sm mt-1">Recipes must be created via the admin panel for an organization first.</p>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <p className="text-sm text-slate-400 mb-4">Select an organization to browse its recipes and import them into the global library.</p>
+                                            {orgImportOrgs.map(org => (
+                                                <button type="button" key={org.id} onClick={() => loadOrgRecipes(org.id)}
+                                                    className="w-full flex items-center justify-between bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-slate-500 rounded-xl px-4 py-3 transition-all text-left">
+                                                    <span className="text-slate-200 font-medium text-sm">{org.name}</span>
+                                                    <span className="text-xs text-slate-500 bg-slate-900 px-2 py-0.5 rounded-full">{org.recipe_count} recipe{org.recipe_count !== 1 ? 's' : ''}</span>
+                                                </button>
+                                            ))}
+                                        </>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Step 2: Select recipes */}
+                            {orgImportStep === 2 && (
+                                <div>
+                                    {orgImportLoading ? (
+                                        <p className="text-slate-400 text-sm">Loading recipes…</p>
+                                    ) : (
+                                        <>
+                                            <div className="flex items-center justify-between mb-4">
+                                                <div>
+                                                    <p className="text-sm font-semibold text-slate-200">{orgImportOrgs.find(o => o.id === orgImportOrgId)?.name}</p>
+                                                    <p className="text-xs text-slate-500 mt-0.5">{orgImportRecipes.length} recipe{orgImportRecipes.length !== 1 ? 's' : ''} · {orgImportSelected.size} selected</p>
+                                                </div>
+                                                <div className="flex items-center gap-3">
+                                                    <button type="button" onClick={() => setOrgImportSelected(new Set(orgImportRawRecipes.map((_: any, i: number) => i)))}
+                                                        className="text-xs text-blue-400 hover:text-blue-300 transition-colors">Select all</button>
+                                                    <button type="button" onClick={() => setOrgImportSelected(new Set())}
+                                                        className="text-xs text-slate-500 hover:text-slate-300 transition-colors">Clear</button>
+                                                </div>
+                                            </div>
+
+                                            <div className="flex items-center justify-between bg-slate-800/60 border border-slate-700 rounded-xl px-4 py-3 mb-4">
+                                                <div>
+                                                    <p className="text-sm font-semibold text-slate-200">Skip duplicate names</p>
+                                                    <p className="text-xs text-slate-500 mt-0.5">Recipes whose name already exists in the global library will be skipped</p>
+                                                </div>
+                                                <button type="button" title={orgSkipDuplicates ? 'Skip duplicates: on' : 'Skip duplicates: off'} onClick={() => setOrgSkipDuplicates(!orgSkipDuplicates)}
+                                                    className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${orgSkipDuplicates ? 'bg-blue-600' : 'bg-slate-700'}`}>
+                                                    <span className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all ${orgSkipDuplicates ? 'left-6' : 'left-1'}`} />
+                                                </button>
+                                            </div>
+
+                                            <div className="space-y-1.5">
+                                                {orgImportRecipes.map((r, i) => (
+                                                    <label key={i} className={`flex items-center gap-3 px-4 py-3 rounded-xl border cursor-pointer transition-all ${
+                                                        orgImportSelected.has(i)
+                                                            ? 'bg-emerald-950/20 border-emerald-800/40'
+                                                            : 'bg-slate-800/40 border-slate-700 hover:border-slate-500'
+                                                    }`}>
+                                                        <input type="checkbox" checked={orgImportSelected.has(i)} onChange={() => toggleOrgRecipe(i)}
+                                                            className="accent-emerald-500 w-4 h-4 flex-shrink-0" />
+                                                        <div className="flex-1 min-w-0">
+                                                            <p className="text-sm font-medium text-slate-200 truncate">{r.name}</p>
+                                                            <div className="flex items-center gap-3 mt-0.5 text-xs text-slate-500">
+                                                                {r.category && <span className="text-blue-400">{r.category}</span>}
+                                                                {r.ingredients.length > 0 && <span>{r.ingredients.length} ingredient{r.ingredients.length !== 1 ? 's' : ''}</span>}
+                                                            </div>
+                                                        </div>
+                                                    </label>
+                                                ))}
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Step 3: Result */}
+                            {orgImportStep === 3 && orgImportResult && (
+                                <div className="max-w-md mx-auto text-center py-10">
+                                    <CheckCircle className="w-14 h-14 text-emerald-400 mx-auto mb-4" />
+                                    <h3 className="text-xl font-bold text-white mb-1">Import Complete</h3>
+                                    <p className="text-slate-500 text-sm mb-6">The global recipe library has been updated.</p>
+                                    <div className="space-y-2 text-sm">
+                                        <div className="flex justify-between bg-slate-800 rounded-xl px-5 py-3">
+                                            <span className="text-slate-400">Recipes imported</span>
+                                            <span className="text-emerald-400 font-bold text-base">{orgImportResult.imported}</span>
+                                        </div>
+                                        {orgImportResult.skipped > 0 && (
+                                            <div className="flex justify-between bg-slate-800 rounded-xl px-5 py-3">
+                                                <span className="text-slate-400">Skipped</span>
+                                                <span className="text-amber-400 font-medium">{orgImportResult.skipped}</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                    {orgImportResult.errors.length > 0 && (
+                                        <div className="mt-4 bg-red-950/20 border border-red-800/30 rounded-xl p-4 text-left">
+                                            <p className="text-red-400 text-xs font-semibold mb-2">Errors ({orgImportResult.errors.length})</p>
+                                            {orgImportResult.errors.slice(0, 6).map((e, i) => (
+                                                <p key={i} className="text-red-300 text-xs">{e}</p>
+                                            ))}
+                                            {orgImportResult.errors.length > 6 && (
+                                                <p className="text-red-500 text-xs mt-1">+{orgImportResult.errors.length - 6} more</p>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="border-t border-slate-800 px-6 py-4 flex items-center justify-between">
+                            <button type="button" onClick={() => {
+                                if (orgImportStep === 1 || orgImportStep === 3) { setOrgImportOpen(false); }
+                                else { setOrgImportStep(1); }
+                            }} className="px-4 py-2 text-slate-400 hover:text-white text-sm transition-colors">
+                                {orgImportStep === 1 || orgImportStep === 3 ? 'Close' : '← Back'}
+                            </button>
+                            {orgImportStep === 2 && (
+                                <button type="button" onClick={runOrgImport}
+                                    disabled={orgImportSelected.size === 0 || orgImportImporting}
+                                    className="flex items-center gap-2 px-5 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white text-sm rounded-lg font-medium transition-colors">
+                                    {orgImportImporting && <RefreshCw className="w-4 h-4 animate-spin" />}
+                                    Import {orgImportSelected.size} Recipe{orgImportSelected.size !== 1 ? 's' : ''}
                                 </button>
                             )}
                         </div>

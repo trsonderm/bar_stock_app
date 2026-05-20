@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { AlertTriangle, Trash2, Plus, X, User, ArchiveRestore, Clock } from 'lucide-react';
+import { AlertTriangle, Trash2, Plus, X, User, ArchiveRestore, Clock, Edit2 } from 'lucide-react';
 
 interface BarredPerson {
     id: number;
@@ -217,6 +217,22 @@ export default function SecurityClient({
     const [rCustomDate, setRCustomDate] = useState('');
     const [rSaving, setRSaving] = useState(false);
 
+    // Edit barred modal
+    const [editPerson, setEditPerson] = useState<BarredPerson | null>(null);
+    const [eName, setEName] = useState('');
+    const [eAliasInput, setEAliasInput] = useState('');
+    const [eAliases, setEAliases] = useState<string[]>([]);
+    const [eDescription, setEDescription] = useState('');
+    const [eTrespassed, setETrespassed] = useState(false);
+    const [ePhotos, setEPhotos] = useState<MediaItem[]>([]);
+    const [ePrimaryIdx, setEPrimaryIdx] = useState(0);
+    const [eCropSrc, setECropSrc] = useState<string | null>(null);
+    const [eCropForIdx, setECropForIdx] = useState<number | null>(null);
+    const [eDuration, setEDuration] = useState<Duration>('permanent');
+    const [eCustomDate, setECustomDate] = useState('');
+    const [eSaving, setESaving] = useState(false);
+    const eFileRef = useRef<HTMLInputElement>(null);
+
     // Add incident modal
     const [showAddIncident, setShowAddIncident] = useState(false);
     const [iPersonId, setIPersonId] = useState('');
@@ -413,6 +429,70 @@ export default function SecurityClient({
         load();
     };
 
+    const openEdit = (person: BarredPerson) => {
+        setEditPerson(person);
+        setEName(person.name);
+        setEAliases(Array.isArray(person.aliases) ? person.aliases : []);
+        setEAliasInput('');
+        setEDescription(person.description || '');
+        setETrespassed(person.trespassed);
+        // Reconstruct media array from photo + media fields
+        const photos: MediaItem[] = [];
+        if (person.photo) photos.push({ type: 'image', data: person.photo, name: 'photo' });
+        if (Array.isArray(person.media)) {
+            person.media.forEach((m: MediaItem) => photos.push(m));
+        }
+        setEPhotos(photos);
+        setEPrimaryIdx(0);
+        // Infer duration from barred_until
+        if (!person.barred_until) {
+            setEDuration('permanent');
+        } else {
+            setEDuration('custom');
+            setECustomDate(new Date(person.barred_until).toISOString().split('T')[0]);
+        }
+    };
+
+    const saveEdit = async () => {
+        if (!editPerson || !eName.trim()) return;
+        setESaving(true);
+        const barred_until = computeBarredUntil(eDuration, eCustomDate);
+        const primaryPhoto = ePhotos[ePrimaryIdx]?.type === 'image' ? ePhotos[ePrimaryIdx] : ePhotos.find(m => m.type === 'image');
+        const additionalMedia = ePhotos.filter(m => m !== primaryPhoto);
+        await fetch('/api/admin/security/barred', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                id: editPerson.id,
+                name: eName.trim(),
+                aliases: eAliases,
+                photo: primaryPhoto?.data || null,
+                media: additionalMedia,
+                description: eDescription,
+                trespassed: eTrespassed,
+                barred_until,
+            }),
+        });
+        setESaving(false);
+        setEditPerson(null);
+        load();
+    };
+
+    const handleEditMediaAdd = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = Array.from(e.target.files || []);
+        files.forEach(file => {
+            if (file.size > 50 * 1024 * 1024) { alert(`${file.name} exceeds 50MB`); return; }
+            const reader = new FileReader();
+            reader.onload = ev => {
+                const data = ev.target?.result as string;
+                const type = file.type.startsWith('video/') ? 'video' : 'image';
+                setEPhotos(prev => [...prev, { type: type as 'image' | 'video', data, name: file.name }]);
+            };
+            reader.readAsDataURL(file);
+        });
+        e.target.value = '';
+    };
+
     const saveIncident = async () => {
         if (!iDescription.trim()) return;
         setISaving(true);
@@ -457,6 +537,16 @@ export default function SecurityClient({
                     setBCropSrc(null);
                 }}
                 onCancel={() => { setBCropSrc(null); setBCropForIdx(null); }} />}
+
+            {eCropSrc && <CircleCropper src={eCropSrc}
+                onSave={url => {
+                    if (eCropForIdx !== null) {
+                        setEPhotos(prev => prev.map((m, i) => i === eCropForIdx ? { ...m, data: url } : m));
+                        setECropForIdx(null);
+                    }
+                    setECropSrc(null);
+                }}
+                onCancel={() => { setECropSrc(null); setECropForIdx(null); }} />}
 
             <h1 style={{ fontSize: '1.5rem', fontWeight: 700, marginBottom: '0.25rem' }}>Security</h1>
             <p style={{ color: '#6b7280', fontSize: '0.875rem', marginBottom: '1.25rem' }}>Manage barred persons and incident reports for your venue.</p>
@@ -551,12 +641,20 @@ export default function SecurityClient({
                                                 </span>
                                             )}
                                         </div>
-                                        {canDeleteBarred && (
-                                            <button onClick={() => deleteBarred(person.id, person.name)}
-                                                style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', padding: '4px', flexShrink: 0 }}>
-                                                <Trash2 size={16} />
-                                            </button>
-                                        )}
+                                        <div style={{ display: 'flex', gap: '0.25rem', flexShrink: 0 }}>
+                                            {canAddBarred && (
+                                                <button type="button" onClick={() => openEdit(person)} title="Edit person"
+                                                    style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', padding: '4px' }}>
+                                                    <Edit2 size={15} />
+                                                </button>
+                                            )}
+                                            {canDeleteBarred && (
+                                                <button type="button" onClick={() => deleteBarred(person.id, person.name)} title="Delete person"
+                                                    style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', padding: '4px' }}>
+                                                    <Trash2 size={16} />
+                                                </button>
+                                            )}
+                                        </div>
                                     </div>
                                     {person.aliases?.length > 0 && (
                                         <div style={{ color: '#9ca3af', fontSize: '0.8rem', marginTop: '3px' }}>
@@ -890,6 +988,136 @@ export default function SecurityClient({
                             <button type="button" onClick={handleImport} disabled={importing || importRows.length === 0}
                                 style={{ background: '#dc2626', color: 'white', border: 'none', padding: '0.6rem 1.25rem', borderRadius: '8px', fontWeight: 700, cursor: 'pointer', opacity: (importing || importRows.length === 0) ? 0.5 : 1 }}>
                                 {importing ? 'Importing…' : `Import ${importRows.length} Person${importRows.length !== 1 ? 's' : ''}`}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ── Edit Barred Modal ─────────────────────────────────────────────── */}
+            {editPerson && (
+                <div style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+                    <div style={{ background: '#111827', border: '1px solid #374151', borderRadius: '12px', width: '100%', maxWidth: '500px', maxHeight: '92vh', display: 'flex', flexDirection: 'column' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1rem 1.25rem', borderBottom: '1px solid #1f2937' }}>
+                            <h2 style={{ margin: 0, color: 'white', fontSize: '1.05rem', fontWeight: 700 }}>Edit Barred Person</h2>
+                            <button type="button" onClick={() => setEditPerson(null)} style={{ background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: '1.3rem', lineHeight: 1 }}>×</button>
+                        </div>
+                        <div style={{ padding: '1.25rem', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+
+                            {/* Photos & Video */}
+                            <div>
+                                <label style={lbl}>Photos & Video</label>
+                                {ePhotos.length > 0 && (
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.6rem' }}>
+                                        {ePhotos.map((m, i) => (
+                                            <div key={i} style={{ position: 'relative', width: 80, height: 80, flexShrink: 0 }}>
+                                                {m.type === 'image' ? (
+                                                    <img src={m.data} alt={m.name} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '8px', border: `2px solid ${i === ePrimaryIdx ? '#10b981' : '#374151'}` }} />
+                                                ) : (
+                                                    <div style={{ width: 80, height: 80, background: '#1f2937', borderRadius: '8px', border: `2px solid ${i === ePrimaryIdx ? '#10b981' : '#374151'}`, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', fontSize: '0.6rem', color: '#9ca3af', textAlign: 'center', padding: '4px', gap: '2px' }}>
+                                                        <span>🎬</span><span style={{ wordBreak: 'break-all' }}>{m.name.slice(0, 14)}</span>
+                                                    </div>
+                                                )}
+                                                {i === ePrimaryIdx && m.type === 'image' && (
+                                                    <div style={{ position: 'absolute', bottom: 3, left: 3, background: '#10b981', color: 'white', fontSize: '0.55rem', padding: '1px 5px', borderRadius: '999px', fontWeight: 700, pointerEvents: 'none' }}>PRIMARY</div>
+                                                )}
+                                                {i !== ePrimaryIdx && m.type === 'image' && (
+                                                    <button type="button" onClick={() => setEPrimaryIdx(i)}
+                                                        style={{ position: 'absolute', bottom: 3, left: 3, background: 'rgba(0,0,0,0.75)', color: '#10b981', border: '1px solid #10b981', fontSize: '0.55rem', padding: '1px 5px', borderRadius: '999px', cursor: 'pointer', fontWeight: 700 }}>
+                                                        Primary
+                                                    </button>
+                                                )}
+                                                <button type="button" title="Remove" onClick={() => {
+                                                    setEPhotos(prev => {
+                                                        const next = prev.filter((_, j) => j !== i);
+                                                        setEPrimaryIdx(p => p >= next.length ? Math.max(0, next.length - 1) : i < p ? p - 1 : p);
+                                                        return next;
+                                                    });
+                                                }} style={{ position: 'absolute', top: -6, right: -6, background: '#ef4444', border: 'none', borderRadius: '50%', width: 18, height: 18, color: 'white', cursor: 'pointer', fontSize: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>×</button>
+                                                {m.type === 'image' && (
+                                                    <button type="button" title="Crop" onClick={() => { setECropSrc(m.data); setECropForIdx(i); }}
+                                                        style={{ position: 'absolute', top: -6, left: -6, background: '#374151', border: '1px solid #4b5563', borderRadius: '50%', width: 18, height: 18, color: '#d1d5db', cursor: 'pointer', fontSize: '0.65rem', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>✂</button>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                                <button type="button" onClick={() => eFileRef.current?.click()}
+                                    style={{ background: '#374151', color: '#d1d5db', border: '1px dashed #4b5563', borderRadius: '8px', padding: '0.6rem 1rem', cursor: 'pointer', fontSize: '0.85rem', width: '100%' }}>
+                                    + Add Photos or Video
+                                </button>
+                                <input ref={eFileRef} type="file" accept="image/*,video/*" multiple style={{ display: 'none' }} onChange={handleEditMediaAdd} />
+                            </div>
+
+                            {/* Name */}
+                            <div>
+                                <label style={lbl}>Full Name *</label>
+                                <input value={eName} onChange={e => setEName(e.target.value)} style={inp} placeholder="First Last" />
+                            </div>
+
+                            {/* Aliases */}
+                            <div>
+                                <label style={lbl}>Aliases / Also Known As</label>
+                                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                    <input value={eAliasInput} onChange={e => setEAliasInput(e.target.value)}
+                                        onKeyDown={e => {
+                                            if (e.key === 'Enter' && eAliasInput.trim()) {
+                                                e.preventDefault();
+                                                setEAliases(prev => [...prev, eAliasInput.trim()]);
+                                                setEAliasInput('');
+                                            }
+                                        }}
+                                        style={{ ...inp, flex: 1 }} placeholder="Type alias and press Enter" />
+                                    <button type="button" onClick={() => { if (eAliasInput.trim()) { setEAliases(prev => [...prev, eAliasInput.trim()]); setEAliasInput(''); } }}
+                                        style={{ background: '#374151', border: 'none', borderRadius: '8px', color: 'white', padding: '0 1rem', cursor: 'pointer' }}>+</button>
+                                </div>
+                                {eAliases.length > 0 && (
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginTop: '0.5rem' }}>
+                                        {eAliases.map((a, i) => (
+                                            <span key={i} style={{ background: '#374151', color: '#d1d5db', padding: '3px 10px', borderRadius: '999px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                                {a}
+                                                <button type="button" onClick={() => setEAliases(prev => prev.filter((_, j) => j !== i))}
+                                                    style={{ background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', padding: 0, fontSize: '0.9rem', lineHeight: 1 }}>×</button>
+                                            </span>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Description */}
+                            <div>
+                                <label style={lbl}>Description / Reason Barred</label>
+                                <textarea value={eDescription} onChange={e => setEDescription(e.target.value)}
+                                    placeholder="Describe what happened and why this person is barred…"
+                                    style={{ ...inp, minHeight: '80px', resize: 'vertical' as const }} />
+                            </div>
+
+                            {/* Duration */}
+                            <div>
+                                <label style={lbl}>Ban Duration</label>
+                                <DurationPicker value={eDuration} onChange={setEDuration} customDate={eCustomDate} onCustomDate={setECustomDate} />
+                            </div>
+
+                            {/* Trespass */}
+                            <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', cursor: 'pointer', background: eTrespassed ? '#7f1d1d' : '#1f2937', border: `2px solid ${eTrespassed ? '#ef4444' : '#374151'}`, borderRadius: '8px', padding: '0.75rem', transition: 'all 0.2s' }}>
+                                <input type="checkbox" checked={eTrespassed} onChange={e => setETrespassed(e.target.checked)}
+                                    style={{ width: 18, height: 18, marginTop: '1px', accentColor: '#ef4444', flexShrink: 0, cursor: 'pointer' }} />
+                                <div>
+                                    <div style={{ color: eTrespassed ? '#fca5a5' : 'white', fontWeight: 700 }}>⚠ Trespass Order Issued</div>
+                                    <div style={{ color: eTrespassed ? '#fecaca' : '#6b7280', fontSize: '0.8rem', marginTop: '2px' }}>
+                                        This person is legally barred from the premises.
+                                    </div>
+                                </div>
+                            </label>
+                        </div>
+                        <div style={{ padding: '1rem 1.25rem', borderTop: '1px solid #1f2937', display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+                            <button type="button" onClick={() => setEditPerson(null)}
+                                style={{ background: 'none', border: '1px solid #374151', color: '#9ca3af', padding: '0.6rem 1rem', borderRadius: '8px', cursor: 'pointer' }}>
+                                Cancel
+                            </button>
+                            <button type="button" onClick={saveEdit} disabled={eSaving || !eName.trim()}
+                                style={{ background: '#dc2626', color: 'white', border: 'none', padding: '0.6rem 1.25rem', borderRadius: '8px', fontWeight: 700, cursor: 'pointer', opacity: (eSaving || !eName.trim()) ? 0.5 : 1 }}>
+                                {eSaving ? 'Saving…' : 'Save Changes'}
                             </button>
                         </div>
                     </div>

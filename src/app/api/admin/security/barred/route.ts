@@ -59,6 +59,41 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ barred: rows[0] });
 }
 
+// PUT — edit an existing barred person's details
+export async function PUT(req: NextRequest) {
+    const session = await getSession();
+    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    const perms: string[] = session.permissions || [];
+    const isAdmin = session.role === 'admin';
+    if (!isAdmin && !perms.includes('all') && !perms.includes('add_barred')) {
+        return NextResponse.json({ error: 'Permission denied' }, { status: 403 });
+    }
+
+    const { id, name, aliases, photo, media, description, trespassed, barred_until } = await req.json();
+    if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 });
+    if (!name?.trim()) return NextResponse.json({ error: 'Name is required' }, { status: 400 });
+
+    await db.execute(
+        `UPDATE security_barred
+         SET name = $1, aliases = $2, photo = $3, media = $4, description = $5,
+             trespassed = $6, barred_until = $7, updated_at = NOW()
+         WHERE id = $8 AND organization_id = $9`,
+        [
+            name.trim(),
+            JSON.stringify(Array.isArray(aliases) ? aliases : []),
+            photo ?? null,
+            JSON.stringify(Array.isArray(media) ? media : []),
+            description ?? null,
+            trespassed === true,
+            barred_until ?? null,
+            id,
+            session.organizationId,
+        ]
+    );
+    return NextResponse.json({ ok: true });
+}
+
 // PATCH — restore an archived person back to active
 export async function PATCH(req: NextRequest) {
     const session = await getSession();

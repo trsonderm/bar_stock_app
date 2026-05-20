@@ -3,28 +3,50 @@ import { db } from '@/lib/db';
 import { verifyMobileToken } from '@/lib/mobile-auth';
 import { notify } from '@/lib/push-notifications';
 
-// GET /api/mobile/schedule/time-off — list my time-off requests
+// GET /api/mobile/schedule/time-off — list time-off requests
+// Admins see all org requests (defaulting to pending); employees see only their own
 export async function GET(req: NextRequest) {
     try {
         const session = await verifyMobileToken(req);
         if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-        const status = req.nextUrl.searchParams.get('status'); // optional filter
+        const isAdmin = session.role === 'admin';
+        const status = req.nextUrl.searchParams.get('status');
 
-        const rows = await db.query(
-            `SELECT tor.id, tor.start_date, tor.end_date, tor.reason, tor.status,
-                    tor.created_at, tor.reviewed_at,
-                    COALESCE(ru.display_name, ru.first_name || ' ' || ru.last_name) AS reviewed_by_name
-             FROM time_off_requests tor
-             LEFT JOIN users ru ON ru.id = tor.reviewed_by
-             WHERE tor.organization_id = $1 AND tor.user_id = $2
-               ${status ? `AND tor.status = '${status.replace(/'/g, "''")}'` : ''}
-             ORDER BY tor.created_at DESC
-             LIMIT 50`,
-            [session.organizationId, session.id]
-        );
+        let rows: any[];
 
-        return NextResponse.json({ requests: rows });
+        if (isAdmin) {
+            rows = await db.query(
+                `SELECT tor.id, tor.start_date, tor.end_date, tor.reason, tor.status,
+                        tor.user_id, tor.created_at, tor.reviewed_at, tor.decline_reason,
+                        COALESCE(eu.display_name, eu.first_name || ' ' || eu.last_name) AS employee_name,
+                        eu.profile_picture AS employee_avatar,
+                        COALESCE(ru.display_name, ru.first_name || ' ' || ru.last_name) AS reviewed_by_name
+                 FROM time_off_requests tor
+                 JOIN users eu ON eu.id = tor.user_id
+                 LEFT JOIN users ru ON ru.id = tor.reviewed_by
+                 WHERE tor.organization_id = $1
+                   ${status ? `AND tor.status = '${status.replace(/'/g, "''")}'` : `AND tor.status = 'pending'`}
+                 ORDER BY tor.created_at DESC
+                 LIMIT 100`,
+                [session.organizationId]
+            );
+        } else {
+            rows = await db.query(
+                `SELECT tor.id, tor.start_date, tor.end_date, tor.reason, tor.status,
+                        tor.created_at, tor.reviewed_at,
+                        COALESCE(ru.display_name, ru.first_name || ' ' || ru.last_name) AS reviewed_by_name
+                 FROM time_off_requests tor
+                 LEFT JOIN users ru ON ru.id = tor.reviewed_by
+                 WHERE tor.organization_id = $1 AND tor.user_id = $2
+                   ${status ? `AND tor.status = '${status.replace(/'/g, "''")}'` : ''}
+                 ORDER BY tor.created_at DESC
+                 LIMIT 50`,
+                [session.organizationId, session.id]
+            );
+        }
+
+        return NextResponse.json({ requests: rows, is_admin: isAdmin });
     } catch (err) {
         console.error('Time-off GET error:', err);
         return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

@@ -10,13 +10,27 @@ async function ensureSwapColumns() {
     } catch {}
 }
 
-// GET /api/mobile/schedule/swap — list swap requests involving this user plus open org requests
+// GET /api/mobile/schedule/swap — list swap requests
+// Admins see all org swaps (defaulting to pending_manager); employees see their own + open requests
 export async function GET(req: NextRequest) {
     try {
         const session = await verifyMobileToken(req);
         if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
+        const isAdmin = session.role === 'admin';
         const status = req.nextUrl.searchParams.get('status');
+
+        // Admins: show all org swaps (default to pending_manager queue); employees: their own + open
+        const whereClause = isAdmin
+            ? (status ? `AND ssr.status = '${status.replace(/'/g, "''")}'` : `AND ssr.status = 'pending_manager'`)
+            : `AND (
+                   ssr.requester_id = $2
+                   OR ssr.target_id = $2
+                   OR (COALESCE(ssr.request_type,'direct') = 'open' AND ssr.status = 'open')
+               )
+               ${status ? `AND ssr.status = '${status.replace(/'/g, "''")}'` : ''}`;
+
+        const queryParams: any[] = isAdmin ? [session.organizationId] : [session.organizationId, session.id];
 
         const swaps = await db.query(
             `SELECT ssr.id, ssr.status, ssr.message, ssr.decline_reason,
@@ -41,15 +55,10 @@ export async function GET(req: NextRequest) {
              LEFT JOIN user_schedules ts ON ts.id = ssr.target_schedule_id
              LEFT JOIN shifts tsh ON tsh.id = ts.shift_id
              WHERE ssr.organization_id = $1
-               AND (
-                   ssr.requester_id = $2
-                   OR ssr.target_id = $2
-                   OR (COALESCE(ssr.request_type,'direct') = 'open' AND ssr.status = 'open')
-               )
-               ${status ? `AND ssr.status = '${status.replace(/'/g, "''")}'` : ''}
+             ${whereClause}
              ORDER BY ssr.created_at DESC
-             LIMIT 50`,
-            [session.organizationId, session.id]
+             LIMIT 100`,
+            queryParams
         );
 
         const enriched = swaps.map((s: any) => ({
@@ -57,7 +66,7 @@ export async function GET(req: NextRequest) {
             status_detail: getStatusDetail(s, session.id),
         }));
 
-        return NextResponse.json({ swaps: enriched });
+        return NextResponse.json({ swaps: enriched, is_admin: isAdmin });
     } catch (err) {
         console.error('Swap GET error:', err);
         return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
@@ -281,33 +290,121 @@ export async function PUT(req: NextRequest) {
     }
 }
 
-// PATCH /api/mobile/schedule/swap — respond to a direct swap request (target employee only)
-// Body: { swap_id, action: 'accept' | 'decline', decline_reason? }
+// PATCH /api/mobile/schedule/swap — employee respond OR admin approve/decline
+// Employee body: { swap_id, action: 'accept' | 'decline', decline_reason? }
+// Admin body:    { swap_id, action: 'approve' | 'manager_decline', decline_reason? }
 export async function PATCH(req: NextRequest) {
     try {
         const session = await verifyMobileToken(req);
         if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
         const { swap_id, action, decline_reason } = await req.json();
-        if (!swap_id || !['accept', 'decline'].includes(action)) {
-            return NextResponse.json({ error: 'swap_id and action (accept|decline) required' }, { status: 400 });
+        if (!swap_id || !['accept', 'decline', 'approve', 'manager_decline'].includes(action)) {
+            return NextResponse.json({ error: 'swap_id and action (accept|decline|approve|manager_decline) required' }, { status: 400 });
+        }
+
+        const isAdmin = session.role === 'admin';
+        const isAdminAction = action === 'approve' || action === 'manager_decline';
+
+        if (isAdminAction && !isAdmin) {
+            return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
         }
 
         const swap = await db.one(
             `SELECT ssr.*,
+                    COALESCE(ssr.request_type, 'direct') AS request_type,
+                    COALESCE(ssr.is_giveaway, false) AS is_giveaway,
                     COALESCE(ru.display_name, ru.first_name||' '||ru.last_name) AS requester_name,
                     COALESCE(tu.display_name, tu.first_name||' '||tu.last_name) AS target_name,
-                    rs.date AS requester_date, ts.date AS target_date
+                    rs.date AS requester_date, rs.shift_id AS requester_shift_id,
+                    ts.date AS target_date, ts.shift_id AS target_shift_id,
+                    rsh.label AS requester_shift_name, tsh.label AS target_shift_name
              FROM shift_swap_requests ssr
              JOIN users ru ON ru.id = ssr.requester_id
              LEFT JOIN users tu ON tu.id = ssr.target_id
              JOIN user_schedules rs ON rs.id = ssr.requester_schedule_id
+             JOIN shifts rsh ON rsh.id = rs.shift_id
              LEFT JOIN user_schedules ts ON ts.id = ssr.target_schedule_id
+             LEFT JOIN shifts tsh ON tsh.id = ts.shift_id
              WHERE ssr.id = $1 AND ssr.organization_id = $2`,
             [swap_id, session.organizationId]
         );
 
         if (!swap) return NextResponse.json({ error: 'Swap not found' }, { status: 404 });
+
+        const managerName = `${session.firstName} ${session.lastName}`;
+
+        // ── Admin: approve or decline a pending_manager swap ─────────────────
+        if (isAdminAction) {
+            if (swap.status !== 'pending_manager') {
+                return NextResponse.json({ error: 'Swap is not awaiting manager approval' }, { status: 409 });
+            }
+
+            if (action === 'manager_decline') {
+                const reason = decline_reason || `Declined by ${managerName}`;
+                await db.execute(
+                    `UPDATE shift_swap_requests
+                     SET status = 'declined', manager_id = $1, manager_responded_at = NOW(), decline_reason = $2, updated_at = NOW()
+                     WHERE id = $3`,
+                    [session.id, reason, swap_id]
+                );
+                const msg = `Your shift swap was declined by ${managerName}${decline_reason ? `: ${decline_reason}` : '.'}`;
+                const notifyIds = [swap.requester_id, ...(swap.target_id ? [swap.target_id] : [])];
+                await Promise.all(notifyIds.map((uid: number) =>
+                    notify(uid, session.organizationId, 'swap_manager_declined', '❌ Swap Declined by Manager', msg, { swap_id: String(swap_id), type: 'swap_manager_declined' })
+                ));
+            } else {
+                // approve — mutate user_schedules
+                if (swap.is_giveaway) {
+                    // Giveaway: reassign requester's schedule entry to claimer
+                    await db.execute(
+                        `UPDATE user_schedules SET user_id = $1 WHERE id = $2`,
+                        [swap.target_id, swap.requester_schedule_id]
+                    );
+                } else {
+                    // Swap: exchange shift_id between both schedule entries
+                    await db.execute(
+                        `UPDATE user_schedules SET shift_id = $1 WHERE id = $2`,
+                        [swap.target_shift_id, swap.requester_schedule_id]
+                    );
+                    await db.execute(
+                        `UPDATE user_schedules SET shift_id = $1 WHERE id = $2`,
+                        [swap.requester_shift_id, swap.target_schedule_id]
+                    );
+                }
+
+                await db.execute(
+                    `UPDATE shift_swap_requests
+                     SET status = 'approved', manager_id = $1, manager_responded_at = NOW(), updated_at = NOW()
+                     WHERE id = $2`,
+                    [session.id, swap_id]
+                );
+
+                if (swap.is_giveaway) {
+                    await Promise.all([
+                        notify(swap.requester_id, session.organizationId, 'swap_approved', '✅ Shift Giveaway Approved!',
+                            `Your ${swap.requester_shift_name} shift on ${swap.requester_date} has been transferred to ${swap.target_name}. Approved by ${managerName}.`,
+                            { swap_id: String(swap_id), type: 'swap_approved' }),
+                        ...(swap.target_id ? [notify(swap.target_id, session.organizationId, 'swap_approved', '✅ Shift Giveaway Approved!',
+                            `You are now working the ${swap.requester_shift_name} shift on ${swap.requester_date}. Approved by ${managerName}.`,
+                            { swap_id: String(swap_id), type: 'swap_approved' })] : []),
+                    ]);
+                } else {
+                    await Promise.all([
+                        notify(swap.requester_id, session.organizationId, 'swap_approved', '✅ Shift Swap Approved!',
+                            `Shift swap approved by ${managerName}! You are now working ${swap.target_name}'s shift.`,
+                            { swap_id: String(swap_id), type: 'swap_approved' }),
+                        ...(swap.target_id ? [notify(swap.target_id, session.organizationId, 'swap_approved', '✅ Shift Swap Approved!',
+                            `Shift swap approved by ${managerName}! You are now working ${swap.requester_name}'s shift.`,
+                            { swap_id: String(swap_id), type: 'swap_approved' })] : []),
+                    ]);
+                }
+            }
+
+            return NextResponse.json({ ok: true });
+        }
+
+        // ── Employee: accept or decline a direct swap (pending_employee) ──────
         if (swap.target_id !== session.id) return NextResponse.json({ error: 'Not your swap to respond to' }, { status: 403 });
         if (swap.status !== 'pending_employee') return NextResponse.json({ error: 'Swap is not awaiting your response' }, { status: 409 });
 

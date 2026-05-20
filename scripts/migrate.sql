@@ -1010,4 +1010,11 @@ DO $$ BEGIN
   ALTER TABLE items ADD COLUMN archived_at TIMESTAMPTZ DEFAULT NULL;
 EXCEPTION WHEN duplicate_column THEN NULL; END $$;
 
+-- =========================================================
+-- 54. Users — hourly pay rate
+-- =========================================================
+DO $$ BEGIN
+  ALTER TABLE users ADD COLUMN hourly_rate NUMERIC(10,2) DEFAULT NULL;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
 COMMIT;

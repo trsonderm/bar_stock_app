@@ -20,6 +20,13 @@ export async function GET(req: NextRequest) {
     const q = searchParams.get('q') || '';
 
     try {
+        // Fetch org-level settings
+        let sharedInventoryCount = false;
+        try {
+            const orgRow = await db.one('SELECT settings FROM organizations WHERE id = $1', [session.organizationId]);
+            if (orgRow?.settings?.shared_inventory_count === true) sharedInventoryCount = true;
+        } catch { }
+
         // Fetch org-level global low stock threshold from settings table
         const settingRows = await db.query(
             `SELECT value FROM settings WHERE organization_id = $1 AND key = 'low_stock_threshold' LIMIT 1`,
@@ -29,30 +36,27 @@ export async function GET(req: NextRequest) {
             ? Number(settingRows[0].value)
             : null;
 
-        let rows: any[];
-        const searchFilter = q ? `AND (i.name ILIKE $2 OR i.type ILIKE $2)` : '';
-        const searchParam = q ? `%${q}%` : null;
-
-        if (locationId) {
-            const params: any[] = [session.organizationId, parseInt(locationId)];
-            if (q) params.push(`%${q}%`);
-            rows = await db.query(
-                `SELECT
-                    i.id, i.name, i.type, i.secondary_type,
-                    i.supplier, i.order_size,
-                    i.low_stock_threshold,
-                    i.low_stock_threshold_type,
-                    i.low_stock_threshold_factor,
-                    COALESCE(inv.quantity, 0) AS quantity
-                 FROM items i
-                 LEFT JOIN inventory inv ON inv.item_id = i.id AND inv.location_id = $2
-                 WHERE i.organization_id = $1
-                   AND i.archived_at IS NULL
-                   ${q ? `AND (i.name ILIKE $3 OR i.type ILIKE $3)` : ''}
-                 ORDER BY i.name ASC`,
-                params
+        // Resolve location scope: explicit param → user's first location → org's first location
+        let resolvedLocationId: number | null = locationId ? parseInt(locationId) : null;
+        if (!sharedInventoryCount && !resolvedLocationId) {
+            const locRow = await db.query(
+                `SELECT location_id FROM user_locations WHERE user_id = $1 AND organization_id = $2 ORDER BY location_id ASC LIMIT 1`,
+                [session.id, session.organizationId]
             );
-        } else {
+            if (locRow.length > 0) {
+                resolvedLocationId = locRow[0].location_id;
+            } else {
+                const firstLoc = await db.one(
+                    'SELECT id FROM locations WHERE organization_id = $1 ORDER BY id ASC LIMIT 1',
+                    [session.organizationId]
+                );
+                if (firstLoc) resolvedLocationId = firstLoc.id;
+            }
+        }
+
+        let rows: any[];
+
+        if (sharedInventoryCount) {
             const params: any[] = [session.organizationId];
             if (q) params.push(`%${q}%`);
             rows = await db.query(
@@ -71,6 +75,25 @@ export async function GET(req: NextRequest) {
                  GROUP BY i.id, i.name, i.type, i.secondary_type,
                           i.supplier, i.order_size,
                           i.low_stock_threshold, i.low_stock_threshold_type, i.low_stock_threshold_factor
+                 ORDER BY i.name ASC`,
+                params
+            );
+        } else {
+            const params: any[] = [session.organizationId, resolvedLocationId];
+            if (q) params.push(`%${q}%`);
+            rows = await db.query(
+                `SELECT
+                    i.id, i.name, i.type, i.secondary_type,
+                    i.supplier, i.order_size,
+                    i.low_stock_threshold,
+                    i.low_stock_threshold_type,
+                    i.low_stock_threshold_factor,
+                    COALESCE(inv.quantity, 0) AS quantity
+                 FROM items i
+                 LEFT JOIN inventory inv ON inv.item_id = i.id AND inv.location_id = $2
+                 WHERE i.organization_id = $1
+                   AND i.archived_at IS NULL
+                   ${q ? `AND (i.name ILIKE $3 OR i.type ILIKE $3)` : ''}
                  ORDER BY i.name ASC`,
                 params
             );
@@ -106,6 +129,8 @@ export async function GET(req: NextRequest) {
             out_of_stock: items.filter(i => i.is_out_of_stock).length,
             low_stock: items.filter(i => i.is_low_stock).length,
             global_low_stock_threshold: globalThreshold,
+            location_id: resolvedLocationId,
+            shared_inventory: sharedInventoryCount,
         });
     } catch (err) {
         console.error('[Mobile inventory GET]', err);

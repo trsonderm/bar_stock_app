@@ -41,7 +41,9 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
     const [canDeleteBarred, setCanDeleteBarred] = useState(false);
     const [canAddIncident, setCanAddIncident] = useState(false);
     const [canReviewIncidents, setCanReviewIncidents] = useState(false);
+    const [canManageEmployees, setCanManageEmployees] = useState(false);
     const [isAdmin, setIsAdmin] = useState(false);
+    const [hourlyRate, setHourlyRate] = useState('');
     const [hideFromScheduler, setHideFromScheduler] = useState(false);
     const [canApproveSchedule, setCanApproveSchedule] = useState(false);
     const [scheduleApprovalLocations, setScheduleApprovalLocations] = useState<number[]>([]);
@@ -169,6 +171,7 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
         if (canDeleteBarred) permissions.push('delete_barred');
         if (canAddIncident) permissions.push('add_incident');
         if (canReviewIncidents) permissions.push('review_incidents');
+        if (canManageEmployees) permissions.push('manage_employees');
         if (canApproveSchedule) {
             if (scheduleApprovalLocations.length > 0) {
                 scheduleApprovalLocations.forEach(locId => permissions.push(`approve_schedule_${locId}`));
@@ -200,6 +203,7 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
                 assignedLocations,
                 assignedShifts,
                 hideFromScheduler,
+                hourlyRate: hourlyRate !== '' ? hourlyRate : undefined,
             };
 
             const res = await fetch(url, {
@@ -243,7 +247,9 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
         setCanDeleteBarred(false);
         setCanAddIncident(false);
         setCanReviewIncidents(false);
+        setCanManageEmployees(false);
         setIsAdmin(false);
+        setHourlyRate('');
         setHideFromScheduler(false);
         setCanApproveSchedule(false);
         setScheduleApprovalLocations([]);
@@ -283,7 +289,7 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
             if (!Array.isArray(p)) return '';
 
             if (p.includes('all')) return 'Full Admin';
-            const map: any = { 'add_stock': 'Add Stock', 'subtract_stock': 'Subtract Stock', 'add_item_name': 'Add Items', 'audit': 'Audit', 'view_reports': 'View Reports', 'manage_products': 'Manage Products', 'add_barred': 'Add Barred', 'delete_barred': 'Remove Barred', 'add_incident': 'Add Incident', 'review_incidents': 'Review Incidents', 'approve_schedule': 'Approve Schedule' };
+            const map: any = { 'add_stock': 'Add Stock', 'subtract_stock': 'Subtract Stock', 'add_item_name': 'Add Items', 'audit': 'Audit', 'view_reports': 'View Reports', 'manage_products': 'Manage Products', 'add_barred': 'Add Barred', 'delete_barred': 'Remove Barred', 'add_incident': 'Add Incident', 'review_incidents': 'Review Incidents', 'approve_schedule': 'Approve Schedule', 'manage_employees': 'Manage Employees' };
             return p.map((perm: string) => {
                 if (perm.startsWith('approve_schedule_')) return 'Approve Schedule';
                 return map[perm] || perm;
@@ -325,7 +331,9 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
         setCanDeleteBarred(perms.includes('delete_barred') || perms.includes('all'));
         setCanAddIncident(perms.includes('add_incident') || perms.includes('all'));
         setCanReviewIncidents(perms.includes('review_incidents') || perms.includes('all'));
+        setCanManageEmployees(perms.includes('manage_employees') || perms.includes('all'));
         setIsAdmin(u.role === 'admin');
+        setHourlyRate(u.hourly_rate != null ? String(u.hourly_rate) : '');
         setHideFromScheduler(u.hide_from_scheduler || false);
         const approveLocs = perms.filter((p: string) => p.startsWith('approve_schedule_')).map((p: string) => Number(p.split('_').pop()));
         setCanApproveSchedule(perms.includes('approve_schedule') || approveLocs.length > 0);
@@ -368,9 +376,27 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
                             <input className={styles.table} type="text" maxLength={4} style={{ background: '#1f2937', color: 'white', padding: '0.5rem', border: '1px solid #374151', borderRadius: '0.25rem', width: '100%' }} value={pin} onChange={e => setPin(e.target.value)} />
                         </div>
 
-                        <div style={{ marginBottom: '1rem' }}>
-                            <label className={styles.statLabel}>Position / Job Title (Optional)</label>
-                            <input className={styles.table} style={{ background: '#1f2937', color: 'white', padding: '0.5rem', border: '1px solid #374151', borderRadius: '0.25rem', width: '100%' }} placeholder="e.g. Bartender, Manager, Server" value={position} onChange={e => setPosition(e.target.value)} />
+                        <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
+                            <div style={{ flex: 2 }}>
+                                <label className={styles.statLabel}>Position / Job Title (Optional)</label>
+                                <input className={styles.table} style={{ background: '#1f2937', color: 'white', padding: '0.5rem', border: '1px solid #374151', borderRadius: '0.25rem', width: '100%' }} placeholder="e.g. Bartender, Manager, Server" value={position} onChange={e => setPosition(e.target.value)} />
+                            </div>
+                            <div style={{ flex: 1 }}>
+                                <label className={styles.statLabel}>Hourly Rate (Optional)</label>
+                                <div style={{ position: 'relative' }}>
+                                    <span style={{ position: 'absolute', left: '0.5rem', top: '50%', transform: 'translateY(-50%)', color: '#9ca3af', pointerEvents: 'none' }}>$</span>
+                                    <input
+                                        className={styles.table}
+                                        type="number"
+                                        min="0"
+                                        step="0.01"
+                                        placeholder="0.00"
+                                        style={{ background: '#1f2937', color: 'white', padding: '0.5rem 0.5rem 0.5rem 1.3rem', border: '1px solid #374151', borderRadius: '0.25rem', width: '100%' }}
+                                        value={hourlyRate}
+                                        onChange={e => setHourlyRate(e.target.value)}
+                                    />
+                                </div>
+                            </div>
                         </div>
 
                         <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
@@ -541,6 +567,20 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
                                 )}
                             </div>
 
+                            {/* Staff Management */}
+                            <div style={{ marginBottom: '1rem' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                                    <div style={{ width: '3px', height: '14px', borderRadius: '2px', background: '#f59e0b' }} />
+                                    <span style={{ color: '#f59e0b', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Staff Management</span>
+                                </div>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(175px, 1fr))', gap: '0.5rem' }}>
+                                    <div onClick={() => setCanManageEmployees(!canManageEmployees)} style={{ background: canManageEmployees ? '#451a03' : '#1e293b', color: 'white', padding: '0.6rem 0.75rem', borderRadius: '0.5rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.6rem', transition: 'all 0.15s', border: `1px solid ${canManageEmployees ? '#f59e0b' : '#334155'}` }}>
+                                        <input type="checkbox" checked={canManageEmployees} readOnly style={{ width: '15px', height: '15px', accentColor: '#f59e0b', cursor: 'pointer', flexShrink: 0 }} />
+                                        <span style={{ fontWeight: 500, fontSize: '0.85rem' }}>Manage Employees</span>
+                                    </div>
+                                </div>
+                            </div>
+
                             {/* Admin */}
                             <div>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
@@ -548,9 +588,15 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
                                     <span style={{ color: '#f87171', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Admin</span>
                                 </div>
                                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(175px, 1fr))', gap: '0.5rem' }}>
-                                    <div onClick={() => setIsAdmin(!isAdmin)} style={{ background: isAdmin ? '#450a0a' : '#1e293b', color: 'white', padding: '0.6rem 0.75rem', borderRadius: '0.5rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.6rem', transition: 'all 0.15s', border: `1px solid ${isAdmin ? '#f87171' : '#334155'}` }}>
+                                    <div
+                                        onClick={() => setIsAdmin(!isAdmin)}
+                                        style={{ background: isAdmin ? '#450a0a' : '#1e293b', color: 'white', padding: '0.6rem 0.75rem', borderRadius: '0.5rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.6rem', transition: 'all 0.15s', border: `1px solid ${isAdmin ? '#f87171' : '#334155'}` }}
+                                    >
                                         <input type="checkbox" checked={isAdmin} readOnly style={{ width: '15px', height: '15px', accentColor: '#f87171', cursor: 'pointer', flexShrink: 0 }} />
-                                        <span style={{ fontWeight: 500, fontSize: '0.85rem' }}>Administrator</span>
+                                        <div>
+                                            <span style={{ fontWeight: 500, fontSize: '0.85rem' }}>Administrator</span>
+                                            <div style={{ fontSize: '0.72rem', color: '#9ca3af', marginTop: '1px' }}>Full access to all features</div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
