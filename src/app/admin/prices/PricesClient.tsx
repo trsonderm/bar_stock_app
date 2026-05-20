@@ -16,6 +16,7 @@ interface Item {
     package_price?: number | null;
     package_sale_enabled?: boolean;
     order_size?: any;
+    size_prices?: Record<string, number | null>;
 }
 
 interface Location {
@@ -37,8 +38,11 @@ export default function PricesClient() {
     const [salePriceEdits, setSalePriceEdits] = useState<Record<string, string>>({});
     // Package price edits keyed by itemId
     const [packagePriceEdits, setPackagePriceEdits] = useState<Record<string, string>>({});
-    // Briefly show a "saved" tick after auto-save (key = item id string)
+    // Per-size price edits keyed by `${itemId}_${label}`
+    const [sizePriceEdits, setSizePriceEdits] = useState<Record<string, string>>({});
+    // Briefly show a "saved" tick after auto-save
     const [pkgSavedKey, setPkgSavedKey] = useState<string | null>(null);
+    const [sizeSavedKey, setSizeSavedKey] = useState<string | null>(null);
 
     useEffect(() => {
         fetchCategories();
@@ -90,6 +94,7 @@ export default function PricesClient() {
             setItems(data.items);
             const initial: Record<string, string> = {};
             const pkgInitial: Record<string, string> = {};
+            const sizeInitial: Record<string, string> = {};
             data.items.forEach((i: Item) => {
                 initial[String(i.id)] = i.sale_price !== null && i.sale_price !== undefined ? String(i.sale_price) : '';
                 if (selectedLocationId) {
@@ -97,9 +102,16 @@ export default function PricesClient() {
                     initial[locKey] = i.location_sale_price !== null && i.location_sale_price !== undefined ? String(i.location_sale_price) : '';
                 }
                 pkgInitial[String(i.id)] = i.package_price !== null && i.package_price !== undefined ? String(i.package_price) : '';
+                const sizes = parseSizes(i.order_size);
+                const sp = i.size_prices || {};
+                sizes.forEach(s => {
+                    const k = `${i.id}_${s.label}`;
+                    sizeInitial[k] = sp[s.label] != null ? String(sp[s.label]) : '';
+                });
             });
             setSalePriceEdits(initial);
             setPackagePriceEdits(pkgInitial);
+            setSizePriceEdits(sizeInitial);
         }
         setLoading(false);
     };
@@ -135,6 +147,42 @@ export default function PricesClient() {
             } catch {
                 fetchItems();
             }
+        }
+    };
+
+    const parseSizes = (orderSize: any): { label: string; amount: number }[] => {
+        let s = orderSize;
+        if (typeof s === 'string') { try { s = JSON.parse(s); } catch { return []; } }
+        if (!Array.isArray(s)) return [];
+        return s.filter((x: any) => x && typeof x === 'object' && x.label);
+    };
+
+    const saveSizePrice = async (itemId: number, label: string) => {
+        const k = `${itemId}_${label}`;
+        const raw = sizePriceEdits[k];
+        const num = raw === '' ? null : parseFloat(raw);
+        if (num !== null && isNaN(num)) return;
+        // Optimistically update item's size_prices
+        setItems(prev => prev.map(i => {
+            if (i.id !== itemId) return i;
+            const next = { ...(i.size_prices || {}) };
+            if (num === null) delete next[label]; else next[label] = num;
+            return { ...i, size_prices: next };
+        }));
+        try {
+            // Fetch current size_prices, merge, and save
+            const item = items.find(i => i.id === itemId);
+            const merged = { ...(item?.size_prices || {}) };
+            if (num === null) delete merged[label]; else merged[label] = num;
+            await fetch('/api/inventory', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: itemId, size_prices: merged })
+            });
+            setSizeSavedKey(k);
+            setTimeout(() => setSizeSavedKey(prev => prev === k ? null : prev), 1800);
+        } catch {
+            fetchItems();
         }
     };
 
@@ -541,11 +589,20 @@ ${pagesHTML}
                                     {typeItems.map(item => {
                                         const locKey = `${item.id}_${selectedLocationId}`;
                                         const globalKey = String(item.id);
+                                        const sizes = parseSizes(item.order_size);
+                                        const hasSizes = sizes.length > 0;
+
+                                        // For margin: use first size price if available, else sale_price
+                                        const firstSizePrice = hasSizes
+                                            ? parseFloat(sizePriceEdits[`${item.id}_${sizes[0].label}`] ?? '')
+                                            : NaN;
                                         const activePriceVal = perLocationPricing && selectedLocationId
                                             ? (salePriceEdits[locKey] ?? '')
                                             : (salePriceEdits[globalKey] ?? '');
                                         const activePriceNum = parseFloat(activePriceVal);
-                                        const displayPrice = isNaN(activePriceNum) ? (effectivePrice(item) ?? 0) : activePriceNum;
+                                        const displayPrice = hasSizes
+                                            ? (isNaN(firstSizePrice) ? 0 : firstSizePrice)
+                                            : (isNaN(activePriceNum) ? (effectivePrice(item) ?? 0) : activePriceNum);
                                         const margin = displayPrice > 0 ? getMargin(item.unit_cost || 0, displayPrice) : null;
 
                                         return (
@@ -566,20 +623,49 @@ ${pagesHTML}
                                                     </div>
                                                 </td>
                                                 <td>
-                                                    <input
-                                                        type="number"
-                                                        step="0.01"
-                                                        min="0"
-                                                        className={styles.input}
-                                                        style={{ padding: '0.25rem', fontSize: '0.9em', width: '100px', marginBottom: 0 }}
-                                                        value={activePriceVal}
-                                                        placeholder="0.00"
-                                                        onChange={e => {
-                                                            const key = perLocationPricing && selectedLocationId ? locKey : globalKey;
-                                                            setSalePriceEdits(prev => ({ ...prev, [key]: e.target.value }));
-                                                        }}
-                                                        onBlur={() => savePrice(item.id, !!(perLocationPricing && selectedLocationId))}
-                                                    />
+                                                    {hasSizes ? (
+                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                                                            {sizes.map(size => {
+                                                                const sk = `${item.id}_${size.label}`;
+                                                                return (
+                                                                    <div key={size.label} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                        <span style={{ fontSize: '0.75rem', color: '#9ca3af', minWidth: '36px', textAlign: 'right' }}>
+                                                                            {size.label}
+                                                                        </span>
+                                                                        <input
+                                                                            type="number"
+                                                                            step="0.01"
+                                                                            min="0"
+                                                                            className={styles.input}
+                                                                            style={{ padding: '0.25rem', fontSize: '0.9em', width: '90px', marginBottom: 0 }}
+                                                                            value={sizePriceEdits[sk] ?? ''}
+                                                                            placeholder="0.00"
+                                                                            onChange={e => setSizePriceEdits(prev => ({ ...prev, [sk]: e.target.value }))}
+                                                                            onBlur={() => saveSizePrice(item.id, size.label)}
+                                                                        />
+                                                                        {sizeSavedKey === sk && (
+                                                                            <span style={{ color: '#10b981', fontSize: '0.8rem', fontWeight: 600 }}>✓</span>
+                                                                        )}
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    ) : (
+                                                        <input
+                                                            type="number"
+                                                            step="0.01"
+                                                            min="0"
+                                                            className={styles.input}
+                                                            style={{ padding: '0.25rem', fontSize: '0.9em', width: '100px', marginBottom: 0 }}
+                                                            value={activePriceVal}
+                                                            placeholder="0.00"
+                                                            onChange={e => {
+                                                                const key = perLocationPricing && selectedLocationId ? locKey : globalKey;
+                                                                setSalePriceEdits(prev => ({ ...prev, [key]: e.target.value }));
+                                                            }}
+                                                            onBlur={() => savePrice(item.id, !!(perLocationPricing && selectedLocationId))}
+                                                        />
+                                                    )}
                                                 </td>
                                                 {perLocationPricing && selectedLocationId && (
                                                     <td>
