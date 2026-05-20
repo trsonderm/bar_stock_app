@@ -11,6 +11,8 @@ async function ensureDisplayColumns() {
     await db.execute(`ALTER TABLE items ADD COLUMN IF NOT EXISTS stock_display_mode VARCHAR(20) DEFAULT 'units'`).catch(() => {});
     await db.execute(`ALTER TABLE items ADD COLUMN IF NOT EXISTS inventory_display_mode VARCHAR(20) DEFAULT 'units'`).catch(() => {});
     await db.execute(`ALTER TABLE items ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ DEFAULT NULL`).catch(() => {});
+    await db.execute(`ALTER TABLE items ADD COLUMN IF NOT EXISTS package_price NUMERIC(10,2) DEFAULT NULL`).catch(() => {});
+    await db.execute(`ALTER TABLE items ADD COLUMN IF NOT EXISTS package_sale_enabled BOOLEAN DEFAULT FALSE`).catch(() => {});
     _displayColsEnsured = true;
 }
 
@@ -72,8 +74,9 @@ export async function GET(req: NextRequest) {
 
         let query = `
       SELECT
-        i.id, i.name, i.type, i.secondary_type, i.unit_cost, i.sale_price, i.supplier,
-        i.order_size, i.low_stock_threshold,
+        i.id, i.name, i.type, i.secondary_type, i.unit_cost, i.sale_price, i.package_price,
+        COALESCE(i.package_sale_enabled, false) as package_sale_enabled,
+        i.supplier, i.order_size, i.low_stock_threshold,
         COALESCE(i.low_stock_threshold_type, 'fixed') as low_stock_threshold_type,
         i.low_stock_threshold_factor,
         COALESCE(i.barcodes, '[]'::jsonb) as barcodes,
@@ -125,8 +128,9 @@ export async function GET(req: NextRequest) {
             console.warn('[Inventory GET] Full query failed, falling back:', e.message);
             const fallbackQuery = `
               SELECT
-                i.id, i.name, i.type, i.secondary_type, i.unit_cost, i.sale_price, i.supplier,
-                i.order_size, i.low_stock_threshold,
+                i.id, i.name, i.type, i.secondary_type, i.unit_cost, i.sale_price, i.package_price,
+                false as package_sale_enabled,
+                i.supplier, i.order_size, i.low_stock_threshold,
                 'fixed' as low_stock_threshold_type,
                 NULL::numeric as low_stock_threshold_factor,
                 '[]'::jsonb as barcodes,
@@ -145,6 +149,7 @@ export async function GET(req: NextRequest) {
                 i.archived_at,
                 MAX(isp.supplier_id) as supplier_id,
                 NULL::int as location_supplier_id,
+                NULL::numeric as package_price,
                 COALESCE(SUM(inv.quantity), 0) as quantity,
                 COALESCE(MAX(usage_stats.usage_count), 0) as usage_count,
                 (SELECT json_agg(location_id) FROM inventory WHERE item_id = i.id) as assigned_locations,
@@ -291,7 +296,7 @@ export async function PUT(req: NextRequest) {
 
         if (!canEdit && !canStock) return NextResponse.json({ error: 'Permission denied' }, { status: 403 });
 
-        const { id, unit_cost, sale_price, name, type, quantity, secondary_type, supplier, supplier_id, low_stock_threshold, low_stock_threshold_type, low_stock_threshold_factor, order_size, stock_options, include_in_audit, include_in_low_stock_alerts, exclude_from_smart_order, assignedLocations, stock_unit_label, stock_unit_size, order_unit_label, order_unit_size, use_category_qty_defaults, stock_display_mode, inventory_display_mode, location_supplier_id, location_sale_price, locationId: bodyLocationId, barcodes, aliases, abv, bottle_size, bottle_size_amount, bottle_size_unit } = await req.json();
+        const { id, unit_cost, sale_price, package_price, package_sale_enabled, name, type, quantity, secondary_type, supplier, supplier_id, low_stock_threshold, low_stock_threshold_type, low_stock_threshold_factor, order_size, stock_options, include_in_audit, include_in_low_stock_alerts, exclude_from_smart_order, assignedLocations, stock_unit_label, stock_unit_size, order_unit_label, order_unit_size, use_category_qty_defaults, stock_display_mode, inventory_display_mode, location_supplier_id, location_sale_price, locationId: bodyLocationId, barcodes, aliases, abv, bottle_size, bottle_size_amount, bottle_size_unit } = await req.json();
 
         if (!id) return NextResponse.json({ error: 'Missing ID' }, { status: 400 });
 
@@ -308,6 +313,14 @@ export async function PUT(req: NextRequest) {
             if (sale_price !== undefined) {
                 updates.push(`sale_price = $${pIdx++} `);
                 params.push(sale_price);
+            }
+            if (package_price !== undefined) {
+                updates.push(`package_price = $${pIdx++} `);
+                params.push(package_price !== null && package_price !== '' ? parseFloat(package_price) : null);
+            }
+            if (package_sale_enabled !== undefined) {
+                updates.push(`package_sale_enabled = $${pIdx++} `);
+                params.push(package_sale_enabled === true || package_sale_enabled === 'true');
             }
             if (stock_unit_label !== undefined) {
                 updates.push(`stock_unit_label = $${pIdx++} `);

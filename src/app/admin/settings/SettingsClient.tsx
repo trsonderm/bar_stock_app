@@ -37,6 +37,7 @@ export default function SettingsClient() {
         recipes_enabled: 'false',
         recipe_search_source: 'both',
         recipe_search_primary: 'local',
+        package_sale_enabled: 'false',
     });
 
     const [users, setUsers] = useState<any[]>([]);
@@ -748,6 +749,38 @@ export default function SettingsClient() {
                         <a href="/admin/recipes" style={{ padding: '0.5rem 1rem', background: '#1f2937', color: '#60a5fa', borderRadius: '0.25rem', border: '1px solid #374151', cursor: 'pointer', textDecoration: 'none', fontSize: '0.875rem' }}>
                             Manage My Recipe Library →
                         </a>
+                    </div>
+                </div>
+
+                {/* Package Sale Settings */}
+                <div className={styles.card} style={{ gridColumn: 'span 2' }}>
+                    <div className={styles.cardTitle}>Package Sale Pricing</div>
+                    <p style={{ color: '#9ca3af', marginBottom: '1rem' }}>
+                        Enable package pricing to set a per-order-quantity price for products sold in bulk (e.g. cases, boxes).
+                        When enabled, a Package Price column appears on the Prices page for products marked as package-sale eligible.
+                    </p>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                        <div style={{ background: '#1f2937', padding: '1rem', borderRadius: '0.5rem', border: '1px solid #374151', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                            <input
+                                type="checkbox"
+                                id="package_sale_enabled"
+                                checked={(settings as any).package_sale_enabled === 'true'}
+                                onChange={e => setSettings(prev => ({ ...prev, package_sale_enabled: e.target.checked ? 'true' : 'false' }))}
+                                style={{ width: '20px', height: '20px', flexShrink: 0 }}
+                            />
+                            <label htmlFor="package_sale_enabled" style={{ cursor: 'pointer' }}>
+                                <div style={{ color: 'white', fontWeight: 'bold' }}>Enable Package Sale Pricing</div>
+                                <div style={{ fontSize: '0.85rem', color: '#9ca3af' }}>
+                                    Adds a Package Price column to the Prices page for products that have the package sale flag enabled.
+                                    Mark individual products as package-sale eligible from the Product List edit screen.
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+                    <div style={{ marginTop: '1rem' }}>
+                        <button onClick={handleSubmit} style={{ padding: '0.5rem 1rem', background: '#3b82f6', color: 'white', borderRadius: '0.25rem', border: 'none', cursor: 'pointer' }}>
+                            Save Settings
+                        </button>
                     </div>
                 </div>
 

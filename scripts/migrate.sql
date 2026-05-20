@@ -1017,4 +1017,15 @@ DO $$ BEGIN
   ALTER TABLE users ADD COLUMN hourly_rate NUMERIC(10,2) DEFAULT NULL;
 EXCEPTION WHEN duplicate_column THEN NULL; END $$;
 
+-- =========================================================
+-- 55. Items — package price and package sale flag
+-- =========================================================
+DO $$ BEGIN
+  ALTER TABLE items ADD COLUMN package_price NUMERIC(10,2) DEFAULT NULL;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE items ADD COLUMN package_sale_enabled BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
 COMMIT;

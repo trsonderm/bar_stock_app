@@ -12,6 +12,9 @@ interface Item {
     unit_cost: number;
     sale_price?: number;
     location_sale_price?: number;
+    package_price?: number | null;
+    package_sale_enabled?: boolean;
+    order_size?: any;
 }
 
 interface Location {
@@ -26,10 +29,13 @@ export default function PricesClient() {
     const [locations, setLocations] = useState<Location[]>([]);
     const [selectedLocationId, setSelectedLocationId] = useState<number | null>(null);
     const [perLocationPricing, setPerLocationPricing] = useState(false);
+    const [packageSaleEnabled, setPackageSaleEnabled] = useState(false);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
     // Local sale price edits keyed by itemId (global) or `${itemId}_${locationId}` (per-location)
     const [salePriceEdits, setSalePriceEdits] = useState<Record<string, string>>({});
+    // Package price edits keyed by itemId
+    const [packagePriceEdits, setPackagePriceEdits] = useState<Record<string, string>>({});
 
     useEffect(() => {
         fetchCategories();
@@ -46,9 +52,8 @@ export default function PricesClient() {
         try {
             const res = await fetch('/api/admin/settings');
             const data = await res.json();
-            if (data.settings?.per_location_pricing === 'true') {
-                setPerLocationPricing(true);
-            }
+            if (data.settings?.per_location_pricing === 'true') setPerLocationPricing(true);
+            if (data.settings?.package_sale_enabled === 'true') setPackageSaleEnabled(true);
         } catch { }
     };
 
@@ -81,16 +86,17 @@ export default function PricesClient() {
         if (data.items) {
             setItems(data.items);
             const initial: Record<string, string> = {};
+            const pkgInitial: Record<string, string> = {};
             data.items.forEach((i: Item) => {
-                // Global price key
                 initial[String(i.id)] = i.sale_price !== null && i.sale_price !== undefined ? String(i.sale_price) : '';
-                // Location price key
                 if (selectedLocationId) {
                     const locKey = `${i.id}_${selectedLocationId}`;
                     initial[locKey] = i.location_sale_price !== null && i.location_sale_price !== undefined ? String(i.location_sale_price) : '';
                 }
+                pkgInitial[String(i.id)] = i.package_price !== null && i.package_price !== undefined ? String(i.package_price) : '';
             });
             setSalePriceEdits(initial);
+            setPackagePriceEdits(pkgInitial);
         }
         setLoading(false);
     };
@@ -126,6 +132,22 @@ export default function PricesClient() {
             } catch {
                 fetchItems();
             }
+        }
+    };
+
+    const savePackagePrice = async (itemId: number) => {
+        const raw = packagePriceEdits[String(itemId)];
+        const num = raw === '' ? null : parseFloat(raw);
+        if (num !== null && isNaN(num)) return;
+        setItems(prev => prev.map(i => i.id === itemId ? { ...i, package_price: num } : i));
+        try {
+            await fetch('/api/inventory', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: itemId, package_price: num })
+            });
+        } catch {
+            fetchItems();
         }
     };
 
@@ -214,6 +236,8 @@ export default function PricesClient() {
                             value={selectedLocationId ?? ''}
                             onChange={e => setSelectedLocationId(parseInt(e.target.value))}
                             style={{ width: 'auto' }}
+                            title="Select location"
+                            aria-label="Select location"
                         >
                             {locations.map(l => (
                                 <option key={l.id} value={l.id}>{l.name}</option>
@@ -258,6 +282,12 @@ export default function PricesClient() {
                                                 <span style={{ fontSize: '0.75rem', color: '#6b7280', fontWeight: 'normal', marginLeft: '4px' }}>(fallback)</span>
                                             </th>
                                         )}
+                                        {packageSaleEnabled && (
+                                            <th style={{ width: '14%' }}>
+                                                Package Price ($)
+                                                <span style={{ fontSize: '0.75rem', color: '#6b7280', fontWeight: 'normal', marginLeft: '4px' }}>(per order qty)</span>
+                                            </th>
+                                        )}
                                         <th style={{ width: '14%' }}>Margin</th>
                                         <th style={{ width: '10%' }}>Actions</th>
                                     </tr>
@@ -282,6 +312,7 @@ export default function PricesClient() {
                                                             ${Number(item.unit_cost || 0).toFixed(2)}
                                                         </span>
                                                         <button
+                                                            type="button"
                                                             onClick={() => router.push(`/admin/products?editId=${item.id}`)}
                                                             style={{ fontSize: '0.75rem', color: '#3b82f6', background: 'none', border: 'none', cursor: 'pointer', padding: 0, whiteSpace: 'nowrap' }}
                                                         >
@@ -320,6 +351,25 @@ export default function PricesClient() {
                                                         />
                                                     </td>
                                                 )}
+                                                {packageSaleEnabled && (
+                                                    <td>
+                                                        {item.package_sale_enabled ? (
+                                                            <input
+                                                                type="number"
+                                                                step="0.01"
+                                                                min="0"
+                                                                className={styles.input}
+                                                                style={{ padding: '0.25rem', fontSize: '0.9em', width: '100px', marginBottom: 0 }}
+                                                                value={packagePriceEdits[globalKey] ?? ''}
+                                                                placeholder="0.00"
+                                                                onChange={e => setPackagePriceEdits(prev => ({ ...prev, [globalKey]: e.target.value }))}
+                                                                onBlur={() => savePackagePrice(item.id)}
+                                                            />
+                                                        ) : (
+                                                            <span style={{ color: '#4b5563', fontSize: '0.8rem' }}>—</span>
+                                                        )}
+                                                    </td>
+                                                )}
                                                 <td>
                                                     {margin !== null ? (
                                                         <span style={{ color: parseFloat(margin) >= 0 ? '#10b981' : '#ef4444', fontWeight: 600, fontSize: '0.9rem' }}>
@@ -331,6 +381,7 @@ export default function PricesClient() {
                                                 </td>
                                                 <td>
                                                     <button
+                                                        type="button"
                                                         onClick={() => router.push(`/admin/products?editId=${item.id}`)}
                                                         style={{ background: '#374151', color: '#d1d5db', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem' }}
                                                     >

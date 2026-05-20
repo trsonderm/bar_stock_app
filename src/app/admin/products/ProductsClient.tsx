@@ -41,6 +41,8 @@ interface Item {
     aliases?: string[];
     bottle_size_amount?: number | null;
     bottle_size_unit?: string | null;
+    package_price?: number | null;
+    package_sale_enabled?: boolean;
 }
 
 interface Category {
@@ -113,6 +115,7 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
         inventory_display_mode: 'units' as 'units' | 'cases' | 'cases_and_units',
         bottle_size_amount: '',
         bottle_size_unit: '',
+        package_sale_enabled: false,
     });
 
     // Temp input for stock options
@@ -259,6 +262,7 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
             inventory_display_mode: 'units' as 'units' | 'cases' | 'cases_and_units',
             bottle_size_amount: '',
             bottle_size_unit: '',
+            package_sale_enabled: false,
         });
         setTempOptionInput('');
         setTempOrderLabel('Pack');
@@ -423,6 +427,7 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
             inventory_display_mode: (item.inventory_display_mode as any) || 'units',
             bottle_size_amount: item.bottle_size_amount != null ? String(item.bottle_size_amount) : '',
             bottle_size_unit: item.bottle_size_unit || '',
+            package_sale_enabled: item.package_sale_enabled === true,
         });
 
         setModalTab('basic');
@@ -566,6 +571,7 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                 inventory_display_mode: formData.inventory_display_mode,
                 bottle_size_amount: formData.bottle_size_amount !== '' ? parseFloat(formData.bottle_size_amount) : null,
                 bottle_size_unit: formData.bottle_size_unit || null,
+                package_sale_enabled: formData.package_sale_enabled,
             };
 
             const url = '/api/inventory' + (overrideOrgId ? `?orgId=${overrideOrgId}` : '');
@@ -1655,6 +1661,20 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                                             ⚠ Excluded — will not appear in Smart Order proposals
                                         </div>
                                     )}
+                                </div>
+                            </label>
+
+                            {/* Package Sale */}
+                            <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', cursor: 'pointer', padding: '0.875rem', background: '#1f2937', borderRadius: '8px', border: `1px solid ${formData.package_sale_enabled ? '#d97706' : '#374151'}` }}>
+                                <input type="checkbox" checked={formData.package_sale_enabled}
+                                    onChange={e => setFormData({ ...formData, package_sale_enabled: e.target.checked })}
+                                    style={{ width: '20px', height: '20px', marginTop: '2px', flexShrink: 0, accentColor: '#d97706' }} />
+                                <div>
+                                    <div style={{ color: 'white', fontWeight: 600, fontSize: '0.9rem' }}>Package Sale Eligible</div>
+                                    <div style={{ color: '#6b7280', fontSize: '0.78rem', marginTop: '2px' }}>
+                                        When checked, a package price (per order quantity) can be set for this product on the Prices page.
+                                        Requires Package Sale Pricing to be enabled in General Settings.
+                                    </div>
                                 </div>
                             </label>
 
