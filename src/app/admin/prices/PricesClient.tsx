@@ -37,6 +37,8 @@ export default function PricesClient() {
     const [salePriceEdits, setSalePriceEdits] = useState<Record<string, string>>({});
     // Package price edits keyed by itemId
     const [packagePriceEdits, setPackagePriceEdits] = useState<Record<string, string>>({});
+    // Briefly show a "saved" tick after auto-save (key = item id string)
+    const [pkgSavedKey, setPkgSavedKey] = useState<string | null>(null);
 
     useEffect(() => {
         fetchCategories();
@@ -137,7 +139,8 @@ export default function PricesClient() {
     };
 
     const savePackagePrice = async (itemId: number) => {
-        const raw = packagePriceEdits[String(itemId)];
+        const key = String(itemId);
+        const raw = packagePriceEdits[key];
         const num = raw === '' ? null : parseFloat(raw);
         if (num !== null && isNaN(num)) return;
         setItems(prev => prev.map(i => i.id === itemId ? { ...i, package_price: num } : i));
@@ -147,6 +150,8 @@ export default function PricesClient() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ id: itemId, package_price: num })
             });
+            setPkgSavedKey(key);
+            setTimeout(() => setPkgSavedKey(k => k === key ? null : k), 1800);
         } catch {
             fetchItems();
         }
@@ -400,6 +405,10 @@ ${pagesHTML}
         return item.sale_price;
     };
 
+    // Show the package price column whenever any item has the per-product flag set,
+    // regardless of the org-level setting (which only gates the print button).
+    const showPackagePriceCol = items.some(i => i.package_sale_enabled);
+
     if (loading) return <div className={styles.container}>Loading...</div>;
 
     return (
@@ -518,7 +527,7 @@ ${pagesHTML}
                                                 <span style={{ fontSize: '0.75rem', color: '#6b7280', fontWeight: 'normal', marginLeft: '4px' }}>(fallback)</span>
                                             </th>
                                         )}
-                                        {packageSaleEnabled && (
+                                        {showPackagePriceCol && (
                                             <th style={{ width: '14%' }}>
                                                 Package Price ($)
                                                 <span style={{ fontSize: '0.75rem', color: '#6b7280', fontWeight: 'normal', marginLeft: '4px' }}>(per order qty)</span>
@@ -587,20 +596,25 @@ ${pagesHTML}
                                                         />
                                                     </td>
                                                 )}
-                                                {packageSaleEnabled && (
+                                                {showPackagePriceCol && (
                                                     <td>
                                                         {item.package_sale_enabled ? (
-                                                            <input
-                                                                type="number"
-                                                                step="0.01"
-                                                                min="0"
-                                                                className={styles.input}
-                                                                style={{ padding: '0.25rem', fontSize: '0.9em', width: '100px', marginBottom: 0 }}
-                                                                value={packagePriceEdits[globalKey] ?? ''}
-                                                                placeholder="0.00"
-                                                                onChange={e => setPackagePriceEdits(prev => ({ ...prev, [globalKey]: e.target.value }))}
-                                                                onBlur={() => savePackagePrice(item.id)}
-                                                            />
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                <input
+                                                                    type="number"
+                                                                    step="0.01"
+                                                                    min="0"
+                                                                    className={styles.input}
+                                                                    style={{ padding: '0.25rem', fontSize: '0.9em', width: '90px', marginBottom: 0 }}
+                                                                    value={packagePriceEdits[globalKey] ?? ''}
+                                                                    placeholder="0.00"
+                                                                    onChange={e => setPackagePriceEdits(prev => ({ ...prev, [globalKey]: e.target.value }))}
+                                                                    onBlur={() => savePackagePrice(item.id)}
+                                                                />
+                                                                {pkgSavedKey === globalKey && (
+                                                                    <span style={{ color: '#10b981', fontSize: '0.8rem', fontWeight: 600 }}>✓</span>
+                                                                )}
+                                                            </div>
                                                         ) : (
                                                             <span style={{ color: '#4b5563', fontSize: '0.8rem' }}>—</span>
                                                         )}
