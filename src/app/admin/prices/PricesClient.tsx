@@ -420,6 +420,161 @@ ${pagesHTML}
     const escapeHtml = (s: string) =>
         String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
+    const printPriceReport = () => {
+        const today = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+        const showPkg = items.some(i => i.package_price != null && Number(i.package_price) > 0);
+
+        const getItemPrices = (item: Item): { label: string; price: number | null }[] => {
+            const sizes = parseSizes(item.order_size);
+            if (sizes.length > 0) {
+                return sizes.map(s => ({ label: s.label, price: item.size_prices?.[s.label] ?? null }));
+            }
+            return [{ label: '', price: item.sale_price ?? null }];
+        };
+
+        const rowsHTML = orderedTypes.map(type => {
+            const typeItems = filteredItems.filter(i => i.type === type);
+            if (!typeItems.length) return '';
+            const itemRows = typeItems.map(item => {
+                const prices = getItemPrices(item);
+                const pricesHTML = prices.map(p =>
+                    p.label
+                        ? `<span class="price-line"><span class="price-label">${escapeHtml(p.label)}</span> ${p.price != null ? `$${Number(p.price).toFixed(2)}` : '<span class="no-price">—</span>'}</span>`
+                        : `<span class="price-line">${p.price != null ? `$${Number(p.price).toFixed(2)}` : '<span class="no-price">—</span>'}</span>`
+                ).join('');
+                const pkgCell = showPkg
+                    ? `<td class="pkg-cell">${item.package_price != null && Number(item.package_price) > 0 ? `<span class="pkg-price">$${Number(item.package_price).toFixed(2)}</span>` : '<span class="no-price">—</span>'}</td>`
+                    : '';
+                return `<tr><td class="item-name">${escapeHtml(item.name)}</td><td class="price-cell">${pricesHTML}</td>${pkgCell}</tr>`;
+            }).join('');
+
+            return `
+<tr class="cat-row">
+  <td colspan="${showPkg ? 3 : 2}" class="cat-cell">${escapeHtml(type)}</td>
+</tr>
+${itemRows}`;
+        }).join('');
+
+        const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Price Report</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Lato:wght@300;400;700&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+@page{margin:.55in .65in;size:letter portrait;}
+body{font-family:'Lato',sans-serif;font-size:9.5pt;color:#111;background:#fff;}
+
+/* Page header */
+.report-header{
+  display:flex;justify-content:space-between;align-items:flex-end;
+  border-bottom:2.5px solid #111;padding-bottom:.18in;margin-bottom:.22in;
+}
+.report-title{
+  font-family:'Playfair Display',serif;font-size:28pt;font-weight:900;
+  letter-spacing:.03em;text-transform:uppercase;line-height:1;color:#111;
+}
+.report-meta{text-align:right;}
+.report-date{font-size:8pt;color:#6b7280;letter-spacing:.05em;text-transform:uppercase;}
+.report-label{font-size:7pt;color:#9ca3af;letter-spacing:.12em;text-transform:uppercase;margin-top:3px;}
+
+/* Table */
+table{width:100%;border-collapse:collapse;page-break-inside:auto;}
+tr{page-break-inside:avoid;}
+
+/* Category rows */
+.cat-row td{
+  background:#1a1a1a;color:#fff;
+  font-family:'Playfair Display',serif;font-size:10.5pt;font-weight:700;
+  letter-spacing:.12em;text-transform:uppercase;
+  padding:6px 10px;border:none;
+}
+
+/* Item rows */
+tr:not(.cat-row):nth-child(even) td{background:#f8f6f2;}
+tr:not(.cat-row) td{
+  padding:5px 10px;border-bottom:1px solid #e5e7eb;vertical-align:top;
+}
+tr:not(.cat-row):last-child td{border-bottom:none;}
+
+/* Columns */
+.item-name{font-weight:700;font-size:9.5pt;width:45%;}
+.price-cell{width:${showPkg ? '33%' : '55%'};}
+.pkg-cell{width:22%;text-align:right;}
+
+/* Price lines */
+.price-line{display:block;line-height:1.5;}
+.price-label{
+  display:inline-block;font-size:7.5pt;font-weight:700;letter-spacing:.06em;
+  text-transform:uppercase;color:#6b7280;min-width:34px;
+}
+.no-price{color:#d1d5db;}
+.pkg-price{
+  font-family:'Playfair Display',serif;font-weight:700;font-size:10pt;
+  background:#fef3c7;padding:1px 6px;border-radius:3px;color:#92400e;
+}
+
+/* Column headers */
+thead th{
+  font-size:7.5pt;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
+  color:#6b7280;border-bottom:1.5px solid #374151;padding:4px 10px;background:#fff;
+}
+thead th.right{text-align:right;}
+
+/* Footer */
+.report-footer{
+  margin-top:.2in;padding-top:.12in;border-top:1px solid #e5e7eb;
+  display:flex;justify-content:space-between;
+  font-size:7pt;color:#9ca3af;font-style:italic;
+}
+
+@media print{
+  body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+  thead{display:table-header-group;}
+}
+</style>
+</head>
+<body>
+<div class="report-header">
+  <div>
+    <div class="report-title">Price List</div>
+  </div>
+  <div class="report-meta">
+    <div class="report-date">${today}</div>
+    <div class="report-label">Printed ${new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</div>
+  </div>
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th style="width:45%">Item</th>
+      <th style="width:${showPkg ? '33%' : '55%'}">Sale Price</th>
+      ${showPkg ? '<th class="right" style="width:22%">Package To-Go</th>' : ''}
+    </tr>
+  </thead>
+  <tbody>
+    ${rowsHTML}
+  </tbody>
+</table>
+
+<div class="report-footer">
+  <span>All prices are current as of the date above and subject to change.</span>
+  <span>Internal use only</span>
+</div>
+</body>
+</html>`;
+
+        const win = window.open('', '_blank', 'width=960,height=760');
+        if (!win) { alert('Please allow pop-ups to open the print report.'); return; }
+        win.document.write(html);
+        win.document.close();
+        win.focus();
+        setTimeout(() => win.print(), 800);
+    };
+
     const togglePerLocationPricing = async (enabled: boolean) => {
         setPerLocationPricing(enabled);
         await fetch('/api/admin/settings', {
@@ -471,7 +626,24 @@ ${pagesHTML}
                         </Link>
                         {' '}and are read-only here. Set a sale price per item to enable profit reporting.
                     </p>
-                    {packageSaleEnabled && (
+                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        <button
+                            type="button"
+                            onClick={printPriceReport}
+                            style={{
+                                display: 'flex', alignItems: 'center', gap: '6px',
+                                padding: '0.45rem 1rem',
+                                background: 'linear-gradient(135deg, #1d4ed8, #1e40af)',
+                                color: 'white', border: 'none', borderRadius: '6px',
+                                cursor: 'pointer', fontWeight: 700, fontSize: '0.875rem',
+                                whiteSpace: 'nowrap', flexShrink: 0,
+                                boxShadow: '0 2px 8px rgba(29,78,216,0.35)'
+                            }}
+                        >
+                            <Printer size={15} />
+                            Print Price Report
+                        </button>
+                        {packageSaleEnabled && (
                         <button
                             type="button"
                             onClick={printPackageMenu}
@@ -488,7 +660,8 @@ ${pagesHTML}
                             <Printer size={15} />
                             Print Package Menu
                         </button>
-                    )}
+                        )}
+                    </div>
                 </div>
 
                 <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center', marginBottom: '1rem' }}>
