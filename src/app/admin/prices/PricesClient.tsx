@@ -424,14 +424,6 @@ ${pagesHTML}
         const today = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
         const showPkg = items.some(i => i.package_price != null && Number(i.package_price) > 0);
 
-        const getItemPrices = (item: Item): { label: string; price: number | null }[] => {
-            const sizes = parseSizes(item.order_size);
-            if (sizes.length > 0) {
-                return sizes.map(s => ({ label: s.label, price: item.size_prices?.[s.label] ?? null }));
-            }
-            return [{ label: '', price: item.sale_price ?? null }];
-        };
-
         const printTypes = orderedTypes.filter(t => {
             const l = t.toLowerCase();
             return l.includes('liquor') || l.includes('beer') || l.includes('spirit');
@@ -441,21 +433,15 @@ ${pagesHTML}
             const typeItems = filteredItems.filter(i => i.type === type);
             if (!typeItems.length) return '';
             const itemRows = typeItems.map(item => {
-                const prices = getItemPrices(item);
-                const pricesHTML = prices.map(p =>
-                    p.label
-                        ? `<span class="price-line"><span class="price-label">${escapeHtml(p.label)}</span> ${p.price != null ? `$${Number(p.price).toFixed(2)}` : '<span class="no-price">—</span>'}</span>`
-                        : `<span class="price-line">${p.price != null ? `$${Number(p.price).toFixed(2)}` : '<span class="no-price">—</span>'}</span>`
-                ).join('');
                 const pkgCell = showPkg
                     ? `<td class="pkg-cell">${item.package_price != null && Number(item.package_price) > 0 ? `<span class="pkg-price">$${Number(item.package_price).toFixed(2)}</span>` : '<span class="no-price">—</span>'}</td>`
                     : '';
-                return `<tr><td class="item-name">${escapeHtml(item.name)}</td><td class="price-cell">${pricesHTML}</td>${pkgCell}</tr>`;
+                return `<tr><td class="item-name">${escapeHtml(item.name)}</td>${pkgCell}</tr>`;
             }).join('');
 
             return `
 <tr class="cat-row">
-  <td colspan="${showPkg ? 3 : 2}" class="cat-cell">${escapeHtml(type)}</td>
+  <td colspan="${showPkg ? 2 : 1}" class="cat-cell">${escapeHtml(type)}</td>
 </tr>
 ${itemRows}`;
         }).join('');
@@ -505,16 +491,9 @@ tr:not(.cat-row) td{
 tr:not(.cat-row):last-child td{border-bottom:none;}
 
 /* Columns */
-.item-name{font-weight:700;font-size:9.5pt;width:45%;}
-.price-cell{width:${showPkg ? '33%' : '55%'};}
-.pkg-cell{width:22%;text-align:right;}
+.item-name{font-weight:700;font-size:9.5pt;width:${showPkg ? '72%' : '100%'};}
+.pkg-cell{width:28%;text-align:right;}
 
-/* Price lines */
-.price-line{display:block;line-height:1.5;}
-.price-label{
-  display:inline-block;font-size:7.5pt;font-weight:700;letter-spacing:.06em;
-  text-transform:uppercase;color:#6b7280;min-width:34px;
-}
 .no-price{color:#d1d5db;}
 .pkg-price{
   font-family:'Playfair Display',serif;font-weight:700;font-size:10pt;
@@ -555,9 +534,8 @@ thead th.right{text-align:right;}
 <table>
   <thead>
     <tr>
-      <th style="width:45%">Item</th>
-      <th style="width:${showPkg ? '33%' : '55%'}">Sale Price</th>
-      ${showPkg ? '<th class="right" style="width:22%">Package To-Go</th>' : ''}
+      <th style="width:${showPkg ? '72%' : '100%'}">Item</th>
+      ${showPkg ? '<th class="right" style="width:28%">Package To-Go</th>' : ''}
     </tr>
   </thead>
   <tbody>
