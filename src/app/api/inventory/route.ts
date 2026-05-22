@@ -197,7 +197,7 @@ export async function POST(req: NextRequest) {
         }
 
         const body = await req.json();
-        const { name, type, secondary_type, supplier, supplier_id, low_stock_threshold, low_stock_threshold_type: lstType, low_stock_threshold_factor: lstFactor, order_size, stock_options, include_in_audit, quantity, unit_cost, assignedLocations, add_to_all_locations, barcodes, aliases } = body;
+        const { name, type, secondary_type, supplier, supplier_id, low_stock_threshold, low_stock_threshold_type: lstType, low_stock_threshold_factor: lstFactor, order_size, stock_options, include_in_audit, quantity, unit_cost, assignedLocations, add_to_all_locations, barcodes, aliases, package_sale_enabled: postPkgSaleEnabled } = body;
 
         if (!name || !type) return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
 
@@ -209,8 +209,8 @@ export async function POST(req: NextRequest) {
 
         // Insert and Return ID
         const res = await db.one(
-            'INSERT INTO items (name, type, secondary_type, supplier, organization_id, low_stock_threshold, low_stock_threshold_type, low_stock_threshold_factor, order_size, stock_options, include_in_audit, unit_cost, barcodes, aliases) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING id',
-            [name, type, secondary_type || null, supplier || null, organizationId, low_stock_threshold !== undefined ? low_stock_threshold : 5, lstType || 'fixed', lstFactor != null ? parseFloat(lstFactor) : null, JSON.stringify(Array.isArray(order_size) ? order_size : [order_size || 1]), stock_options ? JSON.stringify(stock_options) : null, include_in_audit !== undefined ? include_in_audit : true, unit_cost || 0, JSON.stringify(Array.isArray(barcodes) ? barcodes : []), JSON.stringify(Array.isArray(aliases) ? aliases : [])]
+            'INSERT INTO items (name, type, secondary_type, supplier, organization_id, low_stock_threshold, low_stock_threshold_type, low_stock_threshold_factor, order_size, stock_options, include_in_audit, unit_cost, barcodes, aliases, package_sale_enabled) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING id',
+            [name, type, secondary_type || null, supplier || null, organizationId, low_stock_threshold !== undefined ? low_stock_threshold : 5, lstType || 'fixed', lstFactor != null ? parseFloat(lstFactor) : null, JSON.stringify(Array.isArray(order_size) ? order_size : [order_size || 1]), stock_options ? JSON.stringify(stock_options) : null, include_in_audit !== undefined ? include_in_audit : true, unit_cost || 0, JSON.stringify(Array.isArray(barcodes) ? barcodes : []), JSON.stringify(Array.isArray(aliases) ? aliases : []), postPkgSaleEnabled === true || postPkgSaleEnabled === 'true']
         );
         const itemId = res.id;
 
@@ -454,6 +454,7 @@ export async function PUT(req: NextRequest) {
                     if (unit_cost !== undefined) { safeUpdates.push(`unit_cost = $${sIdx++}`); safeParams.push(unit_cost); }
                     if (barcodes !== undefined) { safeUpdates.push(`barcodes = $${sIdx++}`); safeParams.push(JSON.stringify(Array.isArray(barcodes) ? barcodes : [])); }
                     if (aliases !== undefined) { safeUpdates.push(`aliases = $${sIdx++}`); safeParams.push(JSON.stringify(Array.isArray(aliases) ? aliases : [])); }
+                    if (package_sale_enabled !== undefined) { safeUpdates.push(`package_sale_enabled = $${sIdx++}`); safeParams.push(package_sale_enabled === true || package_sale_enabled === 'true'); }
                     if (safeUpdates.length > 0) {
                         safeParams.push(id);
                         safeParams.push(organizationId);
