@@ -114,6 +114,24 @@ function DurationPicker({ value, onChange, customDate, onCustomDate }: {
     );
 }
 
+// ── Compress a base64 image to a max dimension / quality ──────────────────
+function compressImage(dataUrl: string, maxDim = 600, quality = 0.82): Promise<string> {
+    return new Promise(resolve => {
+        const img = new Image();
+        img.onload = () => {
+            const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+            const w = Math.round(img.width * scale);
+            const h = Math.round(img.height * scale);
+            const canvas = document.createElement('canvas');
+            canvas.width = w; canvas.height = h;
+            canvas.getContext('2d')!.drawImage(img, 0, 0, w, h);
+            resolve(canvas.toDataURL('image/jpeg', quality));
+        };
+        img.onerror = () => resolve(dataUrl);
+        img.src = dataUrl;
+    });
+}
+
 // ── Canvas circle cropper ──────────────────────────────────────────────────
 function CircleCropper({ src, onSave, onCancel }: { src: string; onSave: (dataUrl: string) => void; onCancel: () => void }) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -399,8 +417,14 @@ export default function SecurityClient({
         if (!bName.trim()) return;
         setBSaving(true);
         const barred_until = computeBarredUntil(bDuration, bCustomDate);
-        const primaryPhoto = bPhotos[bPrimaryIdx]?.type === 'image' ? bPhotos[bPrimaryIdx] : bPhotos.find(m => m.type === 'image');
-        const additionalMedia = bPhotos.filter(m => m !== primaryPhoto);
+        const rawPrimaryB = bPhotos[bPrimaryIdx]?.type === 'image' ? bPhotos[bPrimaryIdx] : bPhotos.find(m => m.type === 'image');
+        const rawMediaB = bPhotos.filter(m => m !== rawPrimaryB);
+        const shrinkB = async (m: MediaItem): Promise<MediaItem> => {
+            if (m.type !== 'image' || !m.data.startsWith('data:') || m.data.length < 150_000) return m;
+            return { ...m, data: await compressImage(m.data) };
+        };
+        const primaryPhoto = rawPrimaryB ? await shrinkB(rawPrimaryB) : null;
+        const additionalMedia = await Promise.all(rawMediaB.map(shrinkB));
         const res = await fetch('/api/admin/security/barred', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -466,8 +490,17 @@ export default function SecurityClient({
         if (!editPerson || !eName.trim()) return;
         setESaving(true);
         const barred_until = computeBarredUntil(eDuration, eCustomDate);
-        const primaryPhoto = ePhotos[ePrimaryIdx]?.type === 'image' ? ePhotos[ePrimaryIdx] : ePhotos.find(m => m.type === 'image');
-        const additionalMedia = ePhotos.filter(m => m !== primaryPhoto);
+        const rawPrimary = ePhotos[ePrimaryIdx]?.type === 'image' ? ePhotos[ePrimaryIdx] : ePhotos.find(m => m.type === 'image');
+        const rawMedia = ePhotos.filter(m => m !== rawPrimary);
+
+        // Compress any large images before sending (handles photos stored before auto-crop was added)
+        const shrink = async (m: MediaItem): Promise<MediaItem> => {
+            if (m.type !== 'image' || !m.data.startsWith('data:') || m.data.length < 150_000) return m;
+            return { ...m, data: await compressImage(m.data) };
+        };
+        const primaryPhoto = rawPrimary ? await shrink(rawPrimary) : null;
+        const additionalMedia = await Promise.all(rawMedia.map(shrink));
+
         try {
             const res = await fetch('/api/admin/security/barred', {
                 method: 'PUT',
