@@ -14,6 +14,7 @@ async function ensureDisplayColumns() {
     await db.execute(`ALTER TABLE items ADD COLUMN IF NOT EXISTS package_price NUMERIC(10,2) DEFAULT NULL`).catch(() => {});
     await db.execute(`ALTER TABLE items ADD COLUMN IF NOT EXISTS package_sale_enabled BOOLEAN DEFAULT FALSE`).catch(() => {});
     await db.execute(`ALTER TABLE items ADD COLUMN IF NOT EXISTS size_prices JSONB DEFAULT '{}'::jsonb`).catch(() => {});
+    await db.execute(`ALTER TABLE items ADD COLUMN IF NOT EXISTS package_prices JSONB DEFAULT '{}'::jsonb`).catch(() => {});
     _displayColsEnsured = true;
 }
 
@@ -78,6 +79,7 @@ export async function GET(req: NextRequest) {
         i.id, i.name, i.type, i.secondary_type, i.unit_cost, i.sale_price, i.package_price,
         COALESCE(i.package_sale_enabled, false) as package_sale_enabled,
         COALESCE(i.size_prices, '{}'::jsonb) as size_prices,
+        COALESCE(i.package_prices, '{}'::jsonb) as package_prices,
         i.supplier, i.order_size, i.low_stock_threshold,
         COALESCE(i.low_stock_threshold_type, 'fixed') as low_stock_threshold_type,
         i.low_stock_threshold_factor,
@@ -133,6 +135,7 @@ export async function GET(req: NextRequest) {
                 i.id, i.name, i.type, i.secondary_type, i.unit_cost, i.sale_price, i.package_price,
                 false as package_sale_enabled,
                 '{}'::jsonb as size_prices,
+                '{}'::jsonb as package_prices,
                 i.supplier, i.order_size, i.low_stock_threshold,
                 'fixed' as low_stock_threshold_type,
                 NULL::numeric as low_stock_threshold_factor,
@@ -299,7 +302,7 @@ export async function PUT(req: NextRequest) {
 
         if (!canEdit && !canStock) return NextResponse.json({ error: 'Permission denied' }, { status: 403 });
 
-        const { id, unit_cost, sale_price, package_price, package_sale_enabled, size_prices, name, type, quantity, secondary_type, supplier, supplier_id, low_stock_threshold, low_stock_threshold_type, low_stock_threshold_factor, order_size, stock_options, include_in_audit, include_in_low_stock_alerts, exclude_from_smart_order, assignedLocations, stock_unit_label, stock_unit_size, order_unit_label, order_unit_size, use_category_qty_defaults, stock_display_mode, inventory_display_mode, location_supplier_id, location_sale_price, locationId: bodyLocationId, barcodes, aliases, abv, bottle_size, bottle_size_amount, bottle_size_unit } = await req.json();
+        const { id, unit_cost, sale_price, package_price, package_sale_enabled, size_prices, package_prices, name, type, quantity, secondary_type, supplier, supplier_id, low_stock_threshold, low_stock_threshold_type, low_stock_threshold_factor, order_size, stock_options, include_in_audit, include_in_low_stock_alerts, exclude_from_smart_order, assignedLocations, stock_unit_label, stock_unit_size, order_unit_label, order_unit_size, use_category_qty_defaults, stock_display_mode, inventory_display_mode, location_supplier_id, location_sale_price, locationId: bodyLocationId, barcodes, aliases, abv, bottle_size, bottle_size_amount, bottle_size_unit } = await req.json();
 
         if (!id) return NextResponse.json({ error: 'Missing ID' }, { status: 400 });
 
@@ -328,6 +331,10 @@ export async function PUT(req: NextRequest) {
             if (size_prices !== undefined) {
                 updates.push(`size_prices = $${pIdx++} `);
                 params.push(typeof size_prices === 'object' && size_prices !== null ? size_prices : {});
+            }
+            if (package_prices !== undefined) {
+                updates.push(`package_prices = $${pIdx++} `);
+                params.push(typeof package_prices === 'object' && package_prices !== null ? package_prices : {});
             }
             if (stock_unit_label !== undefined) {
                 updates.push(`stock_unit_label = $${pIdx++} `);
@@ -455,6 +462,7 @@ export async function PUT(req: NextRequest) {
                     if (barcodes !== undefined) { safeUpdates.push(`barcodes = $${sIdx++}`); safeParams.push(JSON.stringify(Array.isArray(barcodes) ? barcodes : [])); }
                     if (aliases !== undefined) { safeUpdates.push(`aliases = $${sIdx++}`); safeParams.push(JSON.stringify(Array.isArray(aliases) ? aliases : [])); }
                     if (package_sale_enabled !== undefined) { safeUpdates.push(`package_sale_enabled = $${sIdx++}`); safeParams.push(package_sale_enabled === true || package_sale_enabled === 'true'); }
+                    if (package_prices !== undefined) { safeUpdates.push(`package_prices = $${sIdx++}`); safeParams.push(typeof package_prices === 'object' && package_prices !== null ? package_prices : {}); }
                     if (safeUpdates.length > 0) {
                         safeParams.push(id);
                         safeParams.push(organizationId);

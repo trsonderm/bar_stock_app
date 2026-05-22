@@ -1035,4 +1035,11 @@ DO $$ BEGIN
   ALTER TABLE items ADD COLUMN size_prices JSONB DEFAULT '{}'::jsonb;
 EXCEPTION WHEN duplicate_column THEN NULL; END $$;
 
+-- =========================================================
+-- 57. Items — per-size package prices
+-- =========================================================
+DO $$ BEGIN
+  ALTER TABLE items ADD COLUMN package_prices JSONB DEFAULT '{}'::jsonb;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
 COMMIT;
