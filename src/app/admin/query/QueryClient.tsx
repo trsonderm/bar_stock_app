@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import styles from '../admin.module.css';
+import { downloadSpreadsheet } from '@/lib/export';
 
 interface LogRow {
     id: number;
@@ -57,6 +58,13 @@ export default function QueryClient() {
     const [emailSubject, setEmailSubject] = useState('Activity Report');
     const [emailSending, setEmailSending] = useState(false);
     const [emailStatus, setEmailStatus] = useState<'idle' | 'ok' | 'error'>('idle');
+    const [exportFormat, setExportFormat] = useState<'xlsx' | 'csv'>('xlsx');
+
+    useEffect(() => {
+        fetch('/api/admin/settings').then(r => r.json()).then(d => {
+            if (d.settings?.export_format === 'csv') setExportFormat('csv');
+        }).catch(() => {});
+    }, []);
 
     useEffect(() => {
         fetch('/api/admin/query?mode=meta')
@@ -105,6 +113,18 @@ export default function QueryClient() {
         locationId && metaLocations.find(l => l.id === parseInt(locationId))?.name && { label: 'Location', value: metaLocations.find(l => l.id === parseInt(locationId))!.name },
         search && { label: 'Search', value: search },
     ].filter(Boolean) as { label: string; value: string }[];
+
+    const handleExport = () => {
+        const data = sorted.map(r => ({
+            Time: new Date(r.timestamp).toLocaleString(),
+            User: r.user_name,
+            Location: r.location_name || '',
+            Action: r.action_label,
+            Item: r.item_name || '',
+            Qty: r.change ?? '',
+        }));
+        downloadSpreadsheet(data, 'activity_report', exportFormat);
+    };
 
     const handlePrint = () => {
         const filterHtml = activeFilters.map(f =>
@@ -253,6 +273,9 @@ ${filterHtml ? `<div class="filters">Filters: ${filterHtml}</div>` : ''}
                             {total} record{total !== 1 ? 's' : ''} · {startDate}{startDate !== endDate ? ` — ${endDate}` : ''}
                         </span>
                         <div style={{ display: 'flex', gap: '0.5rem' }}>
+                            <button onClick={handleExport} style={{ background: '#7c3aed', color: 'white', border: 'none', borderRadius: '6px', padding: '6px 14px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 700 }}>
+                                ↓ {exportFormat.toUpperCase()}
+                            </button>
                             <button onClick={handlePrint} style={{ background: '#374151', color: 'white', border: 'none', borderRadius: '6px', padding: '6px 14px', cursor: 'pointer', fontSize: '0.85rem' }}>
                                 🖨️ Print
                             </button>

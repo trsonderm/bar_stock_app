@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Printer } from 'lucide-react';
 import styles from '../admin.module.css';
+import { downloadSpreadsheet } from '@/lib/export';
 
 interface Item {
     id: number;
@@ -47,6 +48,7 @@ export default function PricesClient() {
     const [pkgSavedKey, setPkgSavedKey] = useState<string | null>(null);
     const [pkgSizeSavedKey, setPkgSizeSavedKey] = useState<string | null>(null);
     const [sizeSavedKey, setSizeSavedKey] = useState<string | null>(null);
+    const [exportFormat, setExportFormat] = useState<'xlsx' | 'csv'>('xlsx');
 
     useEffect(() => {
         fetchCategories();
@@ -65,6 +67,7 @@ export default function PricesClient() {
             const data = await res.json();
             if (data.settings?.per_location_pricing === 'true') setPerLocationPricing(true);
             if (data.settings?.package_sale_enabled === 'true') setPackageSaleEnabled(true);
+            if (data.settings?.export_format === 'csv') setExportFormat('csv');
         } catch { }
     };
 
@@ -157,6 +160,24 @@ export default function PricesClient() {
                 fetchItems();
             }
         }
+    };
+
+    const handleExport = () => {
+        const q = search.toLowerCase();
+        const visible = items.filter(i => !q || i.name.toLowerCase().includes(q));
+        const data = visible.map(i => {
+            const row: Record<string, any> = {
+                Name: i.name,
+                Category: i.type,
+                'Unit Cost': i.unit_cost ?? '',
+                'Sale Price': i.sale_price ?? '',
+            };
+            if (packageSaleEnabled && i.package_sale_enabled) {
+                row['Package Price'] = i.package_price ?? '';
+            }
+            return row;
+        });
+        downloadSpreadsheet(data, 'price_list', exportFormat);
     };
 
     const parseSizes = (orderSize: any): { label: string; amount: number }[] => {
@@ -621,6 +642,20 @@ thead th.right{text-align:right;}
                         {' '}and are read-only here. Set a sale price per item to enable profit reporting.
                     </p>
                     <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        <button
+                            type="button"
+                            onClick={handleExport}
+                            style={{
+                                display: 'flex', alignItems: 'center', gap: '6px',
+                                padding: '0.45rem 1rem',
+                                background: '#7c3aed',
+                                color: 'white', border: 'none', borderRadius: '6px',
+                                cursor: 'pointer', fontWeight: 700, fontSize: '0.875rem',
+                                whiteSpace: 'nowrap', flexShrink: 0,
+                            }}
+                        >
+                            ↓ Export {exportFormat.toUpperCase()}
+                        </button>
                         <button
                             type="button"
                             onClick={printPriceReport}

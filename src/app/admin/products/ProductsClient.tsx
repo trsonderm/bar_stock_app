@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import styles from '../admin.module.css';
 import CsvMappingModal from './CsvMappingModal';
 import BarcodeScanner from '@/components/BarcodeScanner';
+import { downloadSpreadsheet } from '@/lib/export';
 
 interface OrderSizeOption {
     label: string;
@@ -140,6 +141,7 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
     const [bulkApplying, setBulkApplying] = useState(false);
 
     const [stockMode, setStockMode] = useState<string>('CATEGORY');
+    const [exportFormat, setExportFormat] = useState<'xlsx' | 'csv'>('xlsx');
     const [modalTab, setModalTab] = useState<'basic' | 'inventory' | 'alerts'>('basic');
 
     // Multi-location Logic
@@ -152,6 +154,7 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
         // fetchData() is triggered separately via the selectedLocationId effect
         fetch('/api/admin/settings').then(r => r.json()).then(d => {
             if (d.settings?.stock_count_mode) setStockMode(d.settings.stock_count_mode);
+            if (d.settings?.export_format === 'csv') setExportFormat('csv');
         });
 
         // When viewing another org as super admin, fetch that org's locations directly
@@ -669,6 +672,25 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
         URL.revokeObjectURL(url);
     };
 
+    const handleExport = () => {
+        const q = search.toLowerCase();
+        const visible = items.filter(i => {
+            const matchSearch = !q || i.name.toLowerCase().includes(q) ||
+                (i.aliases ?? []).some(a => a.toLowerCase().includes(q));
+            const matchType = filterType === 'All' || i.type === filterType;
+            return matchSearch && matchType;
+        });
+        const data = visible.map(i => ({
+            Name: i.name,
+            Category: i.type,
+            'Sub-Category': i.secondary_type || '',
+            Supplier: i.supplier || '',
+            'Unit Cost': i.unit_cost ?? '',
+            Quantity: i.quantity ?? '',
+        }));
+        downloadSpreadsheet(data, 'product_list', exportFormat);
+    };
+
     const handleImportClick = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
@@ -726,6 +748,12 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                             style={{ background: '#ef4444', color: 'white', padding: '0.5rem 1rem', borderRadius: '0.5rem', fontWeight: 'bold', border: 'none', cursor: 'pointer' }}
                         >
                             Delete All
+                        </button>
+                        <button
+                            onClick={handleExport}
+                            style={{ background: '#7c3aed', color: 'white', padding: '0.5rem 1rem', borderRadius: '0.5rem', fontWeight: 'bold', border: 'none', cursor: 'pointer' }}
+                        >
+                            ↓ Export {exportFormat.toUpperCase()}
                         </button>
                         <button
                             onClick={handleDownloadTemplate}

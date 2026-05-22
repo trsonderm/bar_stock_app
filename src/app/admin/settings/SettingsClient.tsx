@@ -38,6 +38,7 @@ export default function SettingsClient() {
         recipe_search_source: 'both',
         recipe_search_primary: 'local',
         package_sale_enabled: 'false',
+        export_format: 'xlsx',
     });
 
     const [users, setUsers] = useState<any[]>([]);
@@ -780,6 +781,48 @@ export default function SettingsClient() {
                     <div style={{ marginTop: '1rem' }}>
                         <button onClick={handleSubmit} style={{ padding: '0.5rem 1rem', background: '#3b82f6', color: 'white', borderRadius: '0.25rem', border: 'none', cursor: 'pointer' }}>
                             Save Settings
+                        </button>
+                    </div>
+                </div>
+
+                {/* Export Format */}
+                <div className={styles.card} style={{ gridColumn: 'span 2' }}>
+                    <div className={styles.cardTitle}>Spreadsheet Export Format</div>
+                    <p style={{ color: '#9ca3af', marginBottom: '1rem', fontSize: '0.9rem' }}>
+                        Choose the default format used when downloading spreadsheets from the Product List, Prices, and Activity pages.
+                    </p>
+                    <div style={{ display: 'flex', gap: '0.75rem' }}>
+                        {[
+                            { value: 'xlsx', label: 'Excel (.xlsx)', desc: 'Best for Excel and Google Sheets.' },
+                            { value: 'csv', label: 'CSV (.csv)', desc: 'Plain text, works everywhere.' },
+                        ].map(opt => (
+                            <label
+                                key={opt.value}
+                                style={{
+                                    flex: 1, display: 'flex', alignItems: 'center', gap: '0.75rem',
+                                    background: (settings as any).export_format === opt.value ? '#1e3a5f' : '#1f2937',
+                                    border: `1px solid ${(settings as any).export_format === opt.value ? '#3b82f6' : '#374151'}`,
+                                    borderRadius: '0.5rem', padding: '0.75rem 1rem', cursor: 'pointer',
+                                }}
+                            >
+                                <input
+                                    type="radio"
+                                    name="export_format"
+                                    value={opt.value}
+                                    checked={(settings as any).export_format === opt.value}
+                                    onChange={() => setSettings(prev => ({ ...prev, export_format: opt.value }))}
+                                    style={{ width: '16px', height: '16px' }}
+                                />
+                                <div>
+                                    <div style={{ color: 'white', fontWeight: 600 }}>{opt.label}</div>
+                                    <div style={{ color: '#9ca3af', fontSize: '0.8rem' }}>{opt.desc}</div>
+                                </div>
+                            </label>
+                        ))}
+                    </div>
+                    <div style={{ marginTop: '1rem' }}>
+                        <button onClick={handleSubmit} style={{ padding: '0.5rem 1rem', background: '#3b82f6', color: 'white', borderRadius: '0.25rem', border: 'none', cursor: 'pointer' }}>
+                            Save Setting
                         </button>
                     </div>
                 </div>
