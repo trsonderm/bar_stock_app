@@ -216,14 +216,6 @@ export default function PricesClient() {
         const grouped: Record<string, Item[]> = {};
         types.forEach(t => { grouped[t] = packageItems.filter(i => i.type === t); });
 
-        const getOrderLabel = (item: Item): string => {
-            if (Array.isArray(item.order_size) && item.order_size.length > 0) {
-                const first = item.order_size[0];
-                if (first && typeof first === 'object' && first.label) return first.label;
-            }
-            return '';
-        };
-
         // Pack categories into pages (~16 items each)
         const ITEMS_PER_PAGE = 16;
         const pages: { type: string; items: Item[] }[][] = [];
@@ -267,18 +259,10 @@ export default function PricesClient() {
         <div class="cat-rule"></div>
       </div>
       <div class="item-list">
-        ${typeItems.map(item => {
-            const label = getOrderLabel(item);
-            return `
+        ${typeItems.map(item => `
         <div class="item-row">
-          <div class="item-left">
-            <span class="item-name">${escapeHtml(item.name)}</span>
-            ${label ? `<span class="item-label">${escapeHtml(label)}</span>` : ''}
-          </div>
-          <div class="item-dots"></div>
-          <div class="item-price">$${Number(item.package_price).toFixed(2)}</div>
-        </div>`;
-        }).join('')}
+          <span class="item-name">${escapeHtml(item.name)}</span>
+        </div>`).join('')}
       </div>
     </div>`).join('')}
   </div>
@@ -371,24 +355,10 @@ body{font-family:'Lato',sans-serif;background:#fff;color:#111;}
 
 /* Items */
 .item-list{}
-.item-row{
-  display:flex;align-items:baseline;padding:6.5px 6px;
-  border-bottom:1px solid #f3f4f6;
-}
+.item-row{padding:5px 6px;border-bottom:1px solid #f3f4f6;}
 .item-row:nth-child(odd){background:#fdfaf6;}
 .item-row:last-child{border-bottom:none;}
-.item-left{display:flex;align-items:baseline;gap:8px;flex-shrink:0;max-width:65%;}
-.item-name{font-size:11pt;font-weight:700;color:#111;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.item-label{font-size:8pt;color:#9ca3af;font-style:italic;white-space:nowrap;}
-.item-dots{
-  flex:1;min-width:20px;
-  border-bottom:1px dotted #d1d5db;
-  margin:0 10px;position:relative;top:-4px;
-}
-.item-price{
-  font-family:'Playfair Display',serif;font-size:13.5pt;font-weight:700;
-  color:#111;white-space:nowrap;letter-spacing:-.01em;
-}
+.item-name{font-size:11pt;font-weight:700;color:#111;}
 
 /* Footer */
 .page-footer{
