@@ -123,7 +123,7 @@ function CircleCropper({ src, onSave, onCancel }: { src: string; onSave: (dataUr
     const [dragging, setDragging] = useState(false);
     const drag = useRef({ x: 0, y: 0, ox: 0, oy: 0 });
     const imgRef = useRef<HTMLImageElement | null>(null);
-    const SIZE = 260;
+    const SIZE = 360;
 
     useEffect(() => {
         const img = new Image();
@@ -271,13 +271,22 @@ export default function SecurityClient({
 
     const handleBarredMediaAdd = (e: React.ChangeEvent<HTMLInputElement>) => {
         const files = Array.from(e.target.files || []);
+        let firstImage = true;
         files.forEach(file => {
             if (file.size > 50 * 1024 * 1024) { alert(`${file.name} exceeds 50MB`); return; }
             const reader = new FileReader();
             reader.onload = ev => {
                 const data = ev.target?.result as string;
-                const type = file.type.startsWith('video/') ? 'video' : 'image';
-                setBPhotos(prev => [...prev, { type: type as 'image' | 'video', data, name: file.name }]);
+                if (file.type.startsWith('image/') && firstImage) {
+                    const idx = bPhotos.length;
+                    setBPhotos(prev => [...prev, { type: 'image', data, name: file.name }]);
+                    setBCropSrc(data);
+                    setBCropForIdx(idx);
+                    firstImage = false;
+                } else {
+                    const type = file.type.startsWith('video/') ? 'video' : 'image';
+                    setBPhotos(prev => [...prev, { type: type as 'image' | 'video', data, name: file.name }]);
+                }
             };
             reader.readAsDataURL(file);
         });
@@ -459,20 +468,32 @@ export default function SecurityClient({
         const barred_until = computeBarredUntil(eDuration, eCustomDate);
         const primaryPhoto = ePhotos[ePrimaryIdx]?.type === 'image' ? ePhotos[ePrimaryIdx] : ePhotos.find(m => m.type === 'image');
         const additionalMedia = ePhotos.filter(m => m !== primaryPhoto);
-        await fetch('/api/admin/security/barred', {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                id: editPerson.id,
-                name: eName.trim(),
-                aliases: eAliases,
-                photo: primaryPhoto?.data || null,
-                media: additionalMedia,
-                description: eDescription,
-                trespassed: eTrespassed,
-                barred_until,
-            }),
-        });
+        try {
+            const res = await fetch('/api/admin/security/barred', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    id: editPerson.id,
+                    name: eName.trim(),
+                    aliases: eAliases,
+                    photo: primaryPhoto?.data || null,
+                    media: additionalMedia,
+                    description: eDescription,
+                    trespassed: eTrespassed,
+                    barred_until,
+                }),
+            });
+            if (!res.ok) {
+                const d = await res.json().catch(() => ({}));
+                alert(d.error || 'Failed to save. Photo may be too large — try cropping it first.');
+                setESaving(false);
+                return;
+            }
+        } catch {
+            alert('Network error saving changes.');
+            setESaving(false);
+            return;
+        }
         setESaving(false);
         setEditPerson(null);
         load();
@@ -480,13 +501,23 @@ export default function SecurityClient({
 
     const handleEditMediaAdd = (e: React.ChangeEvent<HTMLInputElement>) => {
         const files = Array.from(e.target.files || []);
+        let firstImage = true;
         files.forEach(file => {
             if (file.size > 50 * 1024 * 1024) { alert(`${file.name} exceeds 50MB`); return; }
             const reader = new FileReader();
             reader.onload = ev => {
                 const data = ev.target?.result as string;
-                const type = file.type.startsWith('video/') ? 'video' : 'image';
-                setEPhotos(prev => [...prev, { type: type as 'image' | 'video', data, name: file.name }]);
+                if (file.type.startsWith('image/') && firstImage) {
+                    // Auto-open cropper so the image is always resized before saving
+                    const idx = ePhotos.length;
+                    setEPhotos(prev => [...prev, { type: 'image', data, name: file.name }]);
+                    setECropSrc(data);
+                    setECropForIdx(idx);
+                    firstImage = false;
+                } else {
+                    const type = file.type.startsWith('video/') ? 'video' : 'image';
+                    setEPhotos(prev => [...prev, { type: type as 'image' | 'video', data, name: file.name }]);
+                }
             };
             reader.readAsDataURL(file);
         });
