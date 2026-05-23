@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import styles from '../admin.module.css';
 import { downloadSpreadsheet } from '@/lib/export';
+import { FileDown, Printer, Mail } from 'lucide-react';
 
 interface LogRow {
     id: number;
@@ -273,14 +274,14 @@ ${filterHtml ? `<div class="filters">Filters: ${filterHtml}</div>` : ''}
                             {total} record{total !== 1 ? 's' : ''} · {startDate}{startDate !== endDate ? ` — ${endDate}` : ''}
                         </span>
                         <div style={{ display: 'flex', gap: '0.5rem' }}>
-                            <button onClick={handleExport} style={{ background: '#7c3aed', color: 'white', border: 'none', borderRadius: '6px', padding: '6px 14px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 700 }}>
-                                ↓ {exportFormat.toUpperCase()}
+                            <button onClick={handleExport} title={`Export ${exportFormat.toUpperCase()}`} style={{ background: '#7c3aed', color: 'white', border: 'none', borderRadius: '6px', padding: '6px 8px', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+                                <FileDown size={17} />
                             </button>
-                            <button onClick={handlePrint} style={{ background: '#374151', color: 'white', border: 'none', borderRadius: '6px', padding: '6px 14px', cursor: 'pointer', fontSize: '0.85rem' }}>
-                                🖨️ Print
+                            <button onClick={handlePrint} title="Print report" style={{ background: '#374151', color: 'white', border: 'none', borderRadius: '6px', padding: '6px 8px', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+                                <Printer size={17} />
                             </button>
-                            <button onClick={() => { setShowEmailModal(true); setEmailStatus('idle'); }} style={{ background: '#2563eb', color: 'white', border: 'none', borderRadius: '6px', padding: '6px 14px', cursor: 'pointer', fontSize: '0.85rem' }}>
-                                ✉️ Email Report
+                            <button onClick={() => { setShowEmailModal(true); setEmailStatus('idle'); }} title="Email report" style={{ background: '#2563eb', color: 'white', border: 'none', borderRadius: '6px', padding: '6px 8px', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+                                <Mail size={17} />
                             </button>
                         </div>
                     </div>

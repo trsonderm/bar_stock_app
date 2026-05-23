@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Printer } from 'lucide-react';
+import { Printer, Pencil, FileDown } from 'lucide-react';
 import styles from '../admin.module.css';
 import { downloadSpreadsheet } from '@/lib/export';
 
@@ -702,16 +702,16 @@ thead th.right{text-align:right;}
                         <button
                             type="button"
                             onClick={handleExport}
+                            title={`Export ${exportFormat.toUpperCase()}`}
                             style={{
-                                display: 'flex', alignItems: 'center', gap: '6px',
-                                padding: '0.45rem 1rem',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                padding: '0.45rem 0.65rem',
                                 background: '#7c3aed',
                                 color: 'white', border: 'none', borderRadius: '6px',
-                                cursor: 'pointer', fontWeight: 700, fontSize: '0.875rem',
-                                whiteSpace: 'nowrap', flexShrink: 0,
+                                cursor: 'pointer', flexShrink: 0,
                             }}
                         >
-                            ↓ Export {exportFormat.toUpperCase()}
+                            <FileDown size={17} />
                         </button>
                         <button
                             type="button"
@@ -886,9 +886,10 @@ thead th.right{text-align:right;}
                                                         <button
                                                             type="button"
                                                             onClick={() => router.push(`/admin/products?editId=${item.id}`)}
-                                                            style={{ fontSize: '0.75rem', color: '#3b82f6', background: 'none', border: 'none', cursor: 'pointer', padding: 0, whiteSpace: 'nowrap' }}
+                                                            title="Edit product"
+                                                            style={{ color: '#3b82f6', background: 'none', border: 'none', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center' }}
                                                         >
-                                                            Edit →
+                                                            <Pencil size={13} />
                                                         </button>
                                                     </div>
                                                 </td>
@@ -1070,9 +1071,10 @@ thead th.right{text-align:right;}
                                                     <button
                                                         type="button"
                                                         onClick={() => router.push(`/admin/products?editId=${item.id}`)}
-                                                        style={{ background: '#374151', color: '#d1d5db', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem' }}
+                                                        title="Edit product"
+                                                        style={{ background: '#374151', color: '#d1d5db', border: 'none', padding: '5px', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                                                     >
-                                                        Edit Product
+                                                        <Pencil size={14} />
                                                     </button>
                                                 </td>
                                             </tr>

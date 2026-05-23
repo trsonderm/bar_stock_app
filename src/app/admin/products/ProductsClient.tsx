@@ -6,6 +6,7 @@ import styles from '../admin.module.css';
 import CsvMappingModal from './CsvMappingModal';
 import BarcodeScanner from '@/components/BarcodeScanner';
 import { downloadSpreadsheet } from '@/lib/export';
+import { Trash2, Pencil, Archive, Download, Upload, FileDown, Plus, Zap } from 'lucide-react';
 
 interface OrderSizeOption {
     label: string;
@@ -750,49 +751,31 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
             <div className={styles.card}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
                     <h2 className={styles.cardTitle}>Product Catalog</h2>
-                    <div style={{ display: 'flex', gap: '0.5rem' }}>
-                        <button
-                            onClick={handleDeleteAll}
-                            style={{ background: '#ef4444', color: 'white', padding: '0.5rem 1rem', borderRadius: '0.5rem', fontWeight: 'bold', border: 'none', cursor: 'pointer' }}
-                        >
-                            Delete All
+                    <div style={{ display: 'flex', gap: '0.375rem', alignItems: 'center' }}>
+                        <button onClick={handleDeleteAll} title="Delete All Products"
+                            style={{ background: '#ef4444', color: 'white', padding: '0.45rem', borderRadius: '0.5rem', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <Trash2 size={16} />
                         </button>
-                        <button
-                            onClick={handleExport}
-                            style={{ background: '#7c3aed', color: 'white', padding: '0.5rem 1rem', borderRadius: '0.5rem', fontWeight: 'bold', border: 'none', cursor: 'pointer' }}
-                        >
-                            ↓ Export {exportFormat.toUpperCase()}
+                        <button onClick={handleExport} title={`Export ${exportFormat.toUpperCase()}`}
+                            style={{ background: '#7c3aed', color: 'white', padding: '0.45rem', borderRadius: '0.5rem', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <Download size={16} />
                         </button>
-                        <button
-                            onClick={handleDownloadTemplate}
-                            style={{ background: '#0ea5e9', color: 'white', padding: '0.5rem 1rem', borderRadius: '0.5rem', fontWeight: 'bold', border: 'none', cursor: 'pointer' }}
-                        >
-                            ↓ Download Template
+                        <button onClick={handleDownloadTemplate} title="Download CSV Template"
+                            style={{ background: '#0ea5e9', color: 'white', padding: '0.45rem', borderRadius: '0.5rem', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <FileDown size={16} />
                         </button>
-                        <button
-                            onClick={() => document.getElementById('csvInput')?.click()}
-                            style={{ background: '#10b981', color: 'white', padding: '0.5rem 1rem', borderRadius: '0.5rem', fontWeight: 'bold', border: 'none', cursor: 'pointer' }}
-                        >
-                            Import CSV
+                        <button onClick={() => document.getElementById('csvInput')?.click()} title="Import CSV"
+                            style={{ background: '#10b981', color: 'white', padding: '0.45rem', borderRadius: '0.5rem', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <Upload size={16} />
                         </button>
-                        <input
-                            id="csvInput"
-                            type="file"
-                            accept=".csv"
-                            style={{ display: 'none' }}
-                            onChange={handleImportClick}
-                        />
-                        <button
-                            onClick={openQuickAdd}
-                            style={{ background: '#059669', color: 'white', padding: '0.5rem 1rem', borderRadius: '0.5rem', fontWeight: 'bold', border: 'none', cursor: 'pointer' }}
-                        >
-                            ⚡ Quick Add
+                        <input id="csvInput" type="file" accept=".csv" style={{ display: 'none' }} onChange={handleImportClick} />
+                        <button onClick={openQuickAdd} title="Quick Add"
+                            style={{ background: '#059669', color: 'white', padding: '0.45rem', borderRadius: '0.5rem', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <Zap size={16} />
                         </button>
-                        <button
-                            onClick={handleCreateClick}
-                            style={{ background: '#d97706', color: 'white', padding: '0.5rem 1rem', borderRadius: '0.5rem', fontWeight: 'bold', border: 'none', cursor: 'pointer' }}
-                        >
-                            + Add New Product
+                        <button onClick={handleCreateClick} title="Add New Product"
+                            style={{ background: '#d97706', color: 'white', padding: '0.45rem 0.75rem', borderRadius: '0.5rem', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700, fontSize: '0.875rem' }}>
+                            <Plus size={16} /> Add Product
                         </button>
                     </div>
                 </div>
@@ -987,47 +970,18 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                                         </td>
                                     )}
                                     <td style={{ color: '#9ca3af', fontSize: '0.9em' }}>{item.low_stock_threshold === null ? 'Global' : item.low_stock_threshold}</td>
-                                    <td style={{ textAlign: 'right' }}>
-                                        <button
-                                            onClick={() => handleEditClick(item)}
-                                            style={{
-                                                background: '#3b82f6',
-                                                color: 'white',
-                                                border: 'none',
-                                                padding: '4px 8px',
-                                                borderRadius: '4px',
-                                                cursor: 'pointer',
-                                                marginRight: '8px'
-                                            }}
-                                        >
-                                            Edit
+                                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                                        <button onClick={() => handleEditClick(item)} title="Edit"
+                                            style={{ background: '#3b82f6', color: 'white', border: 'none', padding: '5px', borderRadius: '4px', cursor: 'pointer', marginRight: '4px', display: 'inline-flex', alignItems: 'center' }}>
+                                            <Pencil size={14} />
                                         </button>
-                                        <button
-                                            onClick={() => handleArchive(item.id)}
-                                            style={{
-                                                background: '#78350f',
-                                                color: '#fde68a',
-                                                border: 'none',
-                                                padding: '4px 8px',
-                                                borderRadius: '4px',
-                                                cursor: 'pointer',
-                                                marginRight: '8px',
-                                            }}
-                                        >
-                                            Archive
+                                        <button onClick={() => handleArchive(item.id)} title="Archive"
+                                            style={{ background: '#78350f', color: '#fde68a', border: 'none', padding: '5px', borderRadius: '4px', cursor: 'pointer', marginRight: '4px', display: 'inline-flex', alignItems: 'center' }}>
+                                            <Archive size={14} />
                                         </button>
-                                        <button
-                                            onClick={() => handleDelete(item.id)}
-                                            style={{
-                                                background: '#ef4444',
-                                                color: 'white',
-                                                border: 'none',
-                                                padding: '4px 8px',
-                                                borderRadius: '4px',
-                                                cursor: 'pointer'
-                                            }}
-                                        >
-                                            Delete
+                                        <button onClick={() => handleDelete(item.id)} title="Delete"
+                                            style={{ background: '#ef4444', color: 'white', border: 'none', padding: '5px', borderRadius: '4px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center' }}>
+                                            <Trash2 size={14} />
                                         </button>
                                     </td>
                                 </tr>
