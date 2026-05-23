@@ -43,6 +43,7 @@ export async function GET(req: NextRequest) {
         settingsObj['recipe_search_primary'] = generalSettings.recipe_search_primary || 'local';
         settingsObj['package_sale_enabled'] = generalSettings.package_sale_enabled ? 'true' : 'false';
         settingsObj['export_format'] = generalSettings.export_format || 'xlsx';
+        settingsObj['pricing_bands_enabled'] = generalSettings.pricing_bands_enabled ? 'true' : 'false';
     }
 
     return NextResponse.json({ settings: settingsObj });
@@ -116,7 +117,7 @@ export async function POST(req: NextRequest) {
         }
 
         // Handle General Settings (JSONB on organizations.settings)
-        const generalSettingsKeys = ['stock_count_mode', 'allow_custom_increment', 'smart_order_per_location', 'per_location_pricing', 'show_items_at_all_locations', 'shared_inventory_count', 'recipes_enabled', 'recipe_search_source', 'recipe_search_primary', 'package_sale_enabled', 'export_format'];
+        const generalSettingsKeys = ['stock_count_mode', 'allow_custom_increment', 'smart_order_per_location', 'per_location_pricing', 'show_items_at_all_locations', 'shared_inventory_count', 'recipes_enabled', 'recipe_search_source', 'recipe_search_primary', 'package_sale_enabled', 'export_format', 'pricing_bands_enabled'];
         if (generalSettingsKeys.some(k => body[k] !== undefined)) {
             const orgRow = await client.query('SELECT settings FROM organizations WHERE id = $1', [organizationId]);
             const currentSettings = orgRow.rows[0]?.settings || {};
@@ -131,6 +132,7 @@ export async function POST(req: NextRequest) {
             if (body.recipe_search_primary !== undefined) currentSettings.recipe_search_primary = body.recipe_search_primary;
             if (body.package_sale_enabled !== undefined) currentSettings.package_sale_enabled = body.package_sale_enabled === 'true' || body.package_sale_enabled === true;
             if (body.export_format !== undefined) currentSettings.export_format = body.export_format === 'csv' ? 'csv' : 'xlsx';
+            if (body.pricing_bands_enabled !== undefined) currentSettings.pricing_bands_enabled = body.pricing_bands_enabled === 'true' || body.pricing_bands_enabled === true;
             await client.query('UPDATE organizations SET settings = $1 WHERE id = $2', [currentSettings, organizationId]);
         }
 

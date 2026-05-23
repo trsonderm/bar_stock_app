@@ -1042,4 +1042,24 @@ DO $$ BEGIN
   ALTER TABLE items ADD COLUMN package_prices JSONB DEFAULT '{}'::jsonb;
 EXCEPTION WHEN duplicate_column THEN NULL; END $$;
 
+-- =========================================================
+-- 58. Package pricing bands
+-- =========================================================
+CREATE TABLE IF NOT EXISTS package_pricing_bands (
+    id SERIAL PRIMARY KEY,
+    organization_id INT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    name VARCHAR(100) NOT NULL,
+    start_time TIME NOT NULL,
+    end_time TIME NOT NULL,
+    sort_order INT DEFAULT 0,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- =========================================================
+-- 59. Items — per-band package prices
+-- =========================================================
+DO $$ BEGIN
+  ALTER TABLE items ADD COLUMN package_band_prices JSONB DEFAULT '{}'::jsonb;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
 COMMIT;

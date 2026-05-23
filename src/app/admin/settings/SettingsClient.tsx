@@ -39,6 +39,7 @@ export default function SettingsClient() {
         recipe_search_primary: 'local',
         package_sale_enabled: 'false',
         export_format: 'xlsx',
+        pricing_bands_enabled: 'false',
     });
 
     const [users, setUsers] = useState<any[]>([]);
@@ -91,6 +92,11 @@ export default function SettingsClient() {
     const [payoutTypes, setPayoutTypes] = useState<{ id: number; name: string }[]>([]);
     const [newPayoutName, setNewPayoutName] = useState('');
 
+    // Pricing Bands
+    const [pricingBands, setPricingBands] = useState<{ id: number; name: string; start_time: string; end_time: string; sort_order: number }[]>([]);
+    const [newBand, setNewBand] = useState({ name: '', start_time: '', end_time: '' });
+    const [bandSaving, setBandSaving] = useState(false);
+
     // Branding
     const [branding, setBranding] = useState({
         logo_url: null as string | null,
@@ -123,6 +129,7 @@ export default function SettingsClient() {
         fetchOptions();
         fetchUsers();
         fetchPayoutTypes();
+        fetchBands();
     }, []);
 
     const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
@@ -209,6 +216,45 @@ export default function SettingsClient() {
             body: JSON.stringify({ id })
         });
         fetchOptions();
+    };
+
+    const fetchBands = () => {
+        fetch('/api/admin/pricing-bands')
+            .then(r => r.json())
+            .then(d => setPricingBands(d.bands || []))
+            .catch(() => {});
+    };
+
+    const handleAddBand = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!newBand.name.trim() || !newBand.start_time || !newBand.end_time) return;
+        setBandSaving(true);
+        try {
+            const res = await fetch('/api/admin/pricing-bands', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ...newBand, sort_order: pricingBands.length }),
+            });
+            if (res.ok) {
+                setNewBand({ name: '', start_time: '', end_time: '' });
+                fetchBands();
+            } else {
+                const d = await res.json();
+                alert(d.error || 'Failed to add band');
+            }
+        } finally {
+            setBandSaving(false);
+        }
+    };
+
+    const handleDeleteBand = async (id: number) => {
+        if (!confirm('Delete this pricing band? Items with prices set for this band will keep the data but it won\'t be used.')) return;
+        await fetch('/api/admin/pricing-bands', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id }),
+        });
+        fetchBands();
     };
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -778,6 +824,108 @@ export default function SettingsClient() {
                             </label>
                         </div>
                     </div>
+                    <div style={{ marginTop: '1rem' }}>
+                        <button onClick={handleSubmit} style={{ padding: '0.5rem 1rem', background: '#3b82f6', color: 'white', borderRadius: '0.25rem', border: 'none', cursor: 'pointer' }}>
+                            Save Settings
+                        </button>
+                    </div>
+                </div>
+
+                {/* Package Pricing Bands */}
+                <div className={styles.card} style={{ gridColumn: 'span 2' }}>
+                    <div className={styles.cardTitle}>Package Pricing Bands</div>
+                    <p style={{ color: '#9ca3af', marginBottom: '1rem', fontSize: '0.9rem' }}>
+                        Define time-based pricing bands (e.g. Happy Hour). When enabled, every package-eligible item can have a separate price per band.
+                        If a sale occurs outside all band windows, the item's regular package price applies.
+                    </p>
+                    <div style={{ marginBottom: '1rem', background: '#1f2937', padding: '1rem', borderRadius: '0.5rem', border: '1px solid #374151', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                        <input
+                            type="checkbox"
+                            id="pricing_bands_enabled"
+                            checked={(settings as any).pricing_bands_enabled === 'true'}
+                            onChange={e => setSettings(prev => ({ ...prev, pricing_bands_enabled: e.target.checked ? 'true' : 'false' }))}
+                            style={{ width: '20px', height: '20px', flexShrink: 0 }}
+                        />
+                        <label htmlFor="pricing_bands_enabled" style={{ cursor: 'pointer' }}>
+                            <div style={{ color: 'white', fontWeight: 'bold' }}>Enable Pricing Bands</div>
+                            <div style={{ fontSize: '0.85rem', color: '#9ca3af' }}>
+                                Adds per-band price inputs on the Prices page for each package-eligible item.
+                            </div>
+                        </label>
+                    </div>
+
+                    {(settings as any).pricing_bands_enabled === 'true' && (
+                        <div style={{ marginTop: '0.75rem' }}>
+                            {/* Existing bands */}
+                            {pricingBands.length > 0 && (
+                                <div style={{ marginBottom: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                    {pricingBands.map(band => (
+                                        <div key={band.id} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', background: '#111827', padding: '0.6rem 1rem', borderRadius: '0.375rem', border: '1px solid #374151' }}>
+                                            <span style={{ flex: 1, color: '#f9fafb', fontWeight: 600 }}>{band.name}</span>
+                                            <span style={{ color: '#9ca3af', fontSize: '0.85rem' }}>
+                                                {band.start_time?.slice(0, 5)} – {band.end_time?.slice(0, 5)}
+                                            </span>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleDeleteBand(band.id)}
+                                                style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', fontSize: '1rem', flexShrink: 0 }}
+                                                title="Delete band"
+                                            >🗑</button>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                            {pricingBands.length === 0 && (
+                                <p style={{ color: '#6b7280', fontSize: '0.875rem', marginBottom: '0.75rem' }}>No bands defined yet. Add your first band below.</p>
+                            )}
+
+                            {/* Add band form */}
+                            <form onSubmit={handleAddBand} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto auto', gap: '0.5rem', alignItems: 'end' }}>
+                                <div>
+                                    <label style={{ display: 'block', color: '#9ca3af', fontSize: '0.78rem', marginBottom: '3px' }}>Band Name</label>
+                                    <input
+                                        className={styles.input}
+                                        placeholder="e.g. Happy Hour"
+                                        value={newBand.name}
+                                        onChange={e => setNewBand(prev => ({ ...prev, name: e.target.value }))}
+                                        required
+                                    />
+                                </div>
+                                <div>
+                                    <label htmlFor="band-start" style={{ display: 'block', color: '#9ca3af', fontSize: '0.78rem', marginBottom: '3px' }}>Start</label>
+                                    <input
+                                        id="band-start"
+                                        type="time"
+                                        className={styles.input}
+                                        title="Band start time"
+                                        value={newBand.start_time}
+                                        onChange={e => setNewBand(prev => ({ ...prev, start_time: e.target.value }))}
+                                        required
+                                    />
+                                </div>
+                                <div>
+                                    <label htmlFor="band-end" style={{ display: 'block', color: '#9ca3af', fontSize: '0.78rem', marginBottom: '3px' }}>End</label>
+                                    <input
+                                        id="band-end"
+                                        type="time"
+                                        className={styles.input}
+                                        title="Band end time"
+                                        value={newBand.end_time}
+                                        onChange={e => setNewBand(prev => ({ ...prev, end_time: e.target.value }))}
+                                        required
+                                    />
+                                </div>
+                                <button
+                                    type="submit"
+                                    disabled={bandSaving}
+                                    style={{ padding: '0.5rem 1rem', background: '#10b981', color: 'white', border: 'none', borderRadius: '0.375rem', cursor: bandSaving ? 'not-allowed' : 'pointer', fontWeight: 600, opacity: bandSaving ? 0.7 : 1, whiteSpace: 'nowrap' }}
+                                >
+                                    + Add Band
+                                </button>
+                            </form>
+                        </div>
+                    )}
+
                     <div style={{ marginTop: '1rem' }}>
                         <button onClick={handleSubmit} style={{ padding: '0.5rem 1rem', background: '#3b82f6', color: 'white', borderRadius: '0.25rem', border: 'none', cursor: 'pointer' }}>
                             Save Settings

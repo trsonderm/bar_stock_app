@@ -7,6 +7,13 @@ import { Printer } from 'lucide-react';
 import styles from '../admin.module.css';
 import { downloadSpreadsheet } from '@/lib/export';
 
+interface PricingBand {
+    id: number;
+    name: string;
+    start_time: string;
+    end_time: string;
+}
+
 interface Item {
     id: number;
     name: string;
@@ -16,6 +23,7 @@ interface Item {
     location_sale_price?: number;
     package_price?: number | null;
     package_prices?: Record<string, number | null>;
+    package_band_prices?: Record<string, number | null>;
     package_sale_enabled?: boolean;
     order_size?: any;
     size_prices?: Record<string, number | null>;
@@ -49,6 +57,12 @@ export default function PricesClient() {
     const [pkgSizeSavedKey, setPkgSizeSavedKey] = useState<string | null>(null);
     const [sizeSavedKey, setSizeSavedKey] = useState<string | null>(null);
     const [exportFormat, setExportFormat] = useState<'xlsx' | 'csv'>('xlsx');
+    // Pricing bands
+    const [pricingBandsEnabled, setPricingBandsEnabled] = useState(false);
+    const [pricingBands, setPricingBands] = useState<PricingBand[]>([]);
+    // Band price edits keyed by `${itemId}_band_${bandId}` (no sizes) or `${itemId}_band_${bandId}_${label}` (sized)
+    const [bandPriceEdits, setBandPriceEdits] = useState<Record<string, string>>({});
+    const [bandSavedKey, setBandSavedKey] = useState<string | null>(null);
 
     useEffect(() => {
         fetchCategories();
@@ -68,6 +82,10 @@ export default function PricesClient() {
             if (data.settings?.per_location_pricing === 'true') setPerLocationPricing(true);
             if (data.settings?.package_sale_enabled === 'true') setPackageSaleEnabled(true);
             if (data.settings?.export_format === 'csv') setExportFormat('csv');
+            if (data.settings?.pricing_bands_enabled === 'true') {
+                setPricingBandsEnabled(true);
+                fetch('/api/admin/pricing-bands').then(r => r.json()).then(d => setPricingBands(d.bands || [])).catch(() => {});
+            }
         } catch { }
     };
 
@@ -103,6 +121,7 @@ export default function PricesClient() {
             const pkgInitial: Record<string, string> = {};
             const sizeInitial: Record<string, string> = {};
             const pkgSizeInitial: Record<string, string> = {};
+            const bandInitial: Record<string, string> = {};
             data.items.forEach((i: Item) => {
                 initial[String(i.id)] = i.sale_price !== null && i.sale_price !== undefined ? String(i.sale_price) : '';
                 if (selectedLocationId) {
@@ -119,11 +138,20 @@ export default function PricesClient() {
                     const pk = `${i.id}_pkg_${s.label}`;
                     pkgSizeInitial[pk] = pp[s.label] != null ? String(pp[s.label]) : '';
                 });
+                // Band prices
+                const bp = (i as any).package_band_prices || {};
+                // Bands may not be loaded yet — iterate over stored keys directly
+                Object.entries(bp).forEach(([storageKey, val]) => {
+                    // storageKey is `${bandId}` or `${bandId}_${label}`
+                    const stateKey = `${i.id}_band_${storageKey}`;
+                    (bandInitial as Record<string, string>)[stateKey] = val != null ? String(val) : '';
+                });
             });
             setSalePriceEdits(initial);
             setPackagePriceEdits(pkgInitial);
             setSizePriceEdits(sizeInitial);
             setPkgSizePriceEdits(pkgSizeInitial);
+            setBandPriceEdits(bandInitial);
         }
         setLoading(false);
     };
@@ -257,6 +285,35 @@ export default function PricesClient() {
             });
             setPkgSavedKey(key);
             setTimeout(() => setPkgSavedKey(k => k === key ? null : k), 1800);
+        } catch {
+            fetchItems();
+        }
+    };
+
+    const savePackageBandPrice = async (itemId: number, bandId: number, label?: string) => {
+        // storageKey in package_band_prices JSONB: `${bandId}` or `${bandId}_${label}`
+        const storageKey = label ? `${bandId}_${label}` : String(bandId);
+        const stateKey = `${itemId}_band_${storageKey}`;
+        const raw = bandPriceEdits[stateKey];
+        const num = raw === '' ? null : parseFloat(raw);
+        if (num !== null && isNaN(num)) return;
+        setItems(prev => prev.map(i => {
+            if (i.id !== itemId) return i;
+            const next = { ...(i.package_band_prices || {}) };
+            if (num === null) delete next[storageKey]; else next[storageKey] = num;
+            return { ...i, package_band_prices: next };
+        }));
+        try {
+            const item = items.find(i => i.id === itemId);
+            const merged = { ...(item?.package_band_prices || {}) };
+            if (num === null) delete merged[storageKey]; else merged[storageKey] = num;
+            await fetch('/api/inventory', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: itemId, package_band_prices: merged }),
+            });
+            setBandSavedKey(stateKey);
+            setTimeout(() => setBandSavedKey(prev => prev === stateKey ? null : prev), 1800);
         } catch {
             fetchItems();
         }
@@ -885,53 +942,105 @@ thead th.right{text-align:right;}
                                                     </td>
                                                 )}
                                                 {showPackagePriceCol && (
-                                                    <td>
+                                                    <td style={{ verticalAlign: 'top' }}>
                                                         {item.package_sale_enabled ? (
-                                                            hasSizes ? (
-                                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                                                                    {sizes.map(size => {
-                                                                        const pk = `${item.id}_pkg_${size.label}`;
-                                                                        return (
-                                                                            <div key={size.label} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                                                <span style={{ fontSize: '0.75rem', color: '#9ca3af', minWidth: '36px', textAlign: 'right' }}>
-                                                                                    {size.label}
-                                                                                </span>
-                                                                                <input
-                                                                                    type="number"
-                                                                                    step="0.01"
-                                                                                    min="0"
-                                                                                    className={styles.input}
-                                                                                    style={{ padding: '0.25rem', fontSize: '0.9em', width: '90px', marginBottom: 0 }}
-                                                                                    value={pkgSizePriceEdits[pk] ?? ''}
-                                                                                    placeholder="0.00"
-                                                                                    onChange={e => setPkgSizePriceEdits(prev => ({ ...prev, [pk]: e.target.value }))}
-                                                                                    onBlur={() => savePackageSizePrice(item.id, size.label)}
-                                                                                />
-                                                                                {pkgSizeSavedKey === pk && (
-                                                                                    <span style={{ color: '#10b981', fontSize: '0.8rem', fontWeight: 600 }}>✓</span>
-                                                                                )}
-                                                                            </div>
-                                                                        );
-                                                                    })}
-                                                                </div>
-                                                            ) : (
-                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                                    <input
-                                                                        type="number"
-                                                                        step="0.01"
-                                                                        min="0"
-                                                                        className={styles.input}
-                                                                        style={{ padding: '0.25rem', fontSize: '0.9em', width: '90px', marginBottom: 0 }}
-                                                                        value={packagePriceEdits[globalKey] ?? ''}
-                                                                        placeholder="0.00"
-                                                                        onChange={e => setPackagePriceEdits(prev => ({ ...prev, [globalKey]: e.target.value }))}
-                                                                        onBlur={() => savePackagePrice(item.id)}
-                                                                    />
-                                                                    {pkgSavedKey === globalKey && (
-                                                                        <span style={{ color: '#10b981', fontSize: '0.8rem', fontWeight: 600 }}>✓</span>
+                                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                                                {/* Default / base package price */}
+                                                                <div>
+                                                                    {pricingBandsEnabled && pricingBands.length > 0 && (
+                                                                        <div style={{ fontSize: '0.7rem', color: '#6b7280', marginBottom: '3px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Default</div>
+                                                                    )}
+                                                                    {hasSizes ? (
+                                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                                                            {sizes.map(size => {
+                                                                                const pk = `${item.id}_pkg_${size.label}`;
+                                                                                return (
+                                                                                    <div key={size.label} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                                        <span style={{ fontSize: '0.75rem', color: '#9ca3af', minWidth: '36px', textAlign: 'right' }}>{size.label}</span>
+                                                                                        <input
+                                                                                            type="number" step="0.01" min="0"
+                                                                                            className={styles.input}
+                                                                                            style={{ padding: '0.25rem', fontSize: '0.9em', width: '90px', marginBottom: 0 }}
+                                                                                            value={pkgSizePriceEdits[pk] ?? ''}
+                                                                                            placeholder="0.00"
+                                                                                            onChange={e => setPkgSizePriceEdits(prev => ({ ...prev, [pk]: e.target.value }))}
+                                                                                            onBlur={() => savePackageSizePrice(item.id, size.label)}
+                                                                                        />
+                                                                                        {pkgSizeSavedKey === pk && <span style={{ color: '#10b981', fontSize: '0.8rem', fontWeight: 600 }}>✓</span>}
+                                                                                    </div>
+                                                                                );
+                                                                            })}
+                                                                        </div>
+                                                                    ) : (
+                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                            <input
+                                                                                type="number" step="0.01" min="0"
+                                                                                className={styles.input}
+                                                                                style={{ padding: '0.25rem', fontSize: '0.9em', width: '90px', marginBottom: 0 }}
+                                                                                value={packagePriceEdits[globalKey] ?? ''}
+                                                                                placeholder="0.00"
+                                                                                onChange={e => setPackagePriceEdits(prev => ({ ...prev, [globalKey]: e.target.value }))}
+                                                                                onBlur={() => savePackagePrice(item.id)}
+                                                                            />
+                                                                            {pkgSavedKey === globalKey && <span style={{ color: '#10b981', fontSize: '0.8rem', fontWeight: 600 }}>✓</span>}
+                                                                        </div>
                                                                     )}
                                                                 </div>
-                                                            )
+
+                                                                {/* Per-band prices */}
+                                                                {pricingBandsEnabled && pricingBands.map(band => (
+                                                                    <div key={band.id} style={{ borderTop: '1px solid #374151', paddingTop: '6px' }}>
+                                                                        <div style={{ fontSize: '0.7rem', color: '#60a5fa', marginBottom: '3px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                                                                            {band.name}
+                                                                            <span style={{ color: '#4b5563', fontWeight: 400, marginLeft: '4px' }}>
+                                                                                {band.start_time?.slice(0, 5)}–{band.end_time?.slice(0, 5)}
+                                                                            </span>
+                                                                        </div>
+                                                                        {hasSizes ? (
+                                                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                                                                {sizes.map(size => {
+                                                                                    const stateKey = `${item.id}_band_${band.id}_${size.label}`;
+                                                                                    return (
+                                                                                        <div key={size.label} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                                            <span style={{ fontSize: '0.75rem', color: '#9ca3af', minWidth: '36px', textAlign: 'right' }}>{size.label}</span>
+                                                                                            <input
+                                                                                                type="number" step="0.01" min="0"
+                                                                                                className={styles.input}
+                                                                                                style={{ padding: '0.25rem', fontSize: '0.9em', width: '90px', marginBottom: 0 }}
+                                                                                                value={bandPriceEdits[stateKey] ?? ''}
+                                                                                                placeholder="0.00"
+                                                                                                onChange={e => setBandPriceEdits(prev => ({ ...prev, [stateKey]: e.target.value }))}
+                                                                                                onBlur={() => savePackageBandPrice(item.id, band.id, size.label)}
+                                                                                            />
+                                                                                            {bandSavedKey === stateKey && <span style={{ color: '#10b981', fontSize: '0.8rem', fontWeight: 600 }}>✓</span>}
+                                                                                        </div>
+                                                                                    );
+                                                                                })}
+                                                                            </div>
+                                                                        ) : (
+                                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                                {(() => {
+                                                                                    const stateKey = `${item.id}_band_${band.id}`;
+                                                                                    return (
+                                                                                        <>
+                                                                                            <input
+                                                                                                type="number" step="0.01" min="0"
+                                                                                                className={styles.input}
+                                                                                                style={{ padding: '0.25rem', fontSize: '0.9em', width: '90px', marginBottom: 0 }}
+                                                                                                value={bandPriceEdits[stateKey] ?? ''}
+                                                                                                placeholder="0.00"
+                                                                                                onChange={e => setBandPriceEdits(prev => ({ ...prev, [stateKey]: e.target.value }))}
+                                                                                                onBlur={() => savePackageBandPrice(item.id, band.id)}
+                                                                                            />
+                                                                                            {bandSavedKey === stateKey && <span style={{ color: '#10b981', fontSize: '0.8rem', fontWeight: 600 }}>✓</span>}
+                                                                                        </>
+                                                                                    );
+                                                                                })()}
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                ))}
+                                                            </div>
                                                         ) : (
                                                             <span style={{ color: '#4b5563', fontSize: '0.8rem' }}>—</span>
                                                         )}
