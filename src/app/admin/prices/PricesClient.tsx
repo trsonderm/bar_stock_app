@@ -869,9 +869,20 @@ thead th.right{text-align:right;}
                                                 <td style={{ fontWeight: 600 }}>{item.name}</td>
                                                 <td>
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                                        <span style={{ color: '#e5e7eb', fontWeight: 600 }}>
-                                                            ${Number(item.unit_cost || 0).toFixed(2)}
-                                                        </span>
+                                                        <div>
+                                                            <span style={{ color: '#e5e7eb', fontWeight: 600 }}>
+                                                                ${Number(item.unit_cost || 0).toFixed(2)}
+                                                            </span>
+                                                            {(() => {
+                                                                const primarySize = sizes.find(s => s.amount > 1) ?? (sizes.length > 0 && sizes[0].amount === 1 ? null : sizes[0]);
+                                                                if (!primarySize) return null;
+                                                                return (
+                                                                    <div style={{ fontSize: '0.72rem', color: '#6b7280', marginTop: '1px' }}>
+                                                                        per {primarySize.label} ({primarySize.amount})
+                                                                    </div>
+                                                                );
+                                                            })()}
+                                                        </div>
                                                         <button
                                                             type="button"
                                                             onClick={() => router.push(`/admin/products?editId=${item.id}`)}
