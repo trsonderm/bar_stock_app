@@ -1155,36 +1155,48 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                                 })()}
                             </div>
 
-                            {/* Bottle Size */}
-                            <div>
-                                <label className={styles.statLabel}>Bottle Size</label>
-                                <div style={{ display: 'grid', gridTemplateColumns: '3fr 2fr', gap: '0.75rem' }}>
+                            {/* Container / Unit Size */}
+                            {(() => {
+                                const isBeer = formData.type?.toLowerCase() === 'beer';
+                                const label = isBeer ? 'Single Unit Size' : 'Bottle Size';
+                                const hint = isBeer
+                                    ? 'Size of each individual can or bottle within a pack (e.g. 12 oz, 16 oz)'
+                                    : 'Volume per bottle (e.g. 750 ml, 1 L)';
+                                const amtPlaceholder = isBeer ? 'e.g. 12' : 'e.g. 750';
+                                const unitPlaceholder = isBeer ? 'oz, ml' : 'ml, oz, L';
+                                return (
                                     <div>
-                                        <label style={{ display: 'block', fontSize: '0.72rem', color: '#6b7280', marginBottom: '0.3rem' }}>Amount</label>
-                                        <input
-                                            type="number"
-                                            min="0"
-                                            step="any"
-                                            className={styles.input}
-                                            style={{ width: '100%', minHeight: '44px' }}
-                                            placeholder="e.g. 750"
-                                            value={formData.bottle_size_amount}
-                                            onChange={e => setFormData({ ...formData, bottle_size_amount: e.target.value })}
-                                        />
+                                        <label className={styles.statLabel}>{label}</label>
+                                        <p style={{ fontSize: '0.72rem', color: '#6b7280', margin: '0 0 0.4rem 0' }}>{hint}</p>
+                                        <div style={{ display: 'grid', gridTemplateColumns: '3fr 2fr', gap: '0.75rem' }}>
+                                            <div>
+                                                <label style={{ display: 'block', fontSize: '0.72rem', color: '#6b7280', marginBottom: '0.3rem' }}>Amount</label>
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    step="any"
+                                                    className={styles.input}
+                                                    style={{ width: '100%', minHeight: '44px' }}
+                                                    placeholder={amtPlaceholder}
+                                                    value={formData.bottle_size_amount}
+                                                    onChange={e => setFormData({ ...formData, bottle_size_amount: e.target.value })}
+                                                />
+                                            </div>
+                                            <div>
+                                                <label style={{ display: 'block', fontSize: '0.72rem', color: '#6b7280', marginBottom: '0.3rem' }}>Unit</label>
+                                                <input
+                                                    type="text"
+                                                    className={styles.input}
+                                                    style={{ width: '100%', minHeight: '44px' }}
+                                                    placeholder={unitPlaceholder}
+                                                    value={formData.bottle_size_unit}
+                                                    onChange={e => setFormData({ ...formData, bottle_size_unit: e.target.value })}
+                                                />
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div>
-                                        <label style={{ display: 'block', fontSize: '0.72rem', color: '#6b7280', marginBottom: '0.3rem' }}>Unit</label>
-                                        <input
-                                            type="text"
-                                            className={styles.input}
-                                            style={{ width: '100%', minHeight: '44px' }}
-                                            placeholder="ml, oz, L"
-                                            value={formData.bottle_size_unit}
-                                            onChange={e => setFormData({ ...formData, bottle_size_unit: e.target.value })}
-                                        />
-                                    </div>
-                                </div>
-                            </div>
+                                );
+                            })()}
 
                             {/* Supplier */}
                             <div>
