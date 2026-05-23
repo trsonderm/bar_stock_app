@@ -124,6 +124,9 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
     // Temp input for order sizes
     const [tempOrderLabel, setTempOrderLabel] = useState('Pack');
     const [tempOrderAmount, setTempOrderAmount] = useState('');
+    // Qty on hand entry unit (display multiplier — stored quantity is always base units)
+    const [qtyInputUnit, setQtyInputUnit] = useState<{ label: string; amount: number }>({ label: 'Units', amount: 1 });
+    const [qtyInputValue, setQtyInputValue] = useState('');
 
     // Barcode scan state
     const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
@@ -272,6 +275,8 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
         setTempOrderAmount('');
         setAddToAllLocations(false);
         setModalTab('basic');
+        setQtyInputUnit({ label: 'Units', amount: 1 });
+        setQtyInputValue('');
     };
 
     const handleBulkApply = async () => {
@@ -433,6 +438,9 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
             package_sale_enabled: item.package_sale_enabled === true,
         });
 
+        // Reset qty entry to base units view
+        setQtyInputUnit({ label: 'Units', amount: 1 });
+        setQtyInputValue(item.quantity !== undefined ? String(item.quantity) : '');
         setModalTab('basic');
         setShowModal(true);
     };
@@ -1357,9 +1365,64 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                                         )}
                                         <Tip text="Current stock count at the selected location. You can also adjust this from the Stock View page." />
                                     </label>
-                                    <input style={{ width: '100%', minHeight: '44px' }} className={styles.input}
-                                        type="number" step="any" value={formData.quantity}
-                                        onChange={e => setFormData({ ...formData, quantity: e.target.value })} />
+                                    {/* Unit selector + qty input */}
+                                    {(() => {
+                                        const orderSizes = formData.order_size.filter(s => s.amount > 1);
+                                        const unitOptions = [
+                                            { label: 'Units', amount: 1 },
+                                            ...orderSizes,
+                                        ];
+                                        const baseUnits = qtyInputValue !== '' && !isNaN(parseFloat(qtyInputValue))
+                                            ? parseFloat(qtyInputValue) * qtyInputUnit.amount
+                                            : null;
+                                        return (
+                                            <div>
+                                                <div style={{ display: 'flex', gap: '0.4rem' }}>
+                                                    {orderSizes.length > 0 && (
+                                                        <select
+                                                            className={styles.input}
+                                                            style={{ minHeight: '44px', width: 'auto', paddingRight: '1.5rem', flexShrink: 0 }}
+                                                            value={qtyInputUnit.label}
+                                                            onChange={e => {
+                                                                const chosen = unitOptions.find(o => o.label === e.target.value) ?? { label: 'Units', amount: 1 };
+                                                                setQtyInputUnit(chosen);
+                                                                setQtyInputValue('');
+                                                                setFormData(prev => ({ ...prev, quantity: '0' }));
+                                                            }}
+                                                        >
+                                                            {unitOptions.map(o => (
+                                                                <option key={o.label} value={o.label}>
+                                                                    {o.label}{o.amount > 1 ? ` (${o.amount})` : ''}
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                    )}
+                                                    <input
+                                                        style={{ flex: 1, minHeight: '44px' }}
+                                                        className={styles.input}
+                                                        type="number"
+                                                        step="any"
+                                                        min="0"
+                                                        placeholder="0"
+                                                        value={qtyInputValue}
+                                                        onChange={e => {
+                                                            const val = e.target.value;
+                                                            setQtyInputValue(val);
+                                                            const base = val !== '' && !isNaN(parseFloat(val))
+                                                                ? parseFloat(val) * qtyInputUnit.amount
+                                                                : 0;
+                                                            setFormData(prev => ({ ...prev, quantity: String(base) }));
+                                                        }}
+                                                    />
+                                                </div>
+                                                {qtyInputUnit.amount > 1 && baseUnits !== null && (
+                                                    <div style={{ fontSize: '0.72rem', color: '#9ca3af', marginTop: '3px' }}>
+                                                        = {baseUnits} units in stock
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })()}
                                 </div>
                             </div>
 
