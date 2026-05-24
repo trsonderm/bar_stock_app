@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, Pencil, Trash2 } from 'lucide-react';
 import styles from '../../admin.module.css';
 
 interface Location {
@@ -146,8 +146,8 @@ export default function LocationsClient() {
                                     <td>{loc.name}</td>
                                     <td>{loc.address || '-'}</td>
                                     <td style={{ textAlign: 'right' }}>
-                                        <button onClick={() => handleEdit(loc)} style={{ marginRight: '1rem', background: 'transparent', border: 'none', color: '#60a5fa', cursor: 'pointer' }}>Edit</button>
-                                        <button onClick={() => handleDelete(loc.id)} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer' }}>Delete</button>
+                                        <button onClick={() => handleEdit(loc)} title="Edit location" style={{ marginRight: '0.5rem', background: 'transparent', border: 'none', color: '#60a5fa', cursor: 'pointer', padding: '4px', display: 'inline-flex', alignItems: 'center' }}><Pencil size={14} /></button>
+                                        <button onClick={() => handleDelete(loc.id)} title="Delete location" style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '4px', display: 'inline-flex', alignItems: 'center' }}><Trash2 size={14} /></button>
                                     </td>
                                 </tr>
                             ))}

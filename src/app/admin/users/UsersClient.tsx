@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { Pencil, Trash2 } from 'lucide-react';
 import styles from '../admin.module.css';
 
 interface User {
@@ -710,19 +711,21 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
                                         <td>
                                             {u.role !== 'admin' && (
                                                 <button
+                                                    type="button"
                                                     onClick={() => handleDelete(u.id)}
-                                                    style={{ color: '#ef4444', fontWeight: 'bold' }}
+                                                    title="Delete user"
+                                                    style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '5px', display: 'inline-flex', alignItems: 'center' }}
                                                 >
-                                                    Delete
+                                                    <Trash2 size={14} />
                                                 </button>
                                             )}
-
-
                                             <button
+                                                type="button"
                                                 onClick={() => handleEdit(u)}
-                                                className="bg-blue-600/10 text-blue-500 px-3 py-1 rounded hover:bg-blue-600/20 font-medium"
+                                                title="Edit user"
+                                                style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', padding: '5px', display: 'inline-flex', alignItems: 'center' }}
                                             >
-                                                Edit
+                                                <Pencil size={14} />
                                             </button>
                                         </td>
                                     </tr>

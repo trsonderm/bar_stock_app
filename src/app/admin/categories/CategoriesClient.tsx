@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Trash2 } from 'lucide-react';
+import { Trash2, Pencil } from 'lucide-react';
 import styles from '../admin.module.css';
 
 interface Category {
@@ -364,17 +364,20 @@ export default function CategoriesClient() {
                                 <td style={{ textAlign: 'right' }}>
                                     <button
                                         onClick={() => handleEditClick(cat)}
+                                        title="Edit category"
                                         style={{
                                             background: '#3b82f6',
                                             color: 'white',
                                             border: 'none',
-                                            padding: '4px 8px',
+                                            padding: '5px',
                                             borderRadius: '4px',
                                             cursor: 'pointer',
-                                            marginRight: '0.5rem'
+                                            marginRight: '0.5rem',
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
                                         }}
                                     >
-                                        Edit
+                                        <Pencil size={14} />
                                     </button>
                                     <button
                                         onClick={() => handleDelete(cat.id)}
