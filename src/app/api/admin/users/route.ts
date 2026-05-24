@@ -102,7 +102,7 @@ export async function POST(req: NextRequest) {
             INSERT INTO users (first_name, last_name, pin_hash, email, password_hash, role, permissions, organization_id, phone, bio, notes, position, hide_from_scheduler, hourly_rate)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
             RETURNING id
-        `, [firstName, lastName, pinHash, email || null, passwordHash, finalRole, JSON.stringify(permissions), organizationId, phone || null, bio || null, notes || null, position || null, hideFromScheduler, hourlyRate ? Number(hourlyRate) : null]);
+        `, [firstName, lastName, pinHash, email ? email.toLowerCase().trim() : null, passwordHash, finalRole, JSON.stringify(permissions), organizationId, phone || null, bio || null, notes || null, position || null, hideFromScheduler, hourlyRate ? Number(hourlyRate) : null]);
 
         const userId = res.id;
 
@@ -185,7 +185,7 @@ export async function PUT(req: NextRequest) {
             updates.push(`pin_hash = $${pIdx++}`); params.push(hashPin(pin));
         }
         if (email !== undefined) {
-            updates.push(`email = $${pIdx++}`); params.push(email || null);
+            updates.push(`email = $${pIdx++}`); params.push(email ? email.toLowerCase().trim() : null);
         }
         if (password) {
             updates.push(`password_hash = $${pIdx++}`); params.push(hashPassword(password));
