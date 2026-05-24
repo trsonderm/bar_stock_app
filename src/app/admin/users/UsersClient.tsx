@@ -303,6 +303,7 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
 
     const handleEdit = (u: any) => {
         setEditingId(u.id);
+        setTimeout(() => document.getElementById('user-form-top')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
         setFirstName(u.first_name);
         setLastName(u.last_name);
         setPin(u.pin_hash || '');
@@ -348,7 +349,7 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
     return (
         <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-start' }}>
             {/* Left: form */}
-            <div className={styles.card} style={{ flex: '0 0 55%', minWidth: 0 }}>
+            <div id="user-form-top" className={styles.card} style={{ flex: '0 0 55%', minWidth: 0 }}>
                     <div className={styles.cardTitle}>{editingId ? 'Edit User' : 'Create New User'}</div>
                     <form onSubmit={handleSubmit}>
                         <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
@@ -700,15 +701,26 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
                                 </tr>
                             </thead>
                             <tbody>
-                                {users.map(u => (
-                                    <tr key={u.id}>
-                                        <td>{u.first_name} {u.last_name}</td>
+                                {users.map(u => {
+                                    const isActive = editingId === u.id;
+                                    return (
+                                    <tr
+                                        key={u.id}
+                                        onClick={() => handleEdit(u)}
+                                        style={{
+                                            cursor: 'pointer',
+                                            background: isActive ? 'rgba(59,130,246,0.12)' : undefined,
+                                            outline: isActive ? '1px solid rgba(59,130,246,0.4)' : undefined,
+                                        }}
+                                        title="Click to edit"
+                                    >
+                                        <td style={{ fontWeight: isActive ? 600 : undefined }}>{u.first_name} {u.last_name}</td>
                                         <td style={{ color: u.position ? '#93c5fd' : '#4b5563', fontSize: '0.85rem' }}>{u.position || '—'}</td>
                                         <td>{u.email || '-'}</td>
                                         <td style={{ fontFamily: 'monospace', color: '#fbbf24' }}>{u.pin_hash}</td>
                                         <td>{u.role}</td>
                                         <td>{parsePerms(u.permissions)}</td>
-                                        <td>
+                                        <td onClick={e => e.stopPropagation()}>
                                             {u.role !== 'admin' && (
                                                 <button
                                                     type="button"
@@ -729,7 +741,8 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
                                             </button>
                                         </td>
                                     </tr>
-                                ))}
+                                    );
+                                })}
                             </tbody>
                         </table>
                     </div>
