@@ -1096,7 +1096,7 @@ export default function UserSchedulerClient() {
 
                                                         {todaysSchedules.map(schedule => {
                                                             const shiftDef = shifts.find(s => s.id === schedule.shift_id);
-                                                            const color = shiftDef?.color || '#3b82f6';
+                                                            const color = userColors[schedule.user_id] ? getUserColor(schedule.user_id, schedule.first_name) : (shiftDef?.color || '#3b82f6');
                                                             const [startH, startM] = schedule.start_time.split(':').map(Number);
                                                             const [endH, endM] = schedule.end_time.split(':').map(Number);
                                                             const startTotal = startH * 60 + startM;
