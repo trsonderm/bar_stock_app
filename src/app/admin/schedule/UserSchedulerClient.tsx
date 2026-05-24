@@ -1026,10 +1026,17 @@ export default function UserSchedulerClient() {
                         <div className="p-4 bg-gray-800 text-sm border-l border-r border-gray-700 flex flex-wrap gap-3">
                             <span className="text-gray-400 font-bold mr-2">Legend:</span>
                             {users.map(u => (
-                                <div key={u.id} className="flex items-center gap-1">
-                                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: getUserColor(u.id, u.first_name) }}></div>
+                                <button
+                                    key={u.id}
+                                    type="button"
+                                    onClick={() => setColorPickerUserId(colorPickerUserId === u.id ? null : u.id)}
+                                    title="Click to change color"
+                                    className="flex items-center gap-1.5 group hover:opacity-80 transition-opacity"
+                                >
+                                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: getUserColor(u.id, u.first_name) }} />
                                     <span className="text-white">{u.first_name} {u.last_name[0]}.</span>
-                                </div>
+                                    <Palette size={9} className="text-gray-600 group-hover:text-gray-400 transition-colors" />
+                                </button>
                             ))}
                         </div>
                     )}
@@ -1054,8 +1061,18 @@ export default function UserSchedulerClient() {
                                 {viewMode === 'employees' && users.map(user => (
                                     <tr key={user.id} className="hover:bg-gray-800/50 transition-colors print:hover:bg-transparent">
                                         <td className="p-4 border-b border-gray-800 bg-gray-900 sticky left-0 border-r border-gray-700 print:bg-white print:border-black">
-                                            <div className="font-medium text-white print:text-black">{user.first_name} {user.last_name}</div>
-                                            {user.position && <div style={{ color: '#60a5fa', fontSize: '0.75rem' }}>{user.position}</div>}
+                                            <div
+                                                className="flex items-center gap-2 group cursor-pointer hover:opacity-80 transition-opacity w-fit"
+                                                onClick={() => setColorPickerUserId(colorPickerUserId === user.id ? null : user.id)}
+                                                title="Click to change employee color"
+                                            >
+                                                <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: getUserColor(user.id, user.first_name) }} />
+                                                <div>
+                                                    <div className="font-medium text-white print:text-black">{user.first_name} {user.last_name}</div>
+                                                    {user.position && <div style={{ color: '#60a5fa', fontSize: '0.75rem' }}>{user.position}</div>}
+                                                </div>
+                                                <Palette size={11} className="text-gray-700 group-hover:text-gray-400 flex-shrink-0 transition-colors" />
+                                            </div>
                                         </td>
                                         {weekDays.map((d, di) => {
                                             const dateStr = formatLocalDate(d);
