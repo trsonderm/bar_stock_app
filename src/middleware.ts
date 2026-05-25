@@ -38,13 +38,7 @@ export async function middleware(request: NextRequest) {
 
         // Admin Route Protection
         if (path.startsWith('/admin')) {
-            // STRICT SEPARATION: If Super Admin is trying to access Tenant Admin pages WITHOUT impersonating,
-            // redirect them to the Super Admin Dashboard.
-            if (isSuperAdmin && !isImpersonating) {
-                return NextResponse.redirect(new URL('/super-admin', request.url));
-            }
-
-            if (role !== 'admin') {
+            if (role !== 'admin' && !isSuperAdmin) {
                 return NextResponse.redirect(new URL('/inventory', request.url));
             }
         }
