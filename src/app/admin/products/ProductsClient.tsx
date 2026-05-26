@@ -6,7 +6,7 @@ import styles from '../admin.module.css';
 import CsvMappingModal from './CsvMappingModal';
 import BarcodeScanner from '@/components/BarcodeScanner';
 import { downloadSpreadsheet } from '@/lib/export';
-import { Trash2, Pencil, Archive, Download, Upload, FileDown, Plus, Zap } from 'lucide-react';
+import { Trash2, Pencil, Archive, Download, Upload, FileDown, Plus, Zap, Copy } from 'lucide-react';
 
 interface OrderSizeOption {
     label: string;
@@ -66,6 +66,7 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
     // State for Modal
     const [showModal, setShowModal] = useState(false);
     const [editingId, setEditingId] = useState<number | null>(null);
+    const [isDuplicate, setIsDuplicate] = useState(false);
 
     // Global product typeahead
     const [globalSuggestions, setGlobalSuggestions] = useState<any[]>([]);
@@ -237,6 +238,7 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
 
     const resetForm = () => {
         setEditingId(null);
+        setIsDuplicate(false);
         setFormData({
             name: '',
             type: 'Liquor',
@@ -381,6 +383,7 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
 
     const handleCreateClick = () => {
         resetForm();
+        setIsDuplicate(false);
         setScannedBarcode('');
         setShowModal(true);
     };
@@ -442,6 +445,67 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
         // Reset qty entry to base units view
         setQtyInputUnit({ label: 'Units', amount: 1 });
         setQtyInputValue(item.quantity !== undefined ? String(item.quantity) : '');
+        setModalTab('basic');
+        setShowModal(true);
+    };
+
+    const handleCopyClick = (item: Item) => {
+        setEditingId(null);
+        setIsDuplicate(true);
+        setFormData({
+            name: '',
+            type: item.type,
+            secondary_type: item.secondary_type || '',
+            supplier: item.supplier || '',
+            supplier_id: item.supplier_id,
+            location_supplier_id: item.location_supplier_id,
+            include_in_low_stock_alerts: item.include_in_low_stock_alerts !== false,
+            exclude_from_smart_order: item.exclude_from_smart_order === true,
+            unit_cost: item.unit_cost !== undefined ? item.unit_cost.toString() : '',
+            quantity: '',
+            order_size: (() => {
+                const os = item.order_size;
+                if (!os) return [{ label: 'Unit', amount: 1 }];
+                if (Array.isArray(os)) {
+                    if (os.length > 0 && typeof os[0] === 'object' && os[0] !== null && 'amount' in os[0]) {
+                        return os as OrderSizeOption[];
+                    }
+                    return (os as number[]).map(n => ({ label: n === 1 ? 'Unit' : n.toString(), amount: n }));
+                }
+                if (typeof os === 'number') {
+                    return [{ label: os === 1 ? 'Unit' : os.toString(), amount: os }];
+                }
+                return [{ label: 'Unit', amount: 1 }];
+            })(),
+            low_stock_threshold: item.low_stock_threshold === null || item.low_stock_threshold === undefined ? null : item.low_stock_threshold.toString(),
+            low_stock_threshold_type: item.low_stock_threshold_type || 'fixed',
+            low_stock_threshold_factor: item.low_stock_threshold_factor != null
+                ? item.low_stock_threshold_factor.toString()
+                : (item.low_stock_threshold != null ? item.low_stock_threshold.toString() : '5'),
+            track_quantity: true,
+            include_in_audit: item.include_in_audit !== undefined ? item.include_in_audit : true,
+            stock_options: Array.isArray(item.stock_options) ? item.stock_options : [],
+            assignedLocations: item.assigned_locations || [],
+            use_category_qty_defaults: item.use_category_qty_defaults !== false,
+            stock_unit_label: item.stock_unit_label || 'unit',
+            stock_unit_size: String(item.stock_unit_size ?? 1),
+            order_unit_label: item.order_unit_label || 'case',
+            order_unit_size: String(item.order_unit_size ?? 1),
+            subtraction_presets: Array.isArray(item.stock_options) && item.stock_options.length > 0 ? item.stock_options : [1],
+            custom_preset_input: '',
+            barcodes: [],
+            aliases: Array.isArray(item.aliases) ? [...item.aliases] : [],
+            stock_display_mode: (item.stock_display_mode as any) || 'units',
+            inventory_display_mode: (item.inventory_display_mode as any) || 'units',
+            bottle_size_amount: item.bottle_size_amount != null ? String(item.bottle_size_amount) : '',
+            bottle_size_unit: item.bottle_size_unit || '',
+            package_sale_enabled: item.package_sale_enabled === true,
+        });
+        setQtyInputUnit({ label: 'Units', amount: 1 });
+        setQtyInputValue('');
+        setTempOrderLabel('Pack');
+        setTempOrderAmount('');
+        setAddToAllLocations(false);
         setModalTab('basic');
         setShowModal(true);
     };
@@ -975,6 +1039,10 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                                             style={{ background: '#3b82f6', color: 'white', border: 'none', padding: '5px', borderRadius: '4px', cursor: 'pointer', marginRight: '4px', display: 'inline-flex', alignItems: 'center' }}>
                                             <Pencil size={14} />
                                         </button>
+                                        <button onClick={() => handleCopyClick(item)} title="Duplicate product"
+                                            style={{ background: '#0891b2', color: 'white', border: 'none', padding: '5px', borderRadius: '4px', cursor: 'pointer', marginRight: '4px', display: 'inline-flex', alignItems: 'center' }}>
+                                            <Copy size={14} />
+                                        </button>
                                         <button onClick={() => handleArchive(item.id)} title="Archive"
                                             style={{ background: '#78350f', color: '#fde68a', border: 'none', padding: '5px', borderRadius: '4px', cursor: 'pointer', marginRight: '4px', display: 'inline-flex', alignItems: 'center' }}>
                                             <Archive size={14} />
@@ -1007,7 +1075,7 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                     <div style={{ background: '#111827', borderRadius: '12px', width: '100%', maxWidth: '560px', border: '1px solid #374151', marginTop: 'auto', marginBottom: 'auto' }}>
                         {/* Header */}
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem 1.25rem', borderBottom: '1px solid #1f2937' }}>
-                            <h2 style={{ margin: 0, color: 'white', fontSize: '1.1rem' }}>{editingId ? 'Edit Product' : 'Add New Product'}</h2>
+                            <h2 style={{ margin: 0, color: 'white', fontSize: '1.1rem' }}>{editingId ? 'Edit Product' : isDuplicate ? 'Duplicate Product' : 'Add New Product'}</h2>
                             <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                                 <button type="button" onClick={() => setShowBarcodeScanner(true)}
                                     style={{ background: '#0891b2', color: 'white', border: 'none', borderRadius: '6px', padding: '8px 12px', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '5px' }}>
