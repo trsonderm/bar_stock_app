@@ -1165,29 +1165,51 @@ export default function UserSchedulerClient() {
                                         {weekDays.map(d => {
                                             const dateStr = formatLocalDate(d);
                                             const assignedSchedules = schedules.filter(s => s.shift_id === shift.id && s.date.split('T')[0] === dateStr);
+                                            const shiftColor = shift.color || '#3b82f6';
 
                                             return (
-                                                <td key={dateStr} className="p-2 border-b border-gray-800 border-r border-gray-800 align-top print:border-black">
+                                                <td key={dateStr} className="p-1.5 border-b border-gray-800 border-r border-gray-800 align-top print:border-black">
                                                     <div className="flex flex-col gap-1">
                                                         {assignedSchedules.map(schedule => {
                                                             const user = users.find(u => u.id === schedule.user_id);
+                                                            const empColor = getUserColor(schedule.user_id, schedule.first_name);
                                                             return (
                                                                 <div
                                                                     key={schedule.id}
-                                                                    className="bg-gray-800 rounded px-2 py-1 text-xs text-white border border-gray-700 flex justify-between items-center group cursor-pointer hover:bg-gray-700"
+                                                                    className="rounded-md text-xs text-white flex items-center justify-between group cursor-pointer hover:brightness-110 transition-all overflow-hidden"
+                                                                    style={{
+                                                                        background: `${shiftColor}22`,
+                                                                        borderLeft: `3px solid ${shiftColor}`,
+                                                                        border: `1px solid ${shiftColor}44`,
+                                                                        borderLeftWidth: '3px',
+                                                                        paddingLeft: '6px',
+                                                                        paddingRight: '4px',
+                                                                        paddingTop: '4px',
+                                                                        paddingBottom: '4px',
+                                                                    }}
                                                                     onClick={() => handleEdit(schedule)}
                                                                 >
-                                                                    <span>{user ? `${user.first_name} ${user.last_name[0]}.` : 'Unknown'}</span>
+                                                                    <div className="flex items-center gap-1.5 min-w-0">
+                                                                        <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: empColor }} />
+                                                                        <span className="truncate font-medium" style={{ color: 'rgba(255,255,255,0.9)' }}>
+                                                                            {user ? `${user.first_name} ${user.last_name[0]}.` : 'Unknown'}
+                                                                        </span>
+                                                                        {schedule.recurring_group_id && <div className="w-1.5 h-1.5 rounded-full bg-white/50 flex-shrink-0" title="Recurring" />}
+                                                                    </div>
                                                                     <button
+                                                                        type="button"
                                                                         onClick={(e) => { e.stopPropagation(); handleDelete(schedule.id, schedule); }}
-                                                                        className="text-red-400 opacity-0 group-hover:opacity-100"
+                                                                        className="text-white/40 opacity-0 group-hover:opacity-100 hover:text-red-400 ml-1 flex-shrink-0 transition-colors"
+                                                                        title="Delete"
                                                                     >
                                                                         <X size={10} />
                                                                     </button>
                                                                 </div>
                                                             );
                                                         })}
-                                                        {assignedSchedules.length === 0 && <div className="text-gray-600 text-xs text-center">-</div>}
+                                                        {assignedSchedules.length === 0 && (
+                                                            <div className="text-gray-700 text-xs text-center py-1">—</div>
+                                                        )}
                                                     </div>
                                                 </td>
                                             );
@@ -1210,31 +1232,40 @@ export default function UserSchedulerClient() {
                                         {weekDays.map(d => {
                                             const dateStr = formatLocalDate(d);
                                             const assignedSchedules = schedules.filter(s => s.shift_id === shift.id && s.date.split('T')[0] === dateStr);
+                                            const shiftColor = shift.color || '#3b82f6';
 
                                             return (
                                                 <td
                                                     key={dateStr}
-                                                    className="p-2 border-b border-gray-800 border-r border-gray-800 align-top print:border-black"
+                                                    className="p-1.5 border-b border-gray-800 border-r border-gray-800 align-top print:border-black"
                                                     onDragOver={handleDragOver}
                                                     onDrop={(e) => handleDrop(e, dateStr)}
                                                 >
                                                     <div className="flex flex-wrap gap-1">
                                                         {assignedSchedules.map(schedule => {
                                                             const user = users.find(u => u.id === schedule.user_id);
-                                                            const userName = user ? user.first_name : 'Unknown';
-                                                            const color = user ? getUserColor(user.id, user.first_name) : '#888';
+                                                            const empColor = user ? getUserColor(user.id, user.first_name) : '#888';
 
                                                             return (
                                                                 <div
                                                                     key={schedule.id}
                                                                     draggable
                                                                     onDragStart={(e) => handleDragStart(e, schedule)}
-                                                                    className="rounded px-2 py-1 text-xs text-white border border-black/20 flex justify-between items-center group cursor-grab active:cursor-grabbing hover:brightness-110 shadow-sm"
-                                                                    style={{ backgroundColor: color }}
+                                                                    className="rounded-md text-xs text-white flex items-center gap-1.5 cursor-grab active:cursor-grabbing hover:brightness-110 transition-all shadow-sm group"
+                                                                    style={{
+                                                                        background: empColor,
+                                                                        border: `1px solid rgba(255,255,255,0.2)`,
+                                                                        paddingLeft: '6px',
+                                                                        paddingRight: '6px',
+                                                                        paddingTop: '3px',
+                                                                        paddingBottom: '3px',
+                                                                    }}
                                                                     onClick={() => handleEdit(schedule)}
+                                                                    title={`${user?.first_name ?? 'Unknown'} — ${shift.label}`}
                                                                 >
-                                                                    <span>{userName}</span>
-                                                                    {schedule.recurring_group_id && <div className="ml-1 w-1.5 h-1.5 rounded-full bg-white opacity-80" title="Repeating Shift" />}
+                                                                    <div className="w-2 h-2 rounded-full flex-shrink-0 ring-1 ring-white/30" style={{ backgroundColor: shiftColor }} />
+                                                                    <span className="font-medium leading-tight">{user ? user.first_name : 'Unknown'}</span>
+                                                                    {schedule.recurring_group_id && <div className="w-1.5 h-1.5 rounded-full bg-white/60 flex-shrink-0" title="Recurring" />}
                                                                 </div>
                                                             );
                                                         })}

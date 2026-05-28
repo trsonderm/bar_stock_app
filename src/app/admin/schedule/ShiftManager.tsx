@@ -44,6 +44,12 @@ export default function ShiftManager({ scheduleSettings, onSettingsChange }: Pro
     const [savingSettings, setSavingSettings] = useState(false);
     const [settingsSaved, setSettingsSaved] = useState(false);
 
+    const SHIFT_PALETTE = [
+        '#3b82f6', '#10b981', '#f59e0b', '#ef4444',
+        '#8b5cf6', '#06b6d4', '#f97316', '#ec4899',
+        '#84cc16', '#14b8a6',
+    ];
+
     const [formData, setFormData] = useState({
         label: '',
         start_time: '09:00',
@@ -84,7 +90,8 @@ export default function ShiftManager({ scheduleSettings, onSettingsChange }: Pro
 
     const handleCreate = () => {
         setEditingShift(null);
-        setFormData({ label: '', start_time: '09:00', end_time: '17:00', color: '#3b82f6', location_id: '' });
+        const nextColor = SHIFT_PALETTE[shifts.length % SHIFT_PALETTE.length];
+        setFormData({ label: '', start_time: '09:00', end_time: '17:00', color: nextColor, location_id: '' });
         setIsCreating(true);
     };
 
@@ -209,14 +216,32 @@ export default function ShiftManager({ scheduleSettings, onSettingsChange }: Pro
                                 </div>
                                 <div>
                                     <label className="block text-gray-400 text-sm mb-1">Color</label>
+                                    <div className="flex flex-wrap gap-1.5 mb-2">
+                                        {SHIFT_PALETTE.map(c => (
+                                            <button
+                                                key={c}
+                                                type="button"
+                                                onClick={() => setFormData({ ...formData, color: c })}
+                                                className="w-7 h-7 rounded-full border-2 transition-transform hover:scale-110 focus:outline-none"
+                                                style={{
+                                                    backgroundColor: c,
+                                                    borderColor: formData.color === c ? 'white' : 'transparent',
+                                                    boxShadow: formData.color === c ? '0 0 0 2px rgba(255,255,255,0.3)' : 'none',
+                                                }}
+                                                title={c}
+                                            />
+                                        ))}
+                                    </div>
                                     <div className="flex gap-2 items-center">
                                         <input
                                             type="color"
                                             value={formData.color}
                                             onChange={e => setFormData({ ...formData, color: e.target.value })}
-                                            className="h-10 w-20 bg-gray-800 border border-gray-600 rounded"
+                                            className="h-8 w-14 bg-gray-800 border border-gray-600 rounded cursor-pointer"
+                                            title="Custom color"
                                         />
-                                        <span className="text-gray-400 text-sm">{formData.color}</span>
+                                        <span className="text-gray-500 text-xs font-mono">{formData.color}</span>
+                                        <div className="w-5 h-5 rounded-full flex-shrink-0" style={{ backgroundColor: formData.color }} />
                                     </div>
                                 </div>
                                 <div>
