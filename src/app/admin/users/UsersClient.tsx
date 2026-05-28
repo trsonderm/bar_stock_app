@@ -50,12 +50,9 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
     const [scheduleApprovalLocations, setScheduleApprovalLocations] = useState<number[]>([]);
     const [submitting, setSubmitting] = useState(false);
 
-    // Locations & Shifts
+    // Locations
     const [locations, setLocations] = useState<{ id: number, name: string }[]>([]);
     const [assignedLocations, setAssignedLocations] = useState<number[]>([]);
-
-    const [shifts, setShifts] = useState<any[]>([]);
-    const [assignedShifts, setAssignedShifts] = useState<number[]>([]);
 
     // Edit Mode
     const [editingId, setEditingId] = useState<number | null>(null);
@@ -133,11 +130,8 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
         return () => window.removeEventListener('error', handler);
     }, []);
 
-    // Fetch Settings info for Shifts & Locations
     useEffect(() => {
-        // We need locations and shifts to populate the form
         fetch('/api/user/locations?adminAll=true').then(r => r.json()).then(d => setLocations(d.locations || []));
-        fetch('/api/admin/settings/shifts').then(r => r.json()).then(d => setShifts(d.shifts || []));
     }, []);
 
     useEffect(() => {
@@ -202,7 +196,6 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
                 position,
                 organizationId: overrideOrgId, // Pass explicit org if override
                 assignedLocations,
-                assignedShifts,
                 hideFromScheduler,
                 hourlyRate: hourlyRate !== '' ? hourlyRate : undefined,
             };
@@ -256,7 +249,6 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
         setScheduleApprovalLocations([]);
         setEditingId(null);
         setAssignedLocations([]);
-        setAssignedShifts([]);
     };
 
     const handleDelete = async (id: number) => {
@@ -341,9 +333,6 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
         setCanApproveSchedule(perms.includes('approve_schedule') || approveLocs.length > 0);
         setScheduleApprovalLocations(approveLocs);
         setAssignedLocations(u.assigned_locations || []);
-
-        // The API now returns assigned_shifts
-        setAssignedShifts(u.assigned_shifts || []);
     };
 
     return (
@@ -432,27 +421,6 @@ export default function UsersClient({ overrideOrgId }: { overrideOrgId?: number 
                                                 }}
                                             />
                                             {loc.name}
-                                        </label>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-
-                        {shifts.length > 0 && (
-                            <div style={{ marginBottom: '1rem' }}>
-                                <div className={styles.statLabel}>Assigned Shifts</div>
-                                <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem', flexWrap: 'wrap' }}>
-                                    {shifts.map(shift => (
-                                        <label key={shift.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'white' }}>
-                                            <input
-                                                type="checkbox"
-                                                checked={assignedShifts.includes(shift.id)}
-                                                onChange={e => {
-                                                    if (e.target.checked) setAssignedShifts([...assignedShifts, shift.id]);
-                                                    else setAssignedShifts(assignedShifts.filter(id => id !== shift.id));
-                                                }}
-                                            />
-                                            {shift.label} ({shift.start_time}-{shift.end_time})
                                         </label>
                                     ))}
                                 </div>
