@@ -9,6 +9,7 @@ class Scheduler {
     private interval: NodeJS.Timeout | null = null;
     private lastRunMinute = -1;
     private tasks: { name: string; cron: string; run: () => Promise<void> }[] = [];
+    private runLog: { name: string; status: 'SUCCESS' | 'FAILED'; error?: string; ts: Date }[] = [];
 
     constructor() {
         this.tasks = [
@@ -440,8 +441,18 @@ class Scheduler {
         }
     }
 
-    private async logRun(name: string, status: string, error?: string) {
+    private async logRun(name: string, status: 'SUCCESS' | 'FAILED', error?: string) {
         console.log(`[CRON] ${name}: ${status} ${error || ''}`);
+        this.runLog.push({ name, status, error, ts: new Date() });
+        if (this.runLog.length > 100) this.runLog.splice(0, this.runLog.length - 100);
+    }
+
+    getRunLog() {
+        return this.runLog;
+    }
+
+    getTaskList() {
+        return this.tasks.map(t => ({ name: t.name, cron: t.cron }));
     }
 
     private static readonly BACKUP_DIR = '/backups';
