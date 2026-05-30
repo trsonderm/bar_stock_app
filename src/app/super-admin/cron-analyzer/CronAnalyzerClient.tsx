@@ -8,6 +8,7 @@ type TaskStatus = 'SUCCESS' | 'FAILED';
 interface TaskInfo {
     name: string;
     cron: string;
+    intervalMinutes: number | null;
     lastRun: { status: TaskStatus; ts: string; error: string | null } | null;
 }
 
@@ -47,11 +48,17 @@ const TASK_KEY_MAP: Record<string, string> = {
     'Shift Report Emails': 'shift_reports',
 };
 
-function humanCron(cron: string): string {
+const EMAIL_INTERVAL_TASKS = new Set(['Report Schedules', 'Low Stock Alerts', 'Shift Report Emails']);
+const INTERVAL_OPTIONS = [1, 2, 3, 4, 5];
+
+function humanCron(cron: string, intervalMinutes?: number | null): string {
     const parts = cron.split(' ');
     if (parts.length < 5) return cron;
     const [min, hr, dom, , dow] = parts;
-    if (min === '*' && hr === '*') return 'Every minute';
+    if (min === '*' && hr === '*') {
+        if (intervalMinutes && intervalMinutes > 1) return `Every ${intervalMinutes} minutes`;
+        return 'Every minute';
+    }
     if (min !== '*' && hr !== '*' && dom === '*' && dow === '*') {
         const h = parseInt(hr);
         const m = parseInt(min);
@@ -60,9 +67,7 @@ function humanCron(cron: string): string {
         const displayM = String(m).padStart(2, '0');
         return `Daily at ${displayH}:${displayM} ${period}`;
     }
-    if (min === '0' && hr !== '*') {
-        return `Hourly at :${String(parseInt(min)).padStart(2, '0')}`;
-    }
+    if (min === '0' && hr !== '*') return 'Every hour';
     return cron;
 }
 
@@ -82,9 +87,20 @@ function Toast({ message, type, onClear }: { message: string; type: 'success' | 
     );
 }
 
-function TaskCard({ task, onRun }: { task: TaskInfo; onRun: (name: string) => Promise<void> }) {
+function TaskCard({
+    task,
+    onRun,
+    onSetInterval,
+}: {
+    task: TaskInfo;
+    onRun: (name: string) => Promise<void>;
+    onSetInterval?: (name: string, minutes: number) => Promise<void>;
+}) {
     const [loading, setLoading] = useState(false);
+    const [intervalSaving, setIntervalSaving] = useState(false);
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+    const isEmailTask = EMAIL_INTERVAL_TASKS.has(task.name);
+    const currentInterval = task.intervalMinutes ?? 1;
 
     const handleRun = async () => {
         setLoading(true);
@@ -96,6 +112,20 @@ function TaskCard({ task, onRun }: { task: TaskInfo; onRun: (name: string) => Pr
             setToast({ message: e.message || 'Failed to trigger task.', type: 'error' });
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleIntervalClick = async (n: number) => {
+        if (!onSetInterval || n === currentInterval || intervalSaving) return;
+        setIntervalSaving(true);
+        setToast(null);
+        try {
+            await onSetInterval(task.name, n);
+            setToast({ message: `Interval set to every ${n} minute${n > 1 ? 's' : ''}.`, type: 'success' });
+        } catch (e: any) {
+            setToast({ message: e.message || 'Failed to update interval.', type: 'error' });
+        } finally {
+            setIntervalSaving(false);
         }
     };
 
@@ -127,10 +157,41 @@ function TaskCard({ task, onRun }: { task: TaskInfo; onRun: (name: string) => Pr
                 <div>
                     <div className="text-white font-semibold text-sm">{task.name}</div>
                     <div className="text-gray-500 text-xs font-mono mt-0.5">{task.cron}</div>
-                    <div className="text-gray-400 text-xs mt-0.5">{humanCron(task.cron)}</div>
+                    <div className="text-gray-400 text-xs mt-0.5">{humanCron(task.cron, task.intervalMinutes)}</div>
                 </div>
                 {statusBadge()}
             </div>
+
+            {/* Interval selector — only for the three email-dispatch tasks */}
+            {isEmailTask && (
+                <div className="border border-gray-700 rounded-lg p-3 bg-gray-900/50">
+                    <div className="text-xs text-gray-400 mb-2 font-medium">Run interval</div>
+                    <div className="flex gap-1.5 flex-wrap">
+                        {INTERVAL_OPTIONS.map(n => {
+                            const active = n === currentInterval;
+                            return (
+                                <button
+                                    key={n}
+                                    type="button"
+                                    onClick={() => handleIntervalClick(n)}
+                                    disabled={intervalSaving}
+                                    title={n === 1 ? 'Every minute' : `Every ${n} minutes`}
+                                    className={`px-3 py-1 rounded text-xs font-semibold border transition-all disabled:opacity-50 ${
+                                        active
+                                            ? 'bg-blue-600 border-blue-500 text-white'
+                                            : 'bg-gray-800 border-gray-600 text-gray-400 hover:border-blue-500 hover:text-blue-300'
+                                    }`}
+                                >
+                                    {n}m
+                                </button>
+                            );
+                        })}
+                        <span className="text-gray-600 text-xs self-center ml-1">
+                            {intervalSaving ? 'Saving…' : `Active: every ${currentInterval} min`}
+                        </span>
+                    </div>
+                </div>
+            )}
 
             {task.lastRun && (
                 <div className="text-gray-500 text-xs">
@@ -429,7 +490,17 @@ export default function CronAnalyzerClient() {
         });
         const json = await res.json();
         if (!res.ok || json.error) throw new Error(json.error || 'Trigger failed');
-        // Refresh data after run
+        await fetchData();
+    };
+
+    const handleSetInterval = async (taskName: string, minutes: number) => {
+        const res = await fetch('/api/super-admin/cron-analyzer', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ taskName, interval: minutes }),
+        });
+        const json = await res.json();
+        if (!res.ok || json.error) throw new Error(json.error || 'Failed to set interval');
         await fetchData();
     };
 
@@ -486,7 +557,7 @@ export default function CronAnalyzerClient() {
                     <h2 className="text-lg font-semibold text-white mb-4">Cron Tasks</h2>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                         {data.tasks.map(task => (
-                            <TaskCard key={task.name} task={task} onRun={handleRunTask} />
+                            <TaskCard key={task.name} task={task} onRun={handleRunTask} onSetInterval={handleSetInterval} />
                         ))}
                     </div>
                 </section>

@@ -5,11 +5,20 @@ import { exec } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 
+// Tasks whose minute-field is '*' can have a configurable run interval (in minutes).
+// Key = task name, value = minutes between runs (1 = every minute).
+const EMAIL_TASK_INTERVAL_KEYS: Record<string, string> = {
+    'Report Schedules':   'cron_interval_report_schedules',
+    'Low Stock Alerts':   'cron_interval_low_stock_alerts',
+    'Shift Report Emails':'cron_interval_shift_report_emails',
+};
+
 class Scheduler {
     private interval: NodeJS.Timeout | null = null;
     private lastRunMinute = -1;
     private tasks: { name: string; cron: string; run: () => Promise<void> }[] = [];
     private runLog: { name: string; status: 'SUCCESS' | 'FAILED'; error?: string; ts: Date }[] = [];
+    private taskIntervals: Record<string, number> = {};
 
     constructor() {
         this.tasks = [
@@ -23,8 +32,24 @@ class Scheduler {
         ];
     }
 
+    async loadTaskIntervals() {
+        try {
+            const keys = Object.values(EMAIL_TASK_INTERVAL_KEYS);
+            const rows = await db.query(
+                `SELECT key, value FROM system_settings WHERE key = ANY($1)`,
+                [keys]
+            );
+            for (const row of rows) {
+                this.taskIntervals[row.key] = Math.max(1, Math.min(5, parseInt(row.value) || 1));
+            }
+        } catch {
+            // silently keep defaults
+        }
+    }
+
     start() {
         if (this.interval) return;
+        this.loadTaskIntervals().catch(() => {});
         console.log('Scheduler Started');
 
         // Poll every 5 seconds; only run tasks once per minute regardless of server start time
@@ -49,10 +74,14 @@ class Scheduler {
 
         for (const task of this.tasks) {
             const [min, hr] = task.cron.split(' ');
-            if (
-                (min === '*' || parseInt(min) === currentMin) &&
-                (hr === '*' || parseInt(hr) === currentHr)
-            ) {
+            const matchesMin = min !== '*'
+                ? parseInt(min) === currentMin
+                : (() => {
+                    const settingKey = EMAIL_TASK_INTERVAL_KEYS[task.name];
+                    const every = settingKey ? (this.taskIntervals[settingKey] ?? 1) : 1;
+                    return every <= 1 ? true : currentMin % every === 0;
+                })();
+            if (matchesMin && (hr === '*' || parseInt(hr) === currentHr)) {
                 console.log(`Running Task: ${task.name}`);
                 try {
                     await task.run();
@@ -452,7 +481,15 @@ class Scheduler {
     }
 
     getTaskList() {
-        return this.tasks.map(t => ({ name: t.name, cron: t.cron }));
+        return this.tasks.map(t => {
+            const settingKey = EMAIL_TASK_INTERVAL_KEYS[t.name];
+            const interval = settingKey ? (this.taskIntervals[settingKey] ?? 1) : null;
+            return { name: t.name, cron: t.cron, intervalMinutes: interval };
+        });
+    }
+
+    getTaskIntervals() {
+        return { ...this.taskIntervals };
     }
 
     private static readonly BACKUP_DIR = '/backups';

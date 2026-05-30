@@ -157,6 +157,44 @@ export async function POST(req: NextRequest) {
     }
 }
 
+// PATCH — update run interval for an email task (1–5 minutes)
+export async function PATCH(req: NextRequest) {
+    const session = await getSession();
+    if (!session?.isSuperAdmin) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    try {
+        const { taskName, interval } = await req.json() as { taskName: string; interval: number };
+
+        const INTERVAL_KEYS: Record<string, string> = {
+            'Report Schedules':    'cron_interval_report_schedules',
+            'Low Stock Alerts':    'cron_interval_low_stock_alerts',
+            'Shift Report Emails': 'cron_interval_shift_report_emails',
+        };
+
+        const key = INTERVAL_KEYS[taskName];
+        if (!key) {
+            return NextResponse.json({ error: `Task "${taskName}" does not support interval configuration` }, { status: 400 });
+        }
+
+        const clampedInterval = Math.max(1, Math.min(5, parseInt(String(interval)) || 1));
+
+        await db.execute(
+            "INSERT INTO system_settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2",
+            [key, String(clampedInterval)]
+        );
+
+        // Reload intervals into the running scheduler immediately
+        await scheduler.loadTaskIntervals();
+
+        return NextResponse.json({ ok: true, interval: clampedInterval });
+    } catch (err: any) {
+        console.error('[cron-analyzer PATCH]', err);
+        return NextResponse.json({ error: err.message }, { status: 500 });
+    }
+}
+
 // PUT — update SMTP settings for a tier
 export async function PUT(req: NextRequest) {
     const session = await getSession();
