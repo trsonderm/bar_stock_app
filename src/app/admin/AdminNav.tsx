@@ -121,9 +121,11 @@ export default function AdminNav({ user, children }: { user: NavUser, children: 
 
     const isPro = user?.subscriptionPlan === 'pro' || user?.subscriptionPlan === 'free_trial' || user?.role === 'super_admin';
 
-    // Full admin = role admin with no restrictions (empty perms = legacy full access),
-    // explicit 'all' grant, or super admin accessing admin panel
-    const isFullAdmin = !user?.permissions?.length
+    // Full admin = has admin role, explicit 'all' grant, or is super admin.
+    // The middleware already ensures only role=admin/super-admin users reach admin pages,
+    // so role=admin alone is sufficient — specific permissions in the array don't restrict
+    // admin-role users from any settings page.
+    const isFullAdmin = user?.role === 'admin'
         || (user?.permissions as any)?.includes?.('all')
         || !!(user as any)?.isSuperAdmin;
     // hasPerm: true if full admin OR has specific permission(s)

@@ -10,9 +10,8 @@ export const metadata = {
 export default async function AdminCategoriesPage() {
     const session = await getSession();
 
-    if (!session || session.role !== 'admin') {
-        const hasPermission = session?.permissions.includes('all');
-        if (!hasPermission) redirect('/admin/login');
+    if (!session || (session.role !== 'admin' && !session.isSuperAdmin)) {
+        redirect('/admin/login');
     }
 
     return <CategoriesClient />;
