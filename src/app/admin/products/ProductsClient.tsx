@@ -126,9 +126,8 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
     // Temp input for order sizes
     const [tempOrderLabel, setTempOrderLabel] = useState('Pack');
     const [tempOrderAmount, setTempOrderAmount] = useState('');
-    // Qty on hand entry unit (display multiplier — stored quantity is always base units)
-    const [qtyInputUnit, setQtyInputUnit] = useState<{ label: string; amount: number }>({ label: 'Units', amount: 1 });
-    const [qtyInputValue, setQtyInputValue] = useState('');
+    // Qty on hand: one value per order-size label (e.g. { Unit: '5', Case: '2' })
+    const [qtyInputValues, setQtyInputValues] = useState<Record<string, string>>({});
 
     // Barcode scan state
     const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
@@ -154,6 +153,27 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
     const [addToAllLocations, setAddToAllLocations] = useState(false);
     const [selectedLocationId, setSelectedLocationId] = useState<number | null>(null);
 
+
+    // Distribute base-unit qty greedy across order sizes (largest first)
+    const distributeQty = (total: number, sizes: OrderSizeOption[]): Record<string, string> => {
+        const sorted = [...sizes].sort((a, b) => b.amount - a.amount);
+        const result: Record<string, string> = {};
+        let rem = Math.round(total * 1000) / 1000;
+        for (const s of sorted) {
+            if (s.amount <= 0) continue;
+            const count = Math.floor(rem / s.amount);
+            result[s.label] = count > 0 ? String(count) : '';
+            rem = Math.round((rem - count * s.amount) * 1000) / 1000;
+        }
+        return result;
+    };
+
+    // Sum all per-size inputs back to base units
+    const calcTotalQty = (values: Record<string, string>, sizes: OrderSizeOption[]): number =>
+        sizes.reduce((sum, s) => {
+            const v = parseFloat(values[s.label] || '0');
+            return sum + (isNaN(v) ? 0 : v * s.amount);
+        }, 0);
 
     useEffect(() => {
         // fetchData() is triggered separately via the selectedLocationId effect
@@ -278,8 +298,7 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
         setTempOrderAmount('');
         setAddToAllLocations(false);
         setModalTab('basic');
-        setQtyInputUnit({ label: 'Units', amount: 1 });
-        setQtyInputValue('');
+        setQtyInputValues({});
     };
 
     const handleBulkApply = async () => {
@@ -442,9 +461,18 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
             package_sale_enabled: item.package_sale_enabled === true,
         });
 
-        // Reset qty entry to base units view
-        setQtyInputUnit({ label: 'Units', amount: 1 });
-        setQtyInputValue(item.quantity !== undefined ? String(item.quantity) : '');
+        // Distribute existing qty across order sizes
+        const parsedSizes: OrderSizeOption[] = (() => {
+            const os = item.order_size;
+            if (!os) return [{ label: 'Unit', amount: 1 }];
+            if (Array.isArray(os)) {
+                if (os.length > 0 && typeof os[0] === 'object' && os[0] !== null && 'amount' in os[0]) return os as OrderSizeOption[];
+                return (os as number[]).map(n => ({ label: n === 1 ? 'Unit' : n.toString(), amount: n }));
+            }
+            if (typeof os === 'number') return [{ label: os === 1 ? 'Unit' : os.toString(), amount: os }];
+            return [{ label: 'Unit', amount: 1 }];
+        })();
+        setQtyInputValues(distributeQty(item.quantity ?? 0, parsedSizes));
         setModalTab('basic');
         setShowModal(true);
     };
@@ -501,8 +529,7 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
             bottle_size_unit: item.bottle_size_unit || '',
             package_sale_enabled: item.package_sale_enabled === true,
         });
-        setQtyInputUnit({ label: 'Units', amount: 1 });
-        setQtyInputValue('');
+        setQtyInputValues({});
         setTempOrderLabel('Pack');
         setTempOrderAmount('');
         setAddToAllLocations(false);
@@ -1387,59 +1414,51 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                                         )}
                                         <Tip text="Current stock count at the selected location. You can also adjust this from the Stock View page." />
                                     </label>
-                                    {/* Unit selector + qty input */}
+                                    {/* One input row per order size */}
                                     {(() => {
-                                        const orderSizes = formData.order_size.filter(s => s.amount > 1);
-                                        const unitOptions = [
-                                            { label: 'Units', amount: 1 },
-                                            ...orderSizes,
-                                        ];
-                                        const baseUnits = qtyInputValue !== '' && !isNaN(parseFloat(qtyInputValue))
-                                            ? parseFloat(qtyInputValue) * qtyInputUnit.amount
-                                            : null;
+                                        const sizes = formData.order_size.length > 0
+                                            ? formData.order_size
+                                            : [{ label: 'Unit', amount: 1 }];
+                                        const total = calcTotalQty(qtyInputValues, sizes);
+                                        const hasMultiple = sizes.length > 1;
+                                        const maxLabelLen = Math.max(...sizes.map(s => s.label.length));
                                         return (
-                                            <div>
-                                                <div style={{ display: 'flex', gap: '0.4rem' }}>
-                                                    {orderSizes.length > 0 && (
-                                                        <select
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                                                {sizes.map(size => (
+                                                    <div key={size.label} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                        <span style={{
+                                                            minWidth: `${Math.max(maxLabelLen * 0.55 + 2, 4.5)}rem`,
+                                                            fontSize: '0.8rem',
+                                                            color: '#9ca3af',
+                                                            textAlign: 'right',
+                                                            flexShrink: 0,
+                                                        }}>
+                                                            {size.label}
+                                                            {size.amount > 1 && (
+                                                                <span style={{ color: '#4b5563', fontSize: '0.72rem', marginLeft: '3px' }}>
+                                                                    ×{size.amount}
+                                                                </span>
+                                                            )}
+                                                        </span>
+                                                        <input
                                                             className={styles.input}
-                                                            style={{ minHeight: '44px', width: 'auto', paddingRight: '1.5rem', flexShrink: 0 }}
-                                                            value={qtyInputUnit.label}
+                                                            type="number"
+                                                            step="any"
+                                                            min="0"
+                                                            placeholder="0"
+                                                            style={{ flex: 1, minHeight: '40px' }}
+                                                            value={qtyInputValues[size.label] ?? ''}
                                                             onChange={e => {
-                                                                const chosen = unitOptions.find(o => o.label === e.target.value) ?? { label: 'Units', amount: 1 };
-                                                                setQtyInputUnit(chosen);
-                                                                setQtyInputValue('');
-                                                                setFormData(prev => ({ ...prev, quantity: '0' }));
+                                                                const next = { ...qtyInputValues, [size.label]: e.target.value };
+                                                                setQtyInputValues(next);
+                                                                setFormData(prev => ({ ...prev, quantity: String(calcTotalQty(next, sizes)) }));
                                                             }}
-                                                        >
-                                                            {unitOptions.map(o => (
-                                                                <option key={o.label} value={o.label}>
-                                                                    {o.label}{o.amount > 1 ? ` (${o.amount})` : ''}
-                                                                </option>
-                                                            ))}
-                                                        </select>
-                                                    )}
-                                                    <input
-                                                        style={{ flex: 1, minHeight: '44px' }}
-                                                        className={styles.input}
-                                                        type="number"
-                                                        step="any"
-                                                        min="0"
-                                                        placeholder="0"
-                                                        value={qtyInputValue}
-                                                        onChange={e => {
-                                                            const val = e.target.value;
-                                                            setQtyInputValue(val);
-                                                            const base = val !== '' && !isNaN(parseFloat(val))
-                                                                ? parseFloat(val) * qtyInputUnit.amount
-                                                                : 0;
-                                                            setFormData(prev => ({ ...prev, quantity: String(base) }));
-                                                        }}
-                                                    />
-                                                </div>
-                                                {qtyInputUnit.amount > 1 && baseUnits !== null && (
-                                                    <div style={{ fontSize: '0.72rem', color: '#9ca3af', marginTop: '3px' }}>
-                                                        = {baseUnits} units in stock
+                                                        />
+                                                    </div>
+                                                ))}
+                                                {hasMultiple && (
+                                                    <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '2px', paddingLeft: '0.5rem' }}>
+                                                        = <span style={{ color: '#d1d5db', fontWeight: 600 }}>{total}</span> units in stock
                                                     </div>
                                                 )}
                                             </div>
