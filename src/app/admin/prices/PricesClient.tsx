@@ -323,7 +323,8 @@ export default function PricesClient() {
         const packageItems = items.filter(i => {
             if (i.package_sale_enabled !== true) return false;
             const sizes = parseSizes(i.order_size);
-            if (sizes.length > 0) return sizes.some(s => i.package_prices?.[s.label] != null && Number(i.package_prices![s.label]) > 0);
+            const hasSz = sizes.some(s => s.amount > 1);
+            if (hasSz) return sizes.some(s => i.package_prices?.[s.label] != null && Number(i.package_prices![s.label]) > 0);
             return i.package_price != null && Number(i.package_price) > 0;
         });
         if (packageItems.length === 0) {
@@ -516,14 +517,16 @@ ${pagesHTML}
         const showPkg = items.some(i => {
             if (!i.package_sale_enabled) return false;
             const sizes = parseSizes(i.order_size);
-            if (sizes.length > 0) return sizes.some(s => i.package_prices?.[s.label] != null && Number(i.package_prices![s.label]) > 0);
+            const hasSz = sizes.some(s => s.amount > 1);
+            if (hasSz) return sizes.some(s => i.package_prices?.[s.label] != null && Number(i.package_prices![s.label]) > 0);
             return i.package_price != null && Number(i.package_price) > 0;
         });
 
         // Build package price cell HTML for a single item
         const pkgCellHtml = (item: Item) => {
             const sizes = parseSizes(item.order_size);
-            if (sizes.length > 0) {
+            const hasSz = sizes.some(s => s.amount > 1);
+            if (hasSz) {
                 const pricedSizes = sizes.filter(s => item.package_prices?.[s.label] != null && Number(item.package_prices![s.label]) > 0);
                 if (pricedSizes.length === 0) return '<span class="no-price">—</span>';
                 return pricedSizes.map(s => `<span class="pkg-price">${escapeHtml(s.label)}: $${Number(item.package_prices![s.label]).toFixed(2)}</span>`).join('<br>');
@@ -867,7 +870,7 @@ thead th.right{text-align:right;}
                                         const locKey = `${item.id}_${selectedLocationId}`;
                                         const globalKey = String(item.id);
                                         const sizes = parseSizes(item.order_size);
-                                        const hasSizes = sizes.length > 0;
+                                        const hasSizes = sizes.some(s => s.amount > 1);
 
                                         // For margin: use first size price if available, else sale_price
                                         const firstSizePrice = hasSizes
