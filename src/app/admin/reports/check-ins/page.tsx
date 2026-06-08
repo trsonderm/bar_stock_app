@@ -5,7 +5,7 @@ import { redirect } from 'next/navigation';
 
 export default async function VarianceReportPage() {
     const session = await getSession();
-    if (!session || !session.organizationId || session.role !== 'admin') {
+    if (!session || !session.organizationId || (session.role !== 'admin' && !session.isSuperAdmin)) {
         redirect('/');
     }
 

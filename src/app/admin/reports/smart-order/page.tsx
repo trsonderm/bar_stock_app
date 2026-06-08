@@ -5,7 +5,7 @@ import SmartOrderClient from './SmartOrderClient';
 
 export default async function SmartOrderPage() {
     const session = await getSession();
-    if (!session || session.role !== 'admin') {
+    if (!session || (session.role !== 'admin' && !session.isSuperAdmin)) {
         redirect('/login');
     }
 

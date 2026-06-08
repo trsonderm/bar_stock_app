@@ -8,6 +8,6 @@ export const metadata = {
 
 export default async function AdminRecipesPage() {
     const session = await getSession();
-    if (!session || session.role !== 'admin') redirect('/admin/login');
+    if (!session || (session.role !== 'admin' && !session.isSuperAdmin)) redirect('/admin/login');
     return <AdminRecipesClient />;
 }

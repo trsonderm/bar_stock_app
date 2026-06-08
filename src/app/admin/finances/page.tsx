@@ -6,6 +6,6 @@ export const metadata = { title: 'Finances — Admin' };
 
 export default async function FinancesPage() {
     const session = await getSession();
-    if (!session || session.role !== 'admin') redirect('/login');
+    if (!session || (session.role !== 'admin' && !session.isSuperAdmin)) redirect('/login');
     return <FinancesClient />;
 }

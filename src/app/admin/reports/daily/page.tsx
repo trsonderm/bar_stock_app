@@ -5,6 +5,6 @@ import DailyReportClient from './DailyReportClient';
 export default async function DailyReportPage() {
     const session = await getSession();
     if (!session || !session.organizationId) redirect('/login');
-    if (session.role !== 'admin') redirect('/inventory');
+    if (session.role !== 'admin' && !session.isSuperAdmin) redirect('/inventory');
     return <DailyReportClient />;
 }

@@ -5,7 +5,7 @@ import OrderTrackingClient from './OrderTrackingClient';
 export default async function OrderTrackingPage() {
     const session = await getSession();
     if (!session || !session.organizationId) redirect('/');
-    if (session.role !== 'admin') redirect('/inventory');
+    if (session.role !== 'admin' && !session.isSuperAdmin) redirect('/inventory');
 
     return <OrderTrackingClient user={session} />;
 }

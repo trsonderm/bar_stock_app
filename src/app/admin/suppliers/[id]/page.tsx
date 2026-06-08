@@ -5,7 +5,7 @@ import SupplierDetailClient from './SupplierDetailClient';
 
 export default async function SupplierDetailPage({ params }: { params: { id: string } }) {
     const session = await getSession();
-    if (!session || session.role !== 'admin') {
+    if (!session || (session.role !== 'admin' && !session.isSuperAdmin)) {
         redirect('/login');
     }
 

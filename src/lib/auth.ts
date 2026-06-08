@@ -63,6 +63,10 @@ export async function getSession(): Promise<UserSession | null> {
         const { payload } = await jwtVerify(token, SECRET_KEY, { algorithms: [ALG] });
         const session = payload as unknown as UserSession;
         if (!session.permissions) session.permissions = [];
+        // Mirror the middleware fallback: old tokens may lack the isSuperAdmin field
+        if (!session.isSuperAdmin && session.permissions.includes('super_admin')) {
+            session.isSuperAdmin = true;
+        }
         return session;
     } catch (error) {
         return null;

@@ -6,7 +6,7 @@ import ReportBuilderClient from './ReportBuilderClient';
 export default async function ReportBuilderPage() {
     const session = await getSession();
     if (!session || !session.organizationId) redirect('/');
-    if (session.role !== 'admin') redirect('/inventory');
+    if (session.role !== 'admin' && !session.isSuperAdmin) redirect('/inventory');
     const isPro = session.subscriptionPlan === 'pro' || session.subscriptionPlan === 'free_trial' || session.isSuperAdmin;
     if (!isPro) redirect('/admin/billing');
 

@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation';
 
 export default async function MobileApiDocsPage() {
     const session = await getSession();
-    if (!session || session.role !== 'admin') redirect('/admin/login');
+    if (!session || (session.role !== 'admin' && !session.isSuperAdmin)) redirect('/admin/login');
 
     const base = 'https://www.topshelfInventory.com';
 

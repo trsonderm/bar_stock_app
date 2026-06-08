@@ -4,7 +4,7 @@ import SecurityClient from './SecurityClient';
 
 export default async function SecurityPage() {
     const session = await getSession();
-    if (!session || session.role !== 'admin') redirect('/admin/login');
+    if (!session || (session.role !== 'admin' && !session.isSuperAdmin)) redirect('/admin/login');
 
     const perms: string[] = session.permissions || [];
     const isAdmin = session.role === 'admin';

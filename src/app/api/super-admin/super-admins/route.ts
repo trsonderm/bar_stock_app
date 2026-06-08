@@ -30,9 +30,11 @@ export async function POST(req: NextRequest) {
 
     const existing = await db.one('SELECT id FROM users WHERE email = $1', [email]);
     if (existing) {
-        // Promote existing user
+        // Promote existing user — also set role='admin' so page guards pass
         await db.execute(`
-            UPDATE users SET permissions = permissions::jsonb || '["super_admin"]'::jsonb
+            UPDATE users
+            SET permissions = permissions::jsonb || '["super_admin"]'::jsonb,
+                role = 'admin'
             WHERE id = $1
         `, [existing.id]);
         return NextResponse.json({ ok: true, promoted: true, id: existing.id });
