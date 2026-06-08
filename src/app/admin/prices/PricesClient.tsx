@@ -918,8 +918,8 @@ thead th.right{text-align:right;}
                                                                 const sk = `${item.id}_${size.label}`;
                                                                 return (
                                                                     <div key={size.label} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                                        <span style={{ fontSize: '0.75rem', color: '#9ca3af', minWidth: '36px', textAlign: 'right' }}>
-                                                                            {size.label}
+                                                                        <span style={{ fontSize: '0.75rem', color: '#9ca3af', minWidth: '52px', textAlign: 'right' }}>
+                                                                            {size.label}{size.amount > 1 ? ` (${size.amount})` : ''}
                                                                         </span>
                                                                         <input
                                                                             type="number"
@@ -986,7 +986,7 @@ thead th.right{text-align:right;}
                                                                                 const pk = `${item.id}_pkg_${size.label}`;
                                                                                 return (
                                                                                     <div key={size.label} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                                                        <span style={{ fontSize: '0.75rem', color: '#9ca3af', minWidth: '36px', textAlign: 'right' }}>{size.label}</span>
+                                                                                        <span style={{ fontSize: '0.75rem', color: '#9ca3af', minWidth: '52px', textAlign: 'right' }}>{size.label}{size.amount > 1 ? ` (${size.amount})` : ''}</span>
                                                                                         <input
                                                                                             type="number" step="0.01" min="0"
                                                                                             className={styles.input}
@@ -1032,7 +1032,7 @@ thead th.right{text-align:right;}
                                                                                     const stateKey = `${item.id}_band_${band.id}_${size.label}`;
                                                                                     return (
                                                                                         <div key={size.label} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                                                            <span style={{ fontSize: '0.75rem', color: '#9ca3af', minWidth: '36px', textAlign: 'right' }}>{size.label}</span>
+                                                                                            <span style={{ fontSize: '0.75rem', color: '#9ca3af', minWidth: '52px', textAlign: 'right' }}>{size.label}{size.amount > 1 ? ` (${size.amount})` : ''}</span>
                                                                                             <input
                                                                                                 type="number" step="0.01" min="0"
                                                                                                 className={styles.input}
