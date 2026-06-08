@@ -511,7 +511,27 @@ ${pagesHTML}
 
     const printPriceReport = () => {
         const today = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-        const showPkg = items.some(i => i.package_price != null && Number(i.package_price) > 0);
+
+        // Show package column if any item has a package price set — flat OR per-size
+        const showPkg = items.some(i => {
+            if (!i.package_sale_enabled) return false;
+            const sizes = parseSizes(i.order_size);
+            if (sizes.length > 0) return sizes.some(s => i.package_prices?.[s.label] != null && Number(i.package_prices![s.label]) > 0);
+            return i.package_price != null && Number(i.package_price) > 0;
+        });
+
+        // Build package price cell HTML for a single item
+        const pkgCellHtml = (item: Item) => {
+            const sizes = parseSizes(item.order_size);
+            if (sizes.length > 0) {
+                const pricedSizes = sizes.filter(s => item.package_prices?.[s.label] != null && Number(item.package_prices![s.label]) > 0);
+                if (pricedSizes.length === 0) return '<span class="no-price">—</span>';
+                return pricedSizes.map(s => `<span class="pkg-price">${escapeHtml(s.label)}: $${Number(item.package_prices![s.label]).toFixed(2)}</span>`).join('<br>');
+            }
+            return item.package_price != null && Number(item.package_price) > 0
+                ? `<span class="pkg-price">$${Number(item.package_price).toFixed(2)}</span>`
+                : '<span class="no-price">—</span>';
+        };
 
         const printTypes = orderedTypes.filter(t => {
             const l = t.toLowerCase();
@@ -522,9 +542,7 @@ ${pagesHTML}
             const typeItems = filteredItems.filter(i => i.type === type);
             if (!typeItems.length) return '';
             const itemRows = typeItems.map(item => {
-                const pkgCell = showPkg
-                    ? `<td class="pkg-cell">${item.package_price != null && Number(item.package_price) > 0 ? `<span class="pkg-price">$${Number(item.package_price).toFixed(2)}</span>` : '<span class="no-price">—</span>'}</td>`
-                    : '';
+                const pkgCell = showPkg ? `<td class="pkg-cell">${pkgCellHtml(item)}</td>` : '';
                 return `<tr><td class="item-name">${escapeHtml(item.name)}</td>${pkgCell}</tr>`;
             }).join('');
 
