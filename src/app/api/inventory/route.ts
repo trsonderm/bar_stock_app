@@ -191,6 +191,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+    await ensureDisplayColumns();
     try {
         const session = await getSession();
         if (!session || !session.organizationId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -299,6 +300,7 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PUT(req: NextRequest) {
+    await ensureDisplayColumns();
     try {
         const session = await getSession();
         if (!session || !session.organizationId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
