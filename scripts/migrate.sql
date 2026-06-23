@@ -188,6 +188,7 @@ CREATE TABLE IF NOT EXISTS item_suppliers (
   is_preferred BOOLEAN DEFAULT FALSE,
   UNIQUE(item_id, supplier_id)
 );
+CREATE UNIQUE INDEX IF NOT EXISTS item_suppliers_item_supplier_uniq ON item_suppliers(item_id, supplier_id);
 
 -- =========================================================
 -- 8. Per-location supplier assignments
@@ -200,6 +201,7 @@ CREATE TABLE IF NOT EXISTS item_location_suppliers (
   supplier_id INTEGER REFERENCES suppliers(id) ON DELETE SET NULL,
   UNIQUE(item_id, location_id)
 );
+CREATE UNIQUE INDEX IF NOT EXISTS item_location_suppliers_item_location_uniq ON item_location_suppliers(item_id, location_id);
 
 -- =========================================================
 -- 9. Per-location item prices

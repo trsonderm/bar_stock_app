@@ -22,10 +22,12 @@ services:
     image: postgres:15-alpine
     container_name: topshelf_db
     restart: always
+    shm_size: 256m
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
       - POSTGRES_DB=topshelf
+      - POSTGRES_SHARED_BUFFERS=256MB
     ports:
       - "5433:5432"
     volumes:
