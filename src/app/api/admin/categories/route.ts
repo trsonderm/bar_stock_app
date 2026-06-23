@@ -50,18 +50,35 @@ async function ensureSubCategoriesTable() {
 
 // ── Shared query: fetch categories with sub_categories aggregated from relational table ──
 async function fetchCategoriesForOrg(orgId: number) {
+    // Use a distinct alias for the aggregate so it never collides with the
+    // legacy JSONB c.sub_categories column that c.* expands to include.
+    const dedupe = (rows: any[], subKey: string) => {
+        const seen = new Set<string>();
+        return rows
+            .filter((c: any) => {
+                if (seen.has(c.name)) return false;
+                seen.add(c.name);
+                return true;
+            })
+            .map((c: any) => ({
+                ...c,
+                stock_options: typeof c.stock_options === 'string'
+                    ? JSON.parse(c.stock_options)
+                    : (c.stock_options || [1]),
+                sub_categories: Array.isArray(c[subKey])
+                    ? [...new Set<string>(c[subKey])]
+                    : [],
+            }));
+    };
+
     try {
         const rows = await db.query(
-            // Explicit columns intentionally exclude c.sub_categories (JSONB legacy column)
-            // to avoid an ambiguous duplicate-name collision with the aggregate alias.
-            `SELECT c.id, c.organization_id, c.name, c.stock_options, c.enable_low_stock_reporting,
-                    c.default_stock_unit_label, c.default_stock_unit_size,
-                    c.default_order_unit_label, c.default_order_unit_size,
+            `SELECT c.*,
                 COALESCE(
                     json_agg(sc.name ORDER BY sc.display_order, sc.name)
                     FILTER (WHERE sc.name IS NOT NULL),
                     '[]'::json
-                ) AS sub_categories
+                ) AS sc_relational
              FROM categories c
              LEFT JOIN sub_categories sc ON sc.category_id = c.id AND sc.organization_id = $1
              WHERE c.organization_id = $1
@@ -69,27 +86,15 @@ async function fetchCategoriesForOrg(orgId: number) {
              ORDER BY c.name ASC`,
             [orgId]
         );
-        return rows.map((c: any) => ({
-            ...c,
-            stock_options: typeof c.stock_options === 'string'
-                ? JSON.parse(c.stock_options)
-                : (c.stock_options || [1]),
-            sub_categories: Array.isArray(c.sub_categories) ? c.sub_categories : [],
-        }));
+        return dedupe(rows, 'sc_relational');
     } catch (e: any) {
-        // sub_categories table missing — fall back to basic category query
         console.warn('[fetchCategoriesForOrg] sub_categories join failed, using fallback:', e.message);
         const rows = await db.query(
             `SELECT * FROM categories WHERE organization_id = $1 ORDER BY name ASC`,
             [orgId]
         );
-        return rows.map((c: any) => ({
-            ...c,
-            stock_options: typeof c.stock_options === 'string'
-                ? JSON.parse(c.stock_options)
-                : (c.stock_options || [1]),
-            sub_categories: [],
-        }));
+        // In fallback, read sub_categories from the JSONB column if present
+        return dedupe(rows, 'sub_categories');
     }
 }
 
