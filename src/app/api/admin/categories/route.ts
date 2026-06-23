@@ -19,6 +19,15 @@ async function ensureSubCategoriesTable() {
     `).catch(() => {});
     await db.execute(`CREATE INDEX IF NOT EXISTS sub_categories_category_idx ON sub_categories(category_id)`).catch(() => {});
     await db.execute(`CREATE INDEX IF NOT EXISTS sub_categories_org_idx ON sub_categories(organization_id)`).catch(() => {});
+    // Remove duplicate (category_id, name) rows before ensuring the unique index.
+    await db.execute(`
+        DELETE FROM sub_categories a
+        USING sub_categories b
+        WHERE a.id > b.id
+          AND a.category_id = b.category_id
+          AND a.name = b.name
+    `).catch(() => {});
+    await db.execute(`CREATE UNIQUE INDEX IF NOT EXISTS sub_categories_category_name_uniq ON sub_categories(category_id, name)`).catch(() => {});
     // Migrate any existing JSONB sub_categories data into the relational table.
     // Safe to re-run — ON CONFLICT DO NOTHING skips already-migrated rows.
     await db.execute(`
@@ -33,6 +42,7 @@ async function ensureSubCategoriesTable() {
         WHERE c.sub_categories IS NOT NULL
           AND jsonb_typeof(c.sub_categories) = 'array'
           AND jsonb_array_length(c.sub_categories) > 0
+          AND elem.value <> ''
         ON CONFLICT (category_id, name) DO NOTHING
     `).catch(() => {});
     _subCatsEnsured = true;
@@ -42,14 +52,18 @@ async function ensureSubCategoriesTable() {
 async function fetchCategoriesForOrg(orgId: number) {
     try {
         const rows = await db.query(
-            `SELECT c.*,
+            // Explicit columns intentionally exclude c.sub_categories (JSONB legacy column)
+            // to avoid an ambiguous duplicate-name collision with the aggregate alias.
+            `SELECT c.id, c.organization_id, c.name, c.stock_options, c.enable_low_stock_reporting,
+                    c.default_stock_unit_label, c.default_stock_unit_size,
+                    c.default_order_unit_label, c.default_order_unit_size,
                 COALESCE(
                     json_agg(sc.name ORDER BY sc.display_order, sc.name)
                     FILTER (WHERE sc.name IS NOT NULL),
-                    '[]'
+                    '[]'::json
                 ) AS sub_categories
              FROM categories c
-             LEFT JOIN sub_categories sc ON sc.category_id = c.id
+             LEFT JOIN sub_categories sc ON sc.category_id = c.id AND sc.organization_id = $1
              WHERE c.organization_id = $1
              GROUP BY c.id
              ORDER BY c.name ASC`,
