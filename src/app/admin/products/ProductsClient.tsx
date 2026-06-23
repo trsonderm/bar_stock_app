@@ -67,6 +67,7 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
     const [showModal, setShowModal] = useState(false);
     const [editingId, setEditingId] = useState<number | null>(null);
     const [isDuplicate, setIsDuplicate] = useState(false);
+    const [duplicateSourceName, setDuplicateSourceName] = useState('');
 
     // Global product typeahead
     const [globalSuggestions, setGlobalSuggestions] = useState<any[]>([]);
@@ -259,6 +260,7 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
     const resetForm = () => {
         setEditingId(null);
         setIsDuplicate(false);
+        setDuplicateSourceName('');
         setFormData({
             name: '',
             type: 'Liquor',
@@ -480,8 +482,9 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
     const handleCopyClick = (item: Item) => {
         setEditingId(null);
         setIsDuplicate(true);
+        setDuplicateSourceName(item.name);
         setFormData({
-            name: '',
+            name: item.name,
             type: item.type,
             secondary_type: item.secondary_type || '',
             supplier: item.supplier || '',
@@ -612,6 +615,10 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
 
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (isDuplicate && formData.name.trim() === duplicateSourceName.trim()) {
+            alert('Please enter a new name for the duplicate product.');
+            return;
+        }
         try {
             const body = {
                 id: editingId,
@@ -1138,8 +1145,13 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                                     Product Name <span style={{ color: '#ef4444', marginLeft: 2 }}>*</span>
                                     <Tip text="The display name used in inventory lists, reports, and the stock view." />
                                 </label>
+                                {isDuplicate && formData.name.trim() === duplicateSourceName.trim() && (
+                                    <div style={{ fontSize: '0.72rem', color: '#f59e0b', marginBottom: '0.3rem' }}>
+                                        Change the name before saving — duplicates must have a unique name.
+                                    </div>
+                                )}
                                 <input
-                                    style={{ width: '100%', minHeight: '44px' }}
+                                    style={{ width: '100%', minHeight: '44px', ...(isDuplicate && formData.name.trim() === duplicateSourceName.trim() ? { borderColor: '#f59e0b' } : {}) }}
                                     className={styles.input}
                                     value={formData.name}
                                     onChange={e => {
