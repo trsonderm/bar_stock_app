@@ -2,50 +2,91 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
 
+// Ensure the relational sub_categories table exists (added in migration 32,
+// may be absent on databases that weren't fully migrated).
+let _subCatsEnsured = false;
+async function ensureSubCategoriesTable() {
+    if (_subCatsEnsured) return;
+    await db.execute(`
+        CREATE TABLE IF NOT EXISTS sub_categories (
+            id              SERIAL PRIMARY KEY,
+            category_id     INTEGER NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
+            organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+            name            TEXT NOT NULL,
+            display_order   INTEGER NOT NULL DEFAULT 0,
+            UNIQUE(category_id, name)
+        )
+    `).catch(() => {});
+    await db.execute(`CREATE INDEX IF NOT EXISTS sub_categories_category_idx ON sub_categories(category_id)`).catch(() => {});
+    await db.execute(`CREATE INDEX IF NOT EXISTS sub_categories_org_idx ON sub_categories(organization_id)`).catch(() => {});
+    _subCatsEnsured = true;
+}
+
 // ── Shared query: fetch categories with sub_categories aggregated from relational table ──
 async function fetchCategoriesForOrg(orgId: number) {
-    const rows = await db.query(
-        `SELECT c.*,
-            COALESCE(
-                json_agg(sc.name ORDER BY sc.display_order, sc.name)
-                FILTER (WHERE sc.name IS NOT NULL),
-                '[]'
-            ) AS sub_categories
-         FROM categories c
-         LEFT JOIN sub_categories sc ON sc.category_id = c.id
-         WHERE c.organization_id = $1
-         GROUP BY c.id
-         ORDER BY c.name ASC`,
-        [orgId]
-    );
-    return rows.map((c: any) => ({
-        ...c,
-        stock_options: typeof c.stock_options === 'string'
-            ? JSON.parse(c.stock_options)
-            : (c.stock_options || [1]),
-        sub_categories: Array.isArray(c.sub_categories) ? c.sub_categories : [],
-    }));
+    try {
+        const rows = await db.query(
+            `SELECT c.*,
+                COALESCE(
+                    json_agg(sc.name ORDER BY sc.display_order, sc.name)
+                    FILTER (WHERE sc.name IS NOT NULL),
+                    '[]'
+                ) AS sub_categories
+             FROM categories c
+             LEFT JOIN sub_categories sc ON sc.category_id = c.id
+             WHERE c.organization_id = $1
+             GROUP BY c.id
+             ORDER BY c.name ASC`,
+            [orgId]
+        );
+        return rows.map((c: any) => ({
+            ...c,
+            stock_options: typeof c.stock_options === 'string'
+                ? JSON.parse(c.stock_options)
+                : (c.stock_options || [1]),
+            sub_categories: Array.isArray(c.sub_categories) ? c.sub_categories : [],
+        }));
+    } catch (e: any) {
+        // sub_categories table missing — fall back to basic category query
+        console.warn('[fetchCategoriesForOrg] sub_categories join failed, using fallback:', e.message);
+        const rows = await db.query(
+            `SELECT * FROM categories WHERE organization_id = $1 ORDER BY name ASC`,
+            [orgId]
+        );
+        return rows.map((c: any) => ({
+            ...c,
+            stock_options: typeof c.stock_options === 'string'
+                ? JSON.parse(c.stock_options)
+                : (c.stock_options || [1]),
+            sub_categories: [],
+        }));
+    }
 }
 
 // ── Sync sub_categories rows for a category (replace all) ──
 async function syncSubCategories(categoryId: number, orgId: number, names: string[]) {
-    await db.execute(
-        'DELETE FROM sub_categories WHERE category_id = $1 AND organization_id = $2',
-        [categoryId, orgId]
-    );
-    for (let i = 0; i < names.length; i++) {
-        const name = names[i].trim();
-        if (!name) continue;
+    try {
         await db.execute(
-            `INSERT INTO sub_categories (category_id, organization_id, name, display_order)
-             VALUES ($1, $2, $3, $4)
-             ON CONFLICT (category_id, name) DO UPDATE SET display_order = EXCLUDED.display_order`,
-            [categoryId, orgId, name, i]
+            'DELETE FROM sub_categories WHERE category_id = $1 AND organization_id = $2',
+            [categoryId, orgId]
         );
+        for (let i = 0; i < names.length; i++) {
+            const name = names[i].trim();
+            if (!name) continue;
+            await db.execute(
+                `INSERT INTO sub_categories (category_id, organization_id, name, display_order)
+                 VALUES ($1, $2, $3, $4)
+                 ON CONFLICT (category_id, name) DO UPDATE SET display_order = EXCLUDED.display_order`,
+                [categoryId, orgId, name, i]
+            );
+        }
+    } catch (e: any) {
+        console.warn('[syncSubCategories] sub_categories table may not exist yet:', e.message);
     }
 }
 
 export async function GET(req: NextRequest) {
+    await ensureSubCategoriesTable();
     try {
         const session = await getSession();
         if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -64,6 +105,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+    await ensureSubCategoriesTable();
     try {
         const session = await getSession();
         if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -97,6 +139,7 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PUT(req: NextRequest) {
+    await ensureSubCategoriesTable();
     try {
         const session = await getSession();
         if (!session || session.role !== 'admin') return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
