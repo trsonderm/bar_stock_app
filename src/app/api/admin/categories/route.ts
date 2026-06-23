@@ -50,7 +50,13 @@ export async function GET(req: NextRequest) {
         const session = await getSession();
         if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-        const categories = await fetchCategoriesForOrg(session.organizationId);
+        const { searchParams } = new URL(req.url);
+        let orgId = session.organizationId;
+        if (session.isSuperAdmin && searchParams.get('orgId')) {
+            orgId = parseInt(searchParams.get('orgId') as string, 10);
+        }
+
+        const categories = await fetchCategoriesForOrg(orgId);
         return NextResponse.json({ categories });
     } catch (e) {
         return NextResponse.json({ error: 'Internal Error' }, { status: 500 });

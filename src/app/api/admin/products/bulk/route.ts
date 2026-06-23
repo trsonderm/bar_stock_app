@@ -46,19 +46,19 @@ export async function POST(req: NextRequest) {
             setClauses.push(`secondary_type = $${pIdx++}`);
             params.push(updates.secondary_type != null ? String(updates.secondary_type) : null);
         }
-        if ('supplier_id' in updates) {
-            const sid = updates.supplier_id != null ? parseInt(String(updates.supplier_id), 10) : null;
-            setClauses.push(`supplier_id = $${pIdx++}`);
-            params.push(!isNaN(sid as number) ? sid : null);
-        }
         if ('global_supplier' in updates) {
             setClauses.push(`supplier = $${pIdx++}`);
             params.push(updates.global_supplier != null ? String(updates.global_supplier) : null);
         }
 
         const hasLocationUpdate = 'assigned_locations' in updates && Array.isArray(updates.assigned_locations);
+        const hasSupplierUpdate = 'supplier_id' in updates;
+        const newSupplierId = hasSupplierUpdate
+            ? (updates.supplier_id != null ? parseInt(String(updates.supplier_id), 10) : null)
+            : undefined;
+        const validSupplierId = newSupplierId != null && !isNaN(newSupplierId) ? newSupplierId : null;
 
-        if (setClauses.length === 0 && !hasLocationUpdate) {
+        if (setClauses.length === 0 && !hasLocationUpdate && !hasSupplierUpdate) {
             return NextResponse.json({ error: 'No updates specified' }, { status: 400 });
         }
 
@@ -68,6 +68,30 @@ export async function POST(req: NextRequest) {
                 `UPDATE items SET ${setClauses.join(', ')} WHERE id = ANY($${pIdx}::int[]) AND organization_id = $${pIdx + 1}`,
                 params
             );
+        }
+
+        // Supplier is stored in item_suppliers, not as a column on items
+        if (hasSupplierUpdate) {
+            if (validSupplierId) {
+                await db.execute(
+                    `UPDATE item_suppliers SET is_preferred = false WHERE item_id = ANY($1::int[])`,
+                    [item_ids]
+                );
+                for (const itemId of item_ids) {
+                    await db.execute(
+                        `INSERT INTO item_suppliers (item_id, supplier_id, is_preferred)
+                         VALUES ($1, $2, true)
+                         ON CONFLICT (item_id, supplier_id) DO UPDATE SET is_preferred = true`,
+                        [itemId, validSupplierId]
+                    );
+                }
+            } else {
+                // Clearing supplier — remove preferred flag for all selected items
+                await db.execute(
+                    `UPDATE item_suppliers SET is_preferred = false WHERE item_id = ANY($1::int[])`,
+                    [item_ids]
+                );
+            }
         }
 
         if (hasLocationUpdate) {

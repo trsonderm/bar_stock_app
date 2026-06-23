@@ -16,6 +16,10 @@ async function ensureDisplayColumns() {
     await db.execute(`ALTER TABLE items ADD COLUMN IF NOT EXISTS size_prices JSONB DEFAULT '{}'::jsonb`).catch(() => {});
     await db.execute(`ALTER TABLE items ADD COLUMN IF NOT EXISTS package_prices JSONB DEFAULT '{}'::jsonb`).catch(() => {});
     await db.execute(`ALTER TABLE items ADD COLUMN IF NOT EXISTS package_band_prices JSONB DEFAULT '{}'::jsonb`).catch(() => {});
+    // Ensure unique indexes exist — CREATE TABLE IF NOT EXISTS skips constraints when table already
+    // exists, so restored databases may be missing these, causing ON CONFLICT clauses to fail.
+    await db.execute(`CREATE UNIQUE INDEX IF NOT EXISTS item_suppliers_item_supplier_uniq ON item_suppliers(item_id, supplier_id)`).catch(() => {});
+    await db.execute(`CREATE UNIQUE INDEX IF NOT EXISTS item_location_suppliers_item_location_uniq ON item_location_suppliers(item_id, location_id)`).catch(() => {});
     _displayColsEnsured = true;
 }
 
@@ -222,11 +226,15 @@ export async function POST(req: NextRequest) {
 
         // Auto-link Supplier if provided
         if (supplier_id) {
-            await db.execute(`
-                INSERT INTO item_suppliers(item_id, supplier_id, is_preferred)
-                VALUES($1, $2, true)
-                ON CONFLICT(item_id, supplier_id) DO UPDATE SET is_preferred = true
-            `, [itemId, supplier_id]);
+            try {
+                await db.execute(`
+                    INSERT INTO item_suppliers(item_id, supplier_id, is_preferred)
+                    VALUES($1, $2, true)
+                    ON CONFLICT(item_id, supplier_id) DO UPDATE SET is_preferred = true
+                `, [itemId, supplier_id]);
+            } catch (e) {
+                console.warn('[POST] item_suppliers insert failed (constraint may not exist yet):', (e as any).message);
+            }
         }
 
         // Determine locations to init inventory
