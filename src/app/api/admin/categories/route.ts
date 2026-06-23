@@ -19,6 +19,22 @@ async function ensureSubCategoriesTable() {
     `).catch(() => {});
     await db.execute(`CREATE INDEX IF NOT EXISTS sub_categories_category_idx ON sub_categories(category_id)`).catch(() => {});
     await db.execute(`CREATE INDEX IF NOT EXISTS sub_categories_org_idx ON sub_categories(organization_id)`).catch(() => {});
+    // Migrate any existing JSONB sub_categories data into the relational table.
+    // Safe to re-run — ON CONFLICT DO NOTHING skips already-migrated rows.
+    await db.execute(`
+        INSERT INTO sub_categories (category_id, organization_id, name, display_order)
+        SELECT
+            c.id,
+            c.organization_id,
+            elem.value,
+            (elem.ord - 1)::int
+        FROM categories c,
+             jsonb_array_elements_text(c.sub_categories) WITH ORDINALITY AS elem(value, ord)
+        WHERE c.sub_categories IS NOT NULL
+          AND jsonb_typeof(c.sub_categories) = 'array'
+          AND jsonb_array_length(c.sub_categories) > 0
+        ON CONFLICT (category_id, name) DO NOTHING
+    `).catch(() => {});
     _subCatsEnsured = true;
 }
 

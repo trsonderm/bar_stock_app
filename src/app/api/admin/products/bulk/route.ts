@@ -34,6 +34,27 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: `${owned.length}/${item_ids.length} items found — some may not belong to this org` }, { status: 404 });
         }
 
+        // Ensure the unique index exists so ON CONFLICT works on restored databases
+        await db.execute(`CREATE UNIQUE INDEX IF NOT EXISTS item_suppliers_item_supplier_uniq ON item_suppliers(item_id, supplier_id)`).catch(() => {});
+
+        const hasLocationUpdate = 'assigned_locations' in updates && Array.isArray(updates.assigned_locations);
+        const hasSupplierUpdate = 'supplier_id' in updates;
+        const newSupplierId = hasSupplierUpdate
+            ? (updates.supplier_id != null ? parseInt(String(updates.supplier_id), 10) : null)
+            : undefined;
+        const validSupplierId = newSupplierId != null && !isNaN(newSupplierId) ? newSupplierId : null;
+
+        if (!hasLocationUpdate && !hasSupplierUpdate && !('type' in updates) && !('secondary_type' in updates) && !('global_supplier' in updates)) {
+            return NextResponse.json({ error: 'No updates specified' }, { status: 400 });
+        }
+
+        // Look up supplier name so items.supplier text stays in sync with item_suppliers
+        let supplierName: string | null = null;
+        if (hasSupplierUpdate && validSupplierId) {
+            const row = await db.one(`SELECT name FROM suppliers WHERE id = $1 AND organization_id = $2`, [validSupplierId, orgId]);
+            supplierName = row?.name ?? null;
+        }
+
         const setClauses: string[] = [];
         const params: any[] = [];
         let pIdx = 1;
@@ -49,17 +70,10 @@ export async function POST(req: NextRequest) {
         if ('global_supplier' in updates) {
             setClauses.push(`supplier = $${pIdx++}`);
             params.push(updates.global_supplier != null ? String(updates.global_supplier) : null);
-        }
-
-        const hasLocationUpdate = 'assigned_locations' in updates && Array.isArray(updates.assigned_locations);
-        const hasSupplierUpdate = 'supplier_id' in updates;
-        const newSupplierId = hasSupplierUpdate
-            ? (updates.supplier_id != null ? parseInt(String(updates.supplier_id), 10) : null)
-            : undefined;
-        const validSupplierId = newSupplierId != null && !isNaN(newSupplierId) ? newSupplierId : null;
-
-        if (setClauses.length === 0 && !hasLocationUpdate && !hasSupplierUpdate) {
-            return NextResponse.json({ error: 'No updates specified' }, { status: 400 });
+        } else if (hasSupplierUpdate) {
+            // Keep items.supplier text in sync with the linked supplier
+            setClauses.push(`supplier = $${pIdx++}`);
+            params.push(supplierName);
         }
 
         if (setClauses.length > 0) {
@@ -70,27 +84,25 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        // Supplier is stored in item_suppliers, not as a column on items
+        // Supplier relationship lives in item_suppliers, not as a column on items
         if (hasSupplierUpdate) {
-            if (validSupplierId) {
+            try {
                 await db.execute(
                     `UPDATE item_suppliers SET is_preferred = false WHERE item_id = ANY($1::int[])`,
                     [item_ids]
                 );
-                for (const itemId of item_ids) {
-                    await db.execute(
-                        `INSERT INTO item_suppliers (item_id, supplier_id, is_preferred)
-                         VALUES ($1, $2, true)
-                         ON CONFLICT (item_id, supplier_id) DO UPDATE SET is_preferred = true`,
-                        [itemId, validSupplierId]
-                    );
+                if (validSupplierId) {
+                    for (const itemId of item_ids) {
+                        await db.execute(
+                            `INSERT INTO item_suppliers (item_id, supplier_id, is_preferred)
+                             VALUES ($1, $2, true)
+                             ON CONFLICT (item_id, supplier_id) DO UPDATE SET is_preferred = true`,
+                            [itemId, validSupplierId]
+                        );
+                    }
                 }
-            } else {
-                // Clearing supplier — remove preferred flag for all selected items
-                await db.execute(
-                    `UPDATE item_suppliers SET is_preferred = false WHERE item_id = ANY($1::int[])`,
-                    [item_ids]
-                );
+            } catch (e: any) {
+                console.warn('[bulk] item_suppliers update failed:', e.message);
             }
         }
 
