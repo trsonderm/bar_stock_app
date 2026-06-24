@@ -445,13 +445,41 @@ export default function SettingsClient() {
                                     type="file"
                                     accept="image/*"
                                     style={{ display: 'none' }}
-                                    onChange={e => {
+                                    onChange={async e => {
                                         const f = e.target.files?.[0];
                                         if (!f) return;
-                                        setLogoFile(f);
+                                        if (f.size > 3 * 1024 * 1024) {
+                                            alert('Image is too large. Please upload a file under 3 MB.');
+                                            e.target.value = '';
+                                            return;
+                                        }
+                                        // Resize client-side so the upload stays well under server limits
+                                        const resized = await new Promise<File>((resolve, reject) => {
+                                            const img = new Image();
+                                            const url = URL.createObjectURL(f);
+                                            img.onload = () => {
+                                                URL.revokeObjectURL(url);
+                                                const MAX = 1200;
+                                                let w = img.width, h = img.height;
+                                                if (w > MAX || h > MAX) {
+                                                    if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
+                                                    else { w = Math.round(w * MAX / h); h = MAX; }
+                                                }
+                                                const canvas = document.createElement('canvas');
+                                                canvas.width = w; canvas.height = h;
+                                                canvas.getContext('2d')!.drawImage(img, 0, 0, w, h);
+                                                canvas.toBlob(blob => {
+                                                    if (!blob) return reject(new Error('resize failed'));
+                                                    resolve(new File([blob], f.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' }));
+                                                }, 'image/jpeg', 0.85);
+                                            };
+                                            img.onerror = reject;
+                                            img.src = url;
+                                        });
+                                        setLogoFile(resized);
                                         const reader = new FileReader();
                                         reader.onload = ev => setLogoPreview(ev.target?.result as string);
-                                        reader.readAsDataURL(f);
+                                        reader.readAsDataURL(resized);
                                     }}
                                 />
                                 <button

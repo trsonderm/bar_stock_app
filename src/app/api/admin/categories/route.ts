@@ -114,8 +114,9 @@ async function syncSubCategories(categoryId: number, orgId: number, names: strin
     const validNames = names.map(n => n.trim()).filter(n => n);
 
     // Always update the JSONB column — this is the source of truth for reads.
+    // No explicit ::jsonb cast; PostgreSQL infers the target type from the column definition.
     await db.execute(
-        `UPDATE categories SET sub_categories = $1::jsonb WHERE id = $2 AND organization_id = $3`,
+        `UPDATE categories SET sub_categories = $1 WHERE id = $2 AND organization_id = $3`,
         [JSON.stringify(validNames), categoryId, orgId]
     );
 
@@ -157,8 +158,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-    await ensureSubCategoriesTable();
     try {
+        await ensureSubCategoriesTable();
         const session = await getSession();
         if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
@@ -191,8 +192,8 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PUT(req: NextRequest) {
-    await ensureSubCategoriesTable();
     try {
+        await ensureSubCategoriesTable();
         const session = await getSession();
         if (!session || session.role !== 'admin') return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
 
