@@ -7,6 +7,8 @@ import { getSession } from '@/lib/auth';
 let _subCatsEnsured = false;
 async function ensureSubCategoriesTable() {
     if (_subCatsEnsured) return;
+    // Add the JSONB column to categories if it was missing (old databases).
+    await db.execute(`ALTER TABLE categories ADD COLUMN IF NOT EXISTS sub_categories JSONB`).catch(() => {});
     await db.execute(`
         CREATE TABLE IF NOT EXISTS sub_categories (
             id              SERIAL PRIMARY KEY,

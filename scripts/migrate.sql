@@ -1064,4 +1064,12 @@ DO $$ BEGIN
   ALTER TABLE items ADD COLUMN package_band_prices JSONB DEFAULT '{}'::jsonb;
 EXCEPTION WHEN duplicate_column THEN NULL; END $$;
 
+-- =========================================================
+-- 60. Categories — sub_categories JSONB column
+-- (absent on databases created before this column was in schema.sql)
+-- =========================================================
+DO $$ BEGIN
+  ALTER TABLE categories ADD COLUMN sub_categories JSONB;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
 COMMIT;
