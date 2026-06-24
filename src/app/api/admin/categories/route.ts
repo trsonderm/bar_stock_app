@@ -55,7 +55,16 @@ async function ensureSubCategoriesTable() {
 async function fetchCategoriesForOrg(orgId: number) {
     // Use a distinct alias for the aggregate so it never collides with the
     // legacy JSONB c.sub_categories column that c.* expands to include.
-    const dedupe = (rows: any[], subKey: string) => {
+    const toSubCats = (c: any): string[] => {
+        // Prefer relational table data; fall back to the JSONB column so
+        // existing data shows without requiring a migration to have run.
+        const relational: string[] = Array.isArray(c.sc_relational) ? c.sc_relational : [];
+        const jsonb: string[] = Array.isArray(c.sub_categories) ? c.sub_categories : [];
+        const source = relational.length > 0 ? relational : jsonb;
+        return [...new Set<string>(source.filter(s => typeof s === 'string' && s.trim()))];
+    };
+
+    const buildRows = (rows: any[]) => {
         const seen = new Set<string>();
         return rows
             .filter((c: any) => {
@@ -68,9 +77,7 @@ async function fetchCategoriesForOrg(orgId: number) {
                 stock_options: typeof c.stock_options === 'string'
                     ? JSON.parse(c.stock_options)
                     : (c.stock_options || [1]),
-                sub_categories: Array.isArray(c[subKey])
-                    ? [...new Set<string>(c[subKey])]
-                    : [],
+                sub_categories: toSubCats(c),
             }));
     };
 
@@ -89,38 +96,44 @@ async function fetchCategoriesForOrg(orgId: number) {
              ORDER BY c.name ASC`,
             [orgId]
         );
-        return dedupe(rows, 'sc_relational');
+        return buildRows(rows);
     } catch (e: any) {
         console.warn('[fetchCategoriesForOrg] sub_categories join failed, using fallback:', e.message);
         const rows = await db.query(
             `SELECT * FROM categories WHERE organization_id = $1 ORDER BY name ASC`,
             [orgId]
         );
-        // In fallback, read sub_categories from the JSONB column if present
-        return dedupe(rows, 'sub_categories');
+        return buildRows(rows);
     }
 }
 
-// ── Sync sub_categories rows for a category (replace all) ──
+// ── Sync sub_categories for a category ──
+// Primary write: JSONB column on categories (always exists, no table dependency).
+// Secondary write: relational sub_categories table (best-effort, for future queries).
 async function syncSubCategories(categoryId: number, orgId: number, names: string[]) {
+    const validNames = names.map(n => n.trim()).filter(n => n);
+
+    // Always update the JSONB column — this is the source of truth for reads.
+    await db.execute(
+        `UPDATE categories SET sub_categories = $1::jsonb WHERE id = $2 AND organization_id = $3`,
+        [JSON.stringify(validNames), categoryId, orgId]
+    );
+
+    // Best-effort sync to relational table (non-fatal if table or constraint missing).
     try {
         await db.execute(
             'DELETE FROM sub_categories WHERE category_id = $1 AND organization_id = $2',
             [categoryId, orgId]
         );
-        for (let i = 0; i < names.length; i++) {
-            const name = names[i].trim();
-            if (!name) continue;
-            // No ON CONFLICT needed — DELETE above clears all rows for this
-            // category first, so there is nothing to conflict with.
+        for (let i = 0; i < validNames.length; i++) {
             await db.execute(
                 `INSERT INTO sub_categories (category_id, organization_id, name, display_order)
                  VALUES ($1, $2, $3, $4)`,
-                [categoryId, orgId, name, i]
+                [categoryId, orgId, validNames[i], i]
             );
         }
     } catch (e: any) {
-        console.warn('[syncSubCategories] sub_categories table may not exist yet:', e.message);
+        console.warn('[syncSubCategories] relational sync failed (non-fatal):', e.message);
     }
 }
 
