@@ -34,8 +34,9 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: `${owned.length}/${item_ids.length} items found — some may not belong to this org` }, { status: 404 });
         }
 
-        // Ensure the unique index exists so ON CONFLICT works on restored databases
+        // Ensure unique indexes exist so ON CONFLICT clauses work on restored databases
         await db.execute(`CREATE UNIQUE INDEX IF NOT EXISTS item_suppliers_item_supplier_uniq ON item_suppliers(item_id, supplier_id)`).catch(() => {});
+        await db.execute(`CREATE UNIQUE INDEX IF NOT EXISTS inventory_item_location_uniq ON inventory(item_id, location_id)`).catch(() => {});
 
         const hasLocationUpdate = 'assigned_locations' in updates && Array.isArray(updates.assigned_locations);
         const hasSupplierUpdate = 'supplier_id' in updates;

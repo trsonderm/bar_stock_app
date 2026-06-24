@@ -20,6 +20,7 @@ async function ensureDisplayColumns() {
     // exists, so restored databases may be missing these, causing ON CONFLICT clauses to fail.
     await db.execute(`CREATE UNIQUE INDEX IF NOT EXISTS item_suppliers_item_supplier_uniq ON item_suppliers(item_id, supplier_id)`).catch(() => {});
     await db.execute(`CREATE UNIQUE INDEX IF NOT EXISTS item_location_suppliers_item_location_uniq ON item_location_suppliers(item_id, location_id)`).catch(() => {});
+    await db.execute(`CREATE UNIQUE INDEX IF NOT EXISTS inventory_item_location_uniq ON inventory(item_id, location_id)`).catch(() => {});
     _displayColsEnsured = true;
 }
 
