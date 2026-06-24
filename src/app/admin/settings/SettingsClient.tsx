@@ -455,7 +455,7 @@ export default function SettingsClient() {
                                         }
                                         // Resize client-side so the upload stays well under server limits
                                         const resized = await new Promise<File>((resolve, reject) => {
-                                            const img = new Image();
+                                            const img = document.createElement('img') as HTMLImageElement;
                                             const url = URL.createObjectURL(f);
                                             img.onload = () => {
                                                 URL.revokeObjectURL(url);
