@@ -151,7 +151,7 @@ export default function CategoriesClient() {
         setSubCats(updated);
         setNewSubCat('');
         if (editingId) {
-            await fetch('/api/admin/categories', {
+            const res = await fetch('/api/admin/categories', {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -161,7 +161,13 @@ export default function CategoriesClient() {
                     sub_categories: updated,
                     enable_low_stock_reporting: enableReporting,
                 }),
-            }).catch(() => {});
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                alert(err.error || 'Failed to save sub-category');
+                setSubCats(subCats); // revert optimistic update
+                return;
+            }
             fetchCategories();
         }
     };

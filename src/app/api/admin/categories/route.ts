@@ -184,10 +184,11 @@ export async function POST(req: NextRequest) {
 
         return NextResponse.json({ success: true, id: res.id });
     } catch (e: any) {
+        console.error('[categories POST]', e);
         if (e.message?.includes('unique constraint') || e.message?.includes('UNIQUE')) {
             return NextResponse.json({ error: 'Category already exists' }, { status: 400 });
         }
-        return NextResponse.json({ error: 'Internal Error' }, { status: 500 });
+        return NextResponse.json({ error: e.message || 'Internal Error' }, { status: 500 });
     }
 }
 
@@ -195,7 +196,7 @@ export async function PUT(req: NextRequest) {
     try {
         await ensureSubCategoriesTable();
         const session = await getSession();
-        if (!session || session.role !== 'admin') return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+        if (!session || (session.role !== 'admin' && !session.isSuperAdmin)) return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
 
         const { id, name, stock_options, sub_categories, enable_low_stock_reporting } = await req.json();
         if (!id || !name) return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
@@ -212,10 +213,11 @@ export async function PUT(req: NextRequest) {
 
         return NextResponse.json({ success: true });
     } catch (e: any) {
+        console.error('[categories PUT]', e);
         if (e.message?.includes('unique constraint') || e.message?.includes('UNIQUE')) {
             return NextResponse.json({ error: 'Category name already exists' }, { status: 400 });
         }
-        return NextResponse.json({ error: 'Internal Error' }, { status: 500 });
+        return NextResponse.json({ error: e.message || 'Internal Error' }, { status: 500 });
     }
 }
 
