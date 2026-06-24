@@ -29,7 +29,7 @@ async function ensureSubCategoriesTable() {
     `).catch(() => {});
     await db.execute(`CREATE UNIQUE INDEX IF NOT EXISTS sub_categories_category_name_uniq ON sub_categories(category_id, name)`).catch(() => {});
     // Migrate any existing JSONB sub_categories data into the relational table.
-    // Safe to re-run — ON CONFLICT DO NOTHING skips already-migrated rows.
+    // Uses NOT EXISTS instead of ON CONFLICT to avoid requiring a unique constraint.
     await db.execute(`
         INSERT INTO sub_categories (category_id, organization_id, name, display_order)
         SELECT
@@ -43,7 +43,10 @@ async function ensureSubCategoriesTable() {
           AND jsonb_typeof(c.sub_categories) = 'array'
           AND jsonb_array_length(c.sub_categories) > 0
           AND elem.value <> ''
-        ON CONFLICT (category_id, name) DO NOTHING
+          AND NOT EXISTS (
+              SELECT 1 FROM sub_categories sc2
+              WHERE sc2.category_id = c.id AND sc2.name = elem.value
+          )
     `).catch(() => {});
     _subCatsEnsured = true;
 }
@@ -108,10 +111,11 @@ async function syncSubCategories(categoryId: number, orgId: number, names: strin
         for (let i = 0; i < names.length; i++) {
             const name = names[i].trim();
             if (!name) continue;
+            // No ON CONFLICT needed — DELETE above clears all rows for this
+            // category first, so there is nothing to conflict with.
             await db.execute(
                 `INSERT INTO sub_categories (category_id, organization_id, name, display_order)
-                 VALUES ($1, $2, $3, $4)
-                 ON CONFLICT (category_id, name) DO UPDATE SET display_order = EXCLUDED.display_order`,
+                 VALUES ($1, $2, $3, $4)`,
                 [categoryId, orgId, name, i]
             );
         }
