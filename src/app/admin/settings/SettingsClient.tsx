@@ -377,12 +377,18 @@ export default function SettingsClient() {
     const handleBrandingSave = async () => {
         setBrandingSaving(true);
         try {
-            const fd = new FormData();
-            if (logoFile) fd.append('logo', logoFile);
-            fd.append('brand_color', branding.brand_color);
-            fd.append('brand_name', branding.brand_name);
-            fd.append('logo_position', branding.logo_position);
-            const res = await fetch('/api/admin/branding', { method: 'POST', body: fd });
+            // Send the logo as a data URL stored directly in the DB — no file system needed.
+            const payload: any = {
+                brand_color: branding.brand_color,
+                brand_name: branding.brand_name,
+                logo_position: branding.logo_position,
+            };
+            if (logoPreview) payload.logo_data_url = logoPreview;
+            const res = await fetch('/api/admin/branding', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
             if (res.ok) {
                 const d = await res.json();
                 setBranding(prev => ({ ...prev, logo_url: d.settings?.logo_url ?? prev.logo_url }));

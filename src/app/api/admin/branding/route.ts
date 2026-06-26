@@ -48,6 +48,8 @@ export async function POST(req: NextRequest) {
             if (body.brand_name !== undefined) currentSettings.brand_name = body.brand_name;
             if (body.logo_position !== undefined) currentSettings.logo_position = body.logo_position;
             if (body.remove_logo) currentSettings.logo_url = null;
+            // Logo stored as a data URL — no file system or volume mount required.
+            if (body.logo_data_url) currentSettings.logo_url = body.logo_data_url;
         }
 
         await db.execute('UPDATE organizations SET settings = $1 WHERE id = $2', [currentSettings, session.organizationId]);
