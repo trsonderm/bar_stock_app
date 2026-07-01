@@ -3,15 +3,7 @@ import { pool, db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
 import { sendEmail, enqueuePendingEmail } from '@/lib/mail';
 
-let _adjustEnsured = false;
-async function ensureInventoryIndex() {
-    if (_adjustEnsured) return;
-    await db.execute(`CREATE UNIQUE INDEX IF NOT EXISTS inventory_item_location_uniq ON inventory(item_id, location_id)`).catch(() => {});
-    _adjustEnsured = true;
-}
-
 export async function POST(req: NextRequest) {
-    await ensureInventoryIndex();
     try {
         const session = await getSession();
         if (!session || !session.organizationId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -76,16 +68,16 @@ export async function POST(req: NextRequest) {
                 targetLocationId = anyLoc.rows[0].id;
             }
 
-            // Upsert inventory row — ON CONFLICT DO NOTHING avoids race condition on rapid taps
+            // Insert a zero-quantity row if none exists yet — no unique index required
             await client.query(
                 `INSERT INTO inventory (item_id, location_id, quantity, organization_id)
-                 VALUES ($1, $2, 0, $3)
-                 ON CONFLICT (item_id, location_id) DO NOTHING`,
+                 SELECT $1, $2, 0, $3
+                 WHERE NOT EXISTS (
+                     SELECT 1 FROM inventory WHERE item_id = $1 AND location_id = $2
+                 )`,
                 [itemId, targetLocationId, organizationId]
             );
 
-            // Update quantity — do NOT filter by organization_id; UNIQUE(item_id, location_id)
-            // guarantees there is exactly one row to update regardless of which org owns it
             const updateRes = await client.query(
                 `UPDATE inventory
                  SET quantity = GREATEST(0, quantity + $1), organization_id = $4
