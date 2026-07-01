@@ -19,6 +19,21 @@ export default function StockControls({ item, options, canAddStock, canSubtractS
     const [customAmount, setCustomAmount] = useState<string>('');
     const [useOrderUnit, setUseOrderUnit] = useState(false);
 
+    // Parse order_size into labelled entries, e.g. [{label:'Unit',amount:1},{label:'Case',amount:24}]
+    const orderSizes: { label: string; amount: number }[] = (() => {
+        let os = item.order_size;
+        if (typeof os === 'string') { try { os = JSON.parse(os); } catch { return []; } }
+        if (!Array.isArray(os)) return [];
+        return os.filter((e: any) => e && typeof e === 'object' && e.label && Number(e.amount) > 0)
+                  .map((e: any) => ({ label: String(e.label), amount: Number(e.amount) }));
+    })();
+
+    // Return the label for a given amount, if one is defined in order_size
+    const labelFor = (amt: number): string | null => {
+        const match = orderSizes.find(s => s.amount === amt);
+        return match?.label ?? null;
+    };
+
     // Order unit info from item (order_unit_size=units per case, order_unit_label=e.g. "case")
     const orderUnitSize: number = item.order_unit_size && Number(item.order_unit_size) > 1 ? Number(item.order_unit_size) : 0;
     const orderUnitLabel: string = item.order_unit_label || 'case';
@@ -26,12 +41,8 @@ export default function StockControls({ item, options, canAddStock, canSubtractS
     // If order_unit_size not set, also try first entry of order_size JSON array
     let effectiveOrderQty = orderUnitSize;
     if (!effectiveOrderQty) {
-        let orderSizeArr = item.order_size;
-        if (typeof orderSizeArr === 'string') { try { orderSizeArr = JSON.parse(orderSizeArr); } catch { } }
-        if (Array.isArray(orderSizeArr) && orderSizeArr.length > 0) {
-            const first = Number(orderSizeArr[0]);
-            if (first > 1) effectiveOrderQty = first;
-        }
+        const largest = orderSizes.filter(s => s.amount > 1).sort((a, b) => b.amount - a.amount)[0];
+        if (largest) effectiveOrderQty = largest.amount;
     }
 
     const hasOrderUnit = effectiveOrderQty > 1;
@@ -52,25 +63,37 @@ export default function StockControls({ item, options, canAddStock, canSubtractS
 
     return (
         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5, justifyContent: 'flex-end', width: '100%', alignItems: 'center' }}>
-            {options.sort((a, b) => a - b).map((amt) => (
-                <Box key={amt} sx={{ display: 'flex', alignItems: 'center', bgcolor: 'background.paper', borderRadius: 1.5, border: '1px solid', borderColor: 'divider', overflow: 'hidden' }}>
-                    <Typography variant="body2" sx={{ color: 'text.secondary', px: 1.5, fontWeight: 'bold', fontSize: '0.9rem' }}>{amt}</Typography>
-                    <IconButton
-                        disabled={!canSubtractStock}
-                        onClick={() => onAdjust(item.id, -amt)}
-                        sx={{ borderRadius: 0, borderLeft: '1px solid', borderColor: 'divider', p: 1.25, color: 'error.main', '&:hover': { bgcolor: 'rgba(239,68,68,0.12)' } }}
-                    >
-                        <RemoveIcon />
-                    </IconButton>
-                    <IconButton
-                        disabled={!canAddStock}
-                        onClick={() => onAdjust(item.id, amt)}
-                        sx={{ borderRadius: 0, borderLeft: '1px solid', borderColor: 'divider', p: 1.25, color: 'success.main', '&:hover': { bgcolor: 'rgba(16,185,129,0.12)' } }}
-                    >
-                        <AddIcon />
-                    </IconButton>
-                </Box>
-            ))}
+            {options.sort((a, b) => a - b).map((amt) => {
+                const label = labelFor(amt);
+                return (
+                    <Box key={amt} sx={{ display: 'flex', alignItems: 'center', bgcolor: 'background.paper', borderRadius: 1.5, border: '1px solid', borderColor: 'divider', overflow: 'hidden' }}>
+                        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', px: 1.5, minWidth: 36 }}>
+                            {label && (
+                                <Typography variant="caption" sx={{ color: 'text.disabled', fontSize: '0.6rem', lineHeight: 1, mb: 0.25, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                                    {label}
+                                </Typography>
+                            )}
+                            <Typography variant="body2" sx={{ color: 'text.secondary', fontWeight: 'bold', fontSize: '0.9rem', lineHeight: 1 }}>
+                                {amt}
+                            </Typography>
+                        </Box>
+                        <IconButton
+                            disabled={!canSubtractStock}
+                            onClick={() => onAdjust(item.id, -amt)}
+                            sx={{ borderRadius: 0, borderLeft: '1px solid', borderColor: 'divider', p: 1.25, color: 'error.main', '&:hover': { bgcolor: 'rgba(239,68,68,0.12)' } }}
+                        >
+                            <RemoveIcon />
+                        </IconButton>
+                        <IconButton
+                            disabled={!canAddStock}
+                            onClick={() => onAdjust(item.id, amt)}
+                            sx={{ borderRadius: 0, borderLeft: '1px solid', borderColor: 'divider', p: 1.25, color: 'success.main', '&:hover': { bgcolor: 'rgba(16,185,129,0.12)' } }}
+                        >
+                            <AddIcon />
+                        </IconButton>
+                    </Box>
+                );
+            })}
 
             {allowCustom && (
                 <Box sx={{ display: 'flex', alignItems: 'center', borderLeft: '1px solid', borderColor: 'divider', pl: 1.5, gap: 1 }}>
