@@ -139,15 +139,20 @@ function LoginContent() {
 
   const [showQuickLogin, setShowQuickLogin] = useState(false);
   const [ssoProviders, setSsoProviders] = useState<string[]>([]);
+  const [isRegisteredDevice, setIsRegisteredDevice] = useState(false);
 
   useEffect(() => {
-    fetch('/api/system/settings', { cache: 'no-store' })
-      .then(res => res.json())
-      .then(data => {
-        setShowQuickLogin(data.quick_login_enabled);
-        setSsoProviders(data.sso_providers || []);
-      })
-      .catch(err => console.error('Quick Login Check Failed:', err));
+    Promise.all([
+      fetch('/api/system/settings', { cache: 'no-store' }).then(r => r.json()).catch(() => ({})),
+      fetch('/api/auth/check-station', { cache: 'no-store' }).then(r => r.json()).catch(() => ({ isRegisteredDevice: false })),
+    ]).then(([settings, station]) => {
+      setShowQuickLogin(settings.quick_login_enabled);
+      setSsoProviders(settings.sso_providers || []);
+      if (station.isRegisteredDevice) {
+        setIsRegisteredDevice(true);
+        setMode('pin');
+      }
+    });
   }, []);
 
   return (
@@ -279,14 +284,17 @@ function LoginContent() {
         </div>
       )}
 
-      <div className={styles.footer}>
-        <button
-          onClick={() => { setMode(mode === 'pin' ? 'email' : 'pin'); setError(''); }}
-          className={styles.switchBtn}
-        >
-          {mode === 'pin' ? 'Switch to Admin Email Login' : 'Switch to Staff PIN Login'}
-        </button>
-      </div>
+      {!isRegisteredDevice && (
+        <div className={styles.footer}>
+          <button
+            type="button"
+            onClick={() => { setMode(mode === 'pin' ? 'email' : 'pin'); setError(''); }}
+            className={styles.switchBtn}
+          >
+            {mode === 'pin' ? 'Switch to Admin Email Login' : 'Switch to Staff PIN Login'}
+          </button>
+        </div>
+      )}
 
       {showQuickLogin && (
         <div style={{ marginTop: '2rem', borderTop: '1px solid #374151', paddingTop: '1rem' }}>
