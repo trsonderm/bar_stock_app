@@ -3,7 +3,15 @@ import { pool, db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
 import { sendEmail, enqueuePendingEmail } from '@/lib/mail';
 
+let _adjustEnsured = false;
+async function ensureInventoryIndex() {
+    if (_adjustEnsured) return;
+    await db.execute(`CREATE UNIQUE INDEX IF NOT EXISTS inventory_item_location_uniq ON inventory(item_id, location_id)`).catch(() => {});
+    _adjustEnsured = true;
+}
+
 export async function POST(req: NextRequest) {
+    await ensureInventoryIndex();
     try {
         const session = await getSession();
         if (!session || !session.organizationId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

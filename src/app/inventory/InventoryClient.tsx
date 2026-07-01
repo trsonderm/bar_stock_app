@@ -293,19 +293,28 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
         if (entries.length === 0) { setShowSubmitModal(false); return; }
         setSubmitting(true);
         try {
-            await Promise.all(entries.map(([idStr, { netChange }]) =>
-                fetch('/api/inventory/adjust', {
+            const results = await Promise.all(entries.map(async ([idStr, { netChange }]) => {
+                const res = await fetch('/api/inventory/adjust', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ itemId: parseInt(idStr), change: netChange }),
-                })
-            ));
+                });
+                if (!res.ok) {
+                    const body = await res.json().catch(() => ({}));
+                    return { ok: false, itemId: idStr, error: body.error || `HTTP ${res.status}` };
+                }
+                return { ok: true, itemId: idStr };
+            }));
+            const failures = results.filter(r => !r.ok);
+            if (failures.length > 0) {
+                alert(`${failures.length} change(s) failed to save:\n${failures.map(f => `• Item ${f.itemId}: ${f.error}`).join('\n')}`);
+            }
             setPendingChanges({});
             setShowSubmitModal(false);
             fetchItems();
             fetchActivity();
-        } catch {
-            alert('Some changes failed to save. Please try again.');
+        } catch (e: any) {
+            alert('Failed to save changes: ' + (e?.message || 'network error'));
         } finally {
             setSubmitting(false);
         }
