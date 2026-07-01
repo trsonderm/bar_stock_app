@@ -1093,6 +1093,16 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
                                             }
                                         }
                                         if (options.length === 0) options = [1];
+                                        // Also include amounts from the product's order sizes (Unit, Pack, Case, etc.)
+                                        // so those buttons always appear regardless of stock_options config.
+                                        let orderSizeArr = item.order_size;
+                                        if (typeof orderSizeArr === 'string') { try { orderSizeArr = JSON.parse(orderSizeArr); } catch { orderSizeArr = []; } }
+                                        if (Array.isArray(orderSizeArr)) {
+                                            orderSizeArr.forEach((e: any) => {
+                                                const amt = typeof e === 'object' ? parseInt(e.amount) : parseInt(e);
+                                                if (!isNaN(amt) && amt > 0 && !options.includes(amt)) options.push(amt);
+                                            });
+                                        }
                                         
                                         return (
                                             <StockControls
