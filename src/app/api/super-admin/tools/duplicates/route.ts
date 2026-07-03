@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
 
-// Define the logic for different types
-const TYPES = {
+// item_names duplicate detection
+const NAME_TYPES: Record<string, { table: string; column: string; related: { table: string; fk: string }[] }> = {
     items: {
         table: 'item_names',
         column: 'name',
@@ -20,16 +20,36 @@ export async function GET(req: NextRequest) {
     if (!isSuperAdmin) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const { searchParams } = new URL(req.url);
-    const type = searchParams.get('type') as keyof typeof TYPES;
+    const type = searchParams.get('type');
     const organizationId = searchParams.get('organizationId');
 
-    if (!type || !TYPES[type]) return NextResponse.json({ error: 'Invalid type' }, { status: 400 });
     if (!organizationId) return NextResponse.json({ error: 'Org ID required' }, { status: 400 });
 
     try {
-        const config = TYPES[type];
+        // ── Inventory row duplicates (same item_id + location_id in same org) ──
+        if (type === 'inventory') {
+            const rows = await db.query(`
+                SELECT
+                    inv.item_id,
+                    i.name AS item_name,
+                    inv.location_id,
+                    l.name AS location_name,
+                    json_agg(json_build_object('id', inv.id, 'quantity', inv.quantity) ORDER BY inv.id) AS rows
+                FROM inventory inv
+                JOIN items i ON i.id = inv.item_id
+                JOIN locations l ON l.id = inv.location_id
+                WHERE inv.organization_id = $1
+                GROUP BY inv.item_id, i.name, inv.location_id, l.name
+                HAVING count(*) > 1
+                ORDER BY inv.item_id, inv.location_id
+            `, [organizationId]);
+            return NextResponse.json({ duplicates: rows });
+        }
 
-        // Find names that appear more than once (case insensitive)
+        // ── Item name duplicates ──
+        const config = NAME_TYPES[type as string];
+        if (!config) return NextResponse.json({ error: 'Invalid type' }, { status: 400 });
+
         const duplicates = await db.query(`
             SELECT lower(${config.column}) as norm_name, array_agg(id) as ids, array_agg(${config.column}) as names
             FROM ${config.table}
@@ -51,30 +71,38 @@ export async function POST(req: NextRequest) {
 
     try {
         const { type, keepId, mergeIds } = await req.json();
-        const config = TYPES[type as keyof typeof TYPES];
 
-        if (!config || !keepId || !mergeIds || !Array.isArray(mergeIds) || mergeIds.length === 0) {
+        if (!keepId || !mergeIds || !Array.isArray(mergeIds) || mergeIds.length === 0) {
             return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
         }
 
-        // Transaction
         await db.execute('BEGIN');
-
         try {
-            // 1. Update all related tables to point to keepId
-            for (const rel of config.related) {
-                // We use ANY($1) for array of IDs
+            if (type === 'inventory') {
+                // Sum quantities of all duplicate rows into the kept row, then delete the rest
                 await db.execute(
-                    `UPDATE ${rel.table} SET ${rel.fk} = $1 WHERE ${rel.fk} = ANY($2)`,
-                    [keepId, mergeIds]
+                    `UPDATE inventory
+                     SET quantity = quantity + (
+                         SELECT COALESCE(SUM(quantity), 0) FROM inventory WHERE id = ANY($1)
+                     )
+                     WHERE id = $2`,
+                    [mergeIds, keepId]
                 );
+                await db.execute(`DELETE FROM inventory WHERE id = ANY($1)`, [mergeIds]);
+            } else {
+                const config = NAME_TYPES[type];
+                if (!config) {
+                    await db.execute('ROLLBACK');
+                    return NextResponse.json({ error: 'Invalid type' }, { status: 400 });
+                }
+                for (const rel of config.related) {
+                    await db.execute(
+                        `UPDATE ${rel.table} SET ${rel.fk} = $1 WHERE ${rel.fk} = ANY($2)`,
+                        [keepId, mergeIds]
+                    );
+                }
+                await db.execute(`DELETE FROM ${config.table} WHERE id = ANY($1)`, [mergeIds]);
             }
-
-            // 2. Delete the merged records
-            await db.execute(
-                `DELETE FROM ${config.table} WHERE id = ANY($1)`,
-                [mergeIds]
-            );
 
             await db.execute('COMMIT');
             return NextResponse.json({ success: true });
@@ -82,7 +110,6 @@ export async function POST(req: NextRequest) {
             await db.execute('ROLLBACK');
             throw e;
         }
-
     } catch (e: any) {
         return NextResponse.json({ error: e.message }, { status: 500 });
     }

@@ -187,8 +187,9 @@ export default function DBToolsClient() {
                     <div className="flex gap-4 mb-4 items-end">
                         <div className="flex-1">
                             <label className="block text-gray-400 text-xs mb-1">Type</label>
-                            <select value={dupType} onChange={e => setDupType(e.target.value)} className="w-full bg-gray-800 text-white p-2 rounded border border-gray-600">
+                            <select value={dupType} onChange={e => { setDupType(e.target.value); setDuplicates([]); }} className="w-full bg-gray-800 text-white p-2 rounded border border-gray-600">
                                 <option value="items">Item Names</option>
+                                <option value="inventory">Inventory Rows (same item + location)</option>
                             </select>
                         </div>
                         <button onClick={fetchDuplicates} className="bg-orange-600 text-white p-2 rounded px-4 h-10 font-bold">Scan</button>
@@ -196,24 +197,52 @@ export default function DBToolsClient() {
 
                     <div className="space-y-4">
                         {duplicates.length === 0 && <p className="text-gray-500">No duplicates found.</p>}
-                        {duplicates.map((dup, i) => (
-                            <div key={i} className="bg-gray-900 p-4 rounded border border-gray-700">
-                                <h3 className="font-bold text-lg text-white mb-2 underline">{dup.norm_name}</h3>
-                                <div className="space-y-2">
-                                    {dup.ids.map((id: number, idx: number) => (
-                                        <div key={id} className="flex justify-between items-center bg-gray-800 p-2 rounded">
-                                            <span className="text-white">ID: {id} - "{dup.names[idx]}"</span>
-                                            <button
-                                                onClick={() => mergeDuplicates(id, dup.ids.filter((oid: number) => oid !== id))}
-                                                className="bg-green-600 text-white text-xs px-2 py-1 rounded"
-                                            >
-                                                Keep This
-                                            </button>
-                                        </div>
-                                    ))}
+
+                        {dupType === 'inventory' ? (
+                            duplicates.map((dup: any, i: number) => (
+                                <div key={i} className="bg-gray-900 p-4 rounded border border-yellow-800">
+                                    <h3 className="font-bold text-white mb-1">
+                                        Item #{dup.item_id}: <span className="text-yellow-300">{dup.item_name}</span>
+                                        <span className="text-gray-400 font-normal ml-2">@ {dup.location_name}</span>
+                                    </h3>
+                                    <p className="text-xs text-gray-500 mb-3">{dup.rows.length} duplicate rows — merging sums quantities into the kept row</p>
+                                    <div className="space-y-2">
+                                        {dup.rows.map((row: any) => (
+                                            <div key={row.id} className="flex justify-between items-center bg-gray-800 p-2 rounded">
+                                                <span className="text-white text-sm">Row ID: <strong>{row.id}</strong> — qty: <strong>{row.quantity}</strong></span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => mergeDuplicates(row.id, dup.rows.filter((r: any) => r.id !== row.id).map((r: any) => r.id))}
+                                                    className="bg-green-600 text-white text-xs px-2 py-1 rounded"
+                                                >
+                                                    Keep & Sum
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
-                            </div>
-                        ))}
+                            ))
+                        ) : (
+                            duplicates.map((dup: any, i: number) => (
+                                <div key={i} className="bg-gray-900 p-4 rounded border border-gray-700">
+                                    <h3 className="font-bold text-lg text-white mb-2 underline">{dup.norm_name}</h3>
+                                    <div className="space-y-2">
+                                        {dup.ids.map((id: number, idx: number) => (
+                                            <div key={id} className="flex justify-between items-center bg-gray-800 p-2 rounded">
+                                                <span className="text-white">ID: {id} - &quot;{dup.names[idx]}&quot;</span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => mergeDuplicates(id, dup.ids.filter((oid: number) => oid !== id))}
+                                                    className="bg-green-600 text-white text-xs px-2 py-1 rounded"
+                                                >
+                                                    Keep This
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            ))
+                        )}
                     </div>
                 </div>
             )}
