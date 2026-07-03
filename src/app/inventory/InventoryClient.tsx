@@ -26,11 +26,14 @@ import Radio from '@mui/material/Radio';
 import RadioGroup from '@mui/material/RadioGroup';
 import FormControlLabel from '@mui/material/FormControlLabel';
 import IconButton from '@mui/material/IconButton';
+import Menu from '@mui/material/Menu';
+import Chip from '@mui/material/Chip';
+import LocationOnIcon from '@mui/icons-material/LocationOn';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import AddIcon from '@mui/icons-material/Add';
 import ClearIcon from '@mui/icons-material/Clear';
 import SearchIcon from '@mui/icons-material/Search';
 import Tooltip from '@mui/material/Tooltip';
-import Chip from '@mui/material/Chip';
 import InputAdornment from '@mui/material/InputAdornment';
 
 // TopNav for header
@@ -168,9 +171,18 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
     const [showTransferConfirm, setShowTransferConfirm] = useState(false);
     const [transferring, setTransferring] = useState(false);
 
-    const fetchItems = async () => {
+    // Location selector
+    const [myLocations, setMyLocations] = useState<OrgLocation[]>([]);
+    const [selectedLocId, setSelectedLocId] = useState<number | null>(null);
+    const [selectedLocName, setSelectedLocName] = useState('');
+    const [locMenuAnchor, setLocMenuAnchor] = useState<null | HTMLElement>(null);
+
+    const fetchItems = async (locId?: number) => {
         try {
-            const res = await fetch(`/api/inventory?sort=${sort}`);
+            const effectiveLocId = locId ?? selectedLocId;
+            const params = new URLSearchParams({ sort });
+            if (effectiveLocId) params.set('locationId', String(effectiveLocId));
+            const res = await fetch(`/api/inventory?${params}`);
             const data = await res.json();
             if (res.ok) {
                 let sorted = data.items;
@@ -196,11 +208,33 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
         } catch { }
     };
 
+    // Initialize location from user's assigned locations + cookie
     useEffect(() => {
-        fetchItems();
+        fetch('/api/user/locations')
+            .then(r => r.json())
+            .then(data => {
+                const locs: OrgLocation[] = data.locations || [];
+                setMyLocations(locs);
+                if (locs.length === 0) return;
+                const cookieMatch = document.cookie.match(/(?:^|;\s*)current_location_id=(\d+)/);
+                const cookieId = cookieMatch ? parseInt(cookieMatch[1]) : null;
+                const found = cookieId ? locs.find(l => l.id === cookieId) : null;
+                const chosen = found || locs[0];
+                if (!found) {
+                    document.cookie = `current_location_id=${chosen.id}; path=/; max-age=31536000`;
+                }
+                setSelectedLocId(chosen.id);
+                setSelectedLocName(chosen.name);
+                fetchItems(chosen.id);
+            })
+            .catch(() => { fetchItems(); });
         fetchActivity();
         fetchCat();
         fetchIncomingOrders();
+    }, []);
+
+    useEffect(() => {
+        if (selectedLocId) fetchItems(selectedLocId);
     }, [sort, sortDir]);
 
     const fetchIncomingOrders = async () => {
@@ -297,7 +331,7 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
                 const res = await fetch('/api/inventory/adjust', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ itemId: parseInt(idStr), change: netChange }),
+                    body: JSON.stringify({ itemId: parseInt(idStr), change: netChange, locationId: selectedLocId }),
                 });
                 if (!res.ok) {
                     const body = await res.json().catch(() => ({}));
@@ -499,6 +533,16 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
         fetchItems();
     };
 
+    const handleSelectLocation = (loc: OrgLocation) => {
+        document.cookie = `current_location_id=${loc.id}; path=/; max-age=31536000`;
+        setSelectedLocId(loc.id);
+        setSelectedLocName(loc.name);
+        setLocMenuAnchor(null);
+        setPendingChanges({});
+        fetchItems(loc.id);
+        fetchIncomingOrders();
+    };
+
     const handleLogout = async () => {
         const res = await fetch('/api/auth/logout', { method: 'POST' });
         const data = await res.json();
@@ -649,7 +693,38 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
     return (
         <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
             <TopNav user={user}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                    {/* Location selector */}
+                    {selectedLocName && (
+                        <>
+                            <Chip
+                                icon={<LocationOnIcon sx={{ fontSize: '0.85rem !important' }} />}
+                                label={selectedLocName}
+                                deleteIcon={myLocations.length > 1 ? <ExpandMoreIcon sx={{ fontSize: '0.85rem !important' }} /> : undefined}
+                                onDelete={myLocations.length > 1 ? (e) => setLocMenuAnchor(e.currentTarget as HTMLElement) : undefined}
+                                onClick={myLocations.length > 1 ? (e) => setLocMenuAnchor(e.currentTarget) : undefined}
+                                size="small"
+                                sx={{ bgcolor: 'rgba(245,158,11,0.12)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.3)', fontWeight: 600, cursor: myLocations.length > 1 ? 'pointer' : 'default', '& .MuiChip-icon': { color: '#f59e0b' }, '& .MuiChip-deleteIcon': { color: '#f59e0b' } }}
+                            />
+                            <Menu
+                                anchorEl={locMenuAnchor}
+                                open={Boolean(locMenuAnchor)}
+                                onClose={() => setLocMenuAnchor(null)}
+                                transformOrigin={{ horizontal: 'right', vertical: 'top' }}
+                                anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
+                            >
+                                {myLocations.map(loc => (
+                                    <MenuItem
+                                        key={loc.id}
+                                        selected={loc.id === selectedLocId}
+                                        onClick={() => handleSelectLocation(loc)}
+                                    >
+                                        {loc.name}
+                                    </MenuItem>
+                                ))}
+                            </Menu>
+                        </>
+                    )}
                     <NotificationBell />
                     {Object.keys(pendingChanges).length > 0 && (
                         <Button
@@ -777,6 +852,19 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
                     </Button>
                 )}
             </Box>
+
+            {/* Location banner */}
+            {selectedLocName && (
+                <Box sx={{ bgcolor: 'rgba(245,158,11,0.06)', borderBottom: '1px solid rgba(245,158,11,0.15)', px: 2, py: 0.75, display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <LocationOnIcon sx={{ fontSize: '0.85rem', color: '#f59e0b' }} />
+                    <Typography variant="caption" sx={{ color: '#f59e0b', fontWeight: 700, letterSpacing: '0.03em', textTransform: 'uppercase', fontSize: '0.7rem' }}>
+                        Location:
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: '#fbbf24', fontWeight: 600, fontSize: '0.75rem' }}>
+                        {selectedLocName}
+                    </Typography>
+                </Box>
+            )}
 
             {/* Transfer Mode Banner */}
             {transferMode && (

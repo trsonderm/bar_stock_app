@@ -16,6 +16,22 @@ async function ensureDisplayColumns() {
     await db.execute(`ALTER TABLE items ADD COLUMN IF NOT EXISTS size_prices JSONB DEFAULT '{}'::jsonb`).catch(() => {});
     await db.execute(`ALTER TABLE items ADD COLUMN IF NOT EXISTS package_prices JSONB DEFAULT '{}'::jsonb`).catch(() => {});
     await db.execute(`ALTER TABLE items ADD COLUMN IF NOT EXISTS package_band_prices JSONB DEFAULT '{}'::jsonb`).catch(() => {});
+    // Deduplicate inventory rows before creating unique index — keeps the highest-quantity row
+    // for each (item_id, location_id) pair so no stock data is silently lost.
+    await db.execute(`
+        DELETE FROM inventory
+        WHERE id IN (
+            SELECT id FROM (
+                SELECT id,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY item_id, location_id
+                           ORDER BY quantity DESC, id DESC
+                       ) AS rn
+                FROM inventory
+            ) ranked
+            WHERE rn > 1
+        )
+    `).catch(() => {});
     // Ensure unique indexes exist — CREATE TABLE IF NOT EXISTS skips constraints when table already
     // exists, so restored databases may be missing these, causing ON CONFLICT clauses to fail.
     await db.execute(`CREATE UNIQUE INDEX IF NOT EXISTS item_suppliers_item_supplier_uniq ON item_suppliers(item_id, supplier_id)`).catch(() => {});

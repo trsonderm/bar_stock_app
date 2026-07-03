@@ -326,6 +326,22 @@ export default function AdminDashboardClient({
 
     const canSchedule = role === 'admin' || permissions.includes('all') || permissions.includes('manage_schedule');
 
+    const [currentLocName, setCurrentLocName] = useState('');
+
+    useEffect(() => {
+        fetch('/api/user/locations')
+            .then(r => r.json())
+            .then(data => {
+                const locs: { id: number; name: string }[] = data.locations || [];
+                if (locs.length === 0) return;
+                const m = document.cookie.match(/(?:^|;\s*)current_location_id=(\d+)/);
+                const cookieId = m ? parseInt(m[1]) : null;
+                const found = cookieId ? locs.find(l => l.id === cookieId) : null;
+                setCurrentLocName((found || locs[0]).name);
+            })
+            .catch(() => {});
+    }, []);
+
     // Load dashboard stats
     const loadDash = useCallback(async () => {
         setDashLoading(true);
@@ -631,6 +647,15 @@ export default function AdminDashboardClient({
 
                 {/* ── Right: Dashboard panels ── */}
                 <div className="db-main-col">
+
+                    {/* Current location badge */}
+                    {currentLocName && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '10px', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: '8px', padding: '6px 12px' }}>
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                            <span style={{ fontSize: '11px', fontWeight: 700, color: '#f59e0b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Location:</span>
+                            <span style={{ fontSize: '13px', fontWeight: 700, color: '#fbbf24' }}>{currentLocName}</span>
+                        </div>
+                    )}
 
                     {/* Stat cards */}
                     <div className="db-stats-grid">
