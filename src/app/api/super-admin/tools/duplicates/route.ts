@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
     if (!isSuperAdmin) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     try {
-        const { type, keepId, mergeIds } = await req.json();
+        const { type, keepId, mergeIds, mergeStrategy = 'sum' } = await req.json();
 
         if (!keepId || !mergeIds || !Array.isArray(mergeIds) || mergeIds.length === 0) {
             return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
@@ -79,15 +79,27 @@ export async function POST(req: NextRequest) {
         await db.execute('BEGIN');
         try {
             if (type === 'inventory') {
-                // Sum quantities of all duplicate rows into the kept row, then delete the rest
-                await db.execute(
-                    `UPDATE inventory
-                     SET quantity = quantity + (
-                         SELECT COALESCE(SUM(quantity), 0) FROM inventory WHERE id = ANY($1)
-                     )
-                     WHERE id = $2`,
-                    [mergeIds, keepId]
-                );
+                const allIds = [keepId, ...mergeIds];
+                let newQty: string;
+                if (mergeStrategy === 'sum') {
+                    newQty = `(SELECT COALESCE(SUM(quantity), 0) FROM inventory WHERE id = ANY($1))`;
+                } else if (mergeStrategy === 'avg') {
+                    newQty = `(SELECT ROUND(AVG(quantity)) FROM inventory WHERE id = ANY($1))`;
+                } else if (mergeStrategy === 'min') {
+                    newQty = `(SELECT MIN(quantity) FROM inventory WHERE id = ANY($1))`;
+                } else {
+                    // overwrite: keep the chosen row's quantity unchanged, just delete the rest
+                    newQty = `(SELECT quantity FROM inventory WHERE id = $2)`;
+                }
+
+                if (mergeStrategy === 'overwrite') {
+                    // No quantity update needed — kept row already has the right value
+                } else {
+                    await db.execute(
+                        `UPDATE inventory SET quantity = ${newQty} WHERE id = $2`,
+                        [allIds, keepId]
+                    );
+                }
                 await db.execute(`DELETE FROM inventory WHERE id = ANY($1)`, [mergeIds]);
             } else {
                 const config = NAME_TYPES[type];

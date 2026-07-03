@@ -63,14 +63,15 @@ export default function DBToolsClient() {
         setLoading(false);
     };
 
-    const mergeDuplicates = async (keepId: number, mergeIds: number[]) => {
-        if (!confirm(`Keep ID ${keepId} and merge ${mergeIds.length} others?`)) return;
+    const mergeDuplicates = async (keepId: number, mergeIds: number[], mergeStrategy = 'sum') => {
+        const labels: Record<string, string> = { sum: 'Sum', avg: 'Average', min: 'Minimum', overwrite: 'Overwrite (keep as-is)' };
+        if (!confirm(`Keep row ID ${keepId} — strategy: ${labels[mergeStrategy]}. Delete ${mergeIds.length} other row(s)?`)) return;
         setLoading(true);
         try {
             const res = await fetch('/api/super-admin/tools/duplicates', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ type: dupType, keepId, mergeIds })
+                body: JSON.stringify({ type: dupType, keepId, mergeIds, mergeStrategy })
             });
             if (res.ok) fetchDuplicates();
             else alert('Failed');
@@ -208,15 +209,26 @@ export default function DBToolsClient() {
                                     <p className="text-xs text-gray-500 mb-3">{dup.rows.length} duplicate rows — merging sums quantities into the kept row</p>
                                     <div className="space-y-2">
                                         {dup.rows.map((row: any) => (
-                                            <div key={row.id} className="flex justify-between items-center bg-gray-800 p-2 rounded">
-                                                <span className="text-white text-sm">Row ID: <strong>{row.id}</strong> — qty: <strong>{row.quantity}</strong></span>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => mergeDuplicates(row.id, dup.rows.filter((r: any) => r.id !== row.id).map((r: any) => r.id))}
-                                                    className="bg-green-600 text-white text-xs px-2 py-1 rounded"
-                                                >
-                                                    Keep & Sum
-                                                </button>
+                                            <div key={row.id} className="flex justify-between items-center bg-gray-800 p-2 rounded gap-2">
+                                                <span className="text-white text-sm flex-1">Row ID: <strong>{row.id}</strong> — qty: <strong>{row.quantity}</strong></span>
+                                                <div className="flex gap-1 flex-wrap justify-end">
+                                                    {[
+                                                        { strategy: 'sum',       label: 'Sum',       color: 'bg-green-700' },
+                                                        { strategy: 'avg',       label: 'Avg',       color: 'bg-blue-700' },
+                                                        { strategy: 'min',       label: 'Min',       color: 'bg-yellow-700' },
+                                                        { strategy: 'overwrite', label: 'Overwrite', color: 'bg-purple-700' },
+                                                    ].map(({ strategy, label, color }) => (
+                                                        <button
+                                                            key={strategy}
+                                                            type="button"
+                                                            onClick={() => mergeDuplicates(row.id, dup.rows.filter((r: any) => r.id !== row.id).map((r: any) => r.id), strategy)}
+                                                            className={`${color} text-white text-xs px-2 py-1 rounded`}
+                                                            title={`Keep row ${row.id} and set quantity using ${label.toLowerCase()} of all rows`}
+                                                        >
+                                                            Keep &amp; {label}
+                                                        </button>
+                                                    ))}
+                                                </div>
                                             </div>
                                         ))}
                                     </div>
