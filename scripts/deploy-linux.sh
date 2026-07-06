@@ -143,6 +143,42 @@ echo "  Activity logs : $SNAP_LOGS"
 echo "  Backup saved  : $(basename "$ACTUAL_BACKUP")"
 echo "=================================================="
 echo ""
+
+# ── Zero-data guard: stop and demand explicit consent if key tables are empty ──
+ZERO_DATA=false
+if { [ "$SNAP_ITEMS" = "0" ] || [ "$SNAP_ITEMS" = "?" ]; } && \
+   { [ "$SNAP_INVENTORY" = "0" ] || [ "$SNAP_INVENTORY" = "?" ]; } && \
+   { [ "$SNAP_USERS" = "0" ] || [ "$SNAP_USERS" = "?" ]; }; then
+    ZERO_DATA=true
+fi
+
+if [ "$ZERO_DATA" = "true" ]; then
+    echo ""
+    echo "╔══════════════════════════════════════════════════════════════╗"
+    echo "║  ⚠  WARNING: DATABASE APPEARS EMPTY — ZERO DATA DETECTED    ║"
+    echo "╠══════════════════════════════════════════════════════════════╣"
+    echo "║  Items: $SNAP_ITEMS  |  Inventory: $SNAP_INVENTORY  |  Users: $SNAP_USERS"
+    echo "║                                                              ║"
+    echo "║  Deploying now will START THE APP WITH AN EMPTY DATABASE.    ║"
+    echo "║  If this is unexpected, abort and restore a backup first:    ║"
+    echo "║    bash $SCRIPT_DIR/restore-db.sh --latest"
+    echo "║  Or run the health check:                                    ║"
+    echo "║    bash $SCRIPT_DIR/check-database.sh                        ║"
+    echo "╚══════════════════════════════════════════════════════════════╝"
+    echo ""
+    printf "  Type ERASE to confirm you accept deploying with zero data,\n"
+    printf "  or anything else to abort: "
+    read -r ZERO_CONFIRM
+    if [ "$ZERO_CONFIRM" != "ERASE" ]; then
+        echo ""
+        echo "Deploy aborted. No containers were changed."
+        echo "To check available backups: bash $SCRIPT_DIR/check-database.sh"
+        exit 0
+    fi
+    echo "Zero-data deploy confirmed. Proceeding..."
+    echo ""
+fi
+
 printf "  Proceed with deploy? (yes/no): "
 read -r DEPLOY_CONFIRM
 if [ "$DEPLOY_CONFIRM" != "yes" ]; then
