@@ -45,7 +45,7 @@ export default function ShiftManager({ scheduleSettings, onSettingsChange }: Pro
     const [settingsSaved, setSettingsSaved] = useState(false);
 
     const SHIFT_PALETTE = [
-        '#3b82f6', '#10b981', '#f59e0b', '#ef4444',
+        '#3b82f6', '#10b981', '#fb7185', '#ef4444',
         '#8b5cf6', '#06b6d4', '#f97316', '#ec4899',
         '#84cc16', '#14b8a6',
     ];

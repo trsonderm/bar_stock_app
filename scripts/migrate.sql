@@ -1072,4 +1072,11 @@ DO $$ BEGIN
   ALTER TABLE categories ADD COLUMN sub_categories JSONB;
 EXCEPTION WHEN duplicate_column THEN NULL; END $$;
 
+-- =========================================================
+-- 61. Shifts — replace amber (#f59e0b) with rose (#fb7185)
+-- Amber conflicts with the app's brand color, making shift
+-- pills hard to distinguish from UI chrome on dark backgrounds.
+-- =========================================================
+UPDATE shifts SET color = '#fb7185' WHERE color = '#f59e0b';
+
 COMMIT;
