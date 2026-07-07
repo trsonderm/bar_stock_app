@@ -104,7 +104,7 @@ export default function UserSchedulerClient() {
     // Delete confirmation modal
     const [deleteConfirm, setDeleteConfirm] = useState<{ id: number; schedule: Schedule } | null>(null);
 
-    // User schedule colors (custom per-employee colors, persisted to DB + localStorage)
+    // User schedule colors (custom per-employee colors, persisted to DB)
     const [userColors, setUserColors] = useState<Record<number, string>>({});
     const [colorPickerUserId, setColorPickerUserId] = useState<number | null>(null);
 
@@ -129,7 +129,6 @@ export default function UserSchedulerClient() {
                 setScheduleSettings(d);
                 if (d.userColors && Object.keys(d.userColors).length > 0) {
                     setUserColors(d.userColors);
-                    try { localStorage.setItem('schedule_user_colors', JSON.stringify(d.userColors)); } catch {}
                 }
             }
         });
@@ -175,13 +174,6 @@ export default function UserSchedulerClient() {
     // Derived: selected location name — users are already fetched scoped to this location
     const selectedLocationName = myLocations.find(l => l.id === selectedLocationId)?.name || '';
 
-    useEffect(() => {
-        try {
-            const stored = localStorage.getItem('schedule_user_colors');
-            if (stored) setUserColors(JSON.parse(stored));
-        } catch {}
-    }, []);
-
     // --- Stable User Colors ---
     const getUserColor = (userId: number, name: string) => {
         if (userColors[userId]) return userColors[userId];
@@ -199,7 +191,6 @@ export default function UserSchedulerClient() {
             const next = { ...prev };
             if (color === null) delete next[userId];
             else next[userId] = color;
-            try { localStorage.setItem('schedule_user_colors', JSON.stringify(next)); } catch {}
             fetch('/api/admin/schedule/settings', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },

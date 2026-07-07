@@ -45,10 +45,9 @@ export default function ManualOrderClient({ user }: { user: any }) {
     const [items, setItems] = useState<Item[]>([]);
     const [suppliers, setSuppliers] = useState<{ id: number, name: string }[]>([]);
     const [selectedSupplierId, setSelectedSupplierId] = useState<number | 'all'>('all');
-    const [cart, setCart] = useState<Record<string, CartItem>>(() => {
-        if (typeof window === 'undefined') return {};
-        try { return JSON.parse(localStorage.getItem('manual_order_cart') || '{}'); } catch { return {}; }
-    });
+    const [cart, setCart] = useState<Record<string, CartItem>>({});
+    const cartSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const cartInitialized = useRef(false);
     const [showPreview, setShowPreview] = useState(false);
     const [loading, setLoading] = useState(true);
 
@@ -93,8 +92,25 @@ export default function ManualOrderClient({ user }: { user: any }) {
         });
     }, []);
 
+    // Load cart from DB on mount
     useEffect(() => {
-        localStorage.setItem('manual_order_cart', JSON.stringify(cart));
+        fetch('/api/admin/orders/cart').then(r => r.json()).then(d => {
+            if (d.cart && Object.keys(d.cart).length > 0) setCart(d.cart);
+            cartInitialized.current = true;
+        }).catch(() => { cartInitialized.current = true; });
+    }, []);
+
+    // Debounced save to DB when cart changes (skip the initial empty state before DB load)
+    useEffect(() => {
+        if (!cartInitialized.current) return;
+        if (cartSaveTimer.current) clearTimeout(cartSaveTimer.current);
+        cartSaveTimer.current = setTimeout(() => {
+            fetch('/api/admin/orders/cart', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ cart }),
+            }).catch(() => {});
+        }, 800);
     }, [cart]);
 
     const fetchData = async () => {
@@ -258,7 +274,7 @@ export default function ManualOrderClient({ user }: { user: any }) {
 
             if (!res.ok) throw new Error('Order submission failed');
             alert('Order submitted successfully!');
-            localStorage.removeItem('manual_order_cart');
+            fetch('/api/admin/orders/cart', { method: 'DELETE' }).catch(() => {});
             setCart({});
             setShowPreview(false);
             setSendEmail(false);
