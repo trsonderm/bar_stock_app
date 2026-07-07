@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
 
     try {
         const rows = await db.query(
-            `SELECT key, value FROM settings WHERE organization_id = $1 AND key IN ('schedule_global_mode', 'schedule_location_hours')`,
+            `SELECT key, value FROM settings WHERE organization_id = $1 AND key IN ('schedule_global_mode', 'schedule_location_hours', 'schedule_user_colors')`,
             [orgId]
         );
 
@@ -25,12 +25,17 @@ export async function GET(req: NextRequest) {
             if (map['schedule_location_hours']) locationHours = JSON.parse(map['schedule_location_hours']);
         } catch { }
 
+        let userColors: Record<number, string> = {};
+        try {
+            if (map['schedule_user_colors']) userColors = JSON.parse(map['schedule_user_colors']);
+        } catch { }
+
         const locations = await db.query(
             'SELECT id, name FROM locations WHERE organization_id = $1 ORDER BY name ASC',
             [orgId]
         );
 
-        return NextResponse.json({ globalMode, locationHours, locations });
+        return NextResponse.json({ globalMode, locationHours, locations, userColors });
     } catch (err: any) {
         return NextResponse.json({ error: err.message }, { status: 500 });
     }
@@ -49,15 +54,17 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
     }
 
-    const { globalMode, locationHours } = body;
+    const { globalMode, locationHours, userColors } = body;
 
     try {
-        await db.execute(
-            `INSERT INTO settings (organization_id, key, value)
-             VALUES ($1, 'schedule_global_mode', $2)
-             ON CONFLICT (organization_id, key) DO UPDATE SET value = EXCLUDED.value`,
-            [orgId, globalMode ? 'true' : 'false']
-        );
+        if (globalMode !== undefined) {
+            await db.execute(
+                `INSERT INTO settings (organization_id, key, value)
+                 VALUES ($1, 'schedule_global_mode', $2)
+                 ON CONFLICT (organization_id, key) DO UPDATE SET value = EXCLUDED.value`,
+                [orgId, globalMode ? 'true' : 'false']
+            );
+        }
 
         if (locationHours !== undefined) {
             await db.execute(
@@ -65,6 +72,15 @@ export async function POST(req: NextRequest) {
                  VALUES ($1, 'schedule_location_hours', $2)
                  ON CONFLICT (organization_id, key) DO UPDATE SET value = EXCLUDED.value`,
                 [orgId, JSON.stringify(locationHours)]
+            );
+        }
+
+        if (userColors !== undefined) {
+            await db.execute(
+                `INSERT INTO settings (organization_id, key, value)
+                 VALUES ($1, 'schedule_user_colors', $2)
+                 ON CONFLICT (organization_id, key) DO UPDATE SET value = EXCLUDED.value`,
+                [orgId, JSON.stringify(userColors)]
             );
         }
 

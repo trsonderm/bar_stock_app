@@ -33,6 +33,7 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import AddIcon from '@mui/icons-material/Add';
 import ClearIcon from '@mui/icons-material/Clear';
 import SearchIcon from '@mui/icons-material/Search';
+import FilterListIcon from '@mui/icons-material/FilterList';
 import Tooltip from '@mui/material/Tooltip';
 import InputAdornment from '@mui/material/InputAdornment';
 
@@ -176,6 +177,9 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
     const [selectedLocId, setSelectedLocId] = useState<number | null>(null);
     const [selectedLocName, setSelectedLocName] = useState('');
     const [locMenuAnchor, setLocMenuAnchor] = useState<null | HTMLElement>(null);
+
+    // Category filter dropdown
+    const [catMenuAnchor, setCatMenuAnchor] = useState<null | HTMLElement>(null);
 
     const fetchItems = async (locId?: number) => {
         try {
@@ -1021,19 +1025,39 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
                                 }}
                             />
                         </Box>
-                        <Box>
-                            <Box sx={{ display: 'flex', gap: 1, overflowX: 'auto', pb: 1 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                            <Button
+                                variant={filterType !== 'All' ? 'contained' : 'outlined'}
+                                color={filterType !== 'All' ? 'warning' : 'inherit'}
+                                size="small"
+                                startIcon={<FilterListIcon />}
+                                onClick={(e) => setCatMenuAnchor(e.currentTarget)}
+                                sx={{ flexShrink: 0 }}
+                            >
+                                {filterType === 'All' ? 'Category' : filterType}
+                            </Button>
+                            {filterType !== 'All' && (
+                                <IconButton size="small" onClick={() => { setFilterType('All'); setSecondaryFilter(''); }}>
+                                    <ClearIcon fontSize="small" />
+                                </IconButton>
+                            )}
+                            <Menu
+                                anchorEl={catMenuAnchor}
+                                open={Boolean(catMenuAnchor)}
+                                onClose={() => setCatMenuAnchor(null)}
+                                transformOrigin={{ horizontal: 'left', vertical: 'top' }}
+                                anchorOrigin={{ horizontal: 'left', vertical: 'bottom' }}
+                            >
                                 {['All', ...categories.map(c => c.name)].map((type: string) => (
-                                    <Chip
+                                    <MenuItem
                                         key={type}
-                                        label={type}
-                                        onClick={() => { setFilterType(type); setSecondaryFilter(''); }}
-                                        color={filterType === type ? "primary" : "default"}
-                                        variant={filterType === type ? "filled" : "outlined"}
-                                        sx={{ minWidth: 60, flexShrink: 0 }}
-                                    />
+                                        selected={filterType === type}
+                                        onClick={() => { setFilterType(type); setSecondaryFilter(''); setCatMenuAnchor(null); }}
+                                    >
+                                        {type}
+                                    </MenuItem>
                                 ))}
-                            </Box>
+                            </Menu>
                         </Box>
                     </Box>
 
