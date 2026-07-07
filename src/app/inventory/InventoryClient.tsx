@@ -690,6 +690,11 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
         return matchesType && matchesSecondary && matchesSearch;
     });
 
+    // All filterable type options: DB categories + any item types not in the categories list
+    const categoryNames = categories.map((c: any) => c.name);
+    const extraTypes = [...new Set(items.map(i => i.type).filter(t => t && !categoryNames.includes(t)))];
+    const allFilterTypes = [...categoryNames, ...extraTypes];
+
     // Get current category subcats
     const currentCat = categories.find(c => c.name === filterType);
     const subCats = currentCat?.sub_categories || [];
@@ -1048,7 +1053,7 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
                                 transformOrigin={{ horizontal: 'left', vertical: 'top' }}
                                 anchorOrigin={{ horizontal: 'left', vertical: 'bottom' }}
                             >
-                                {['All', ...categories.map(c => c.name)].map((type: string) => (
+                                {['All', ...allFilterTypes].map((type: string) => (
                                     <MenuItem
                                         key={type}
                                         selected={filterType === type}
