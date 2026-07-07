@@ -169,15 +169,16 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
         }
 
-        const { name, stock_options, sub_categories, enable_low_stock_reporting } = await req.json();
+        const { name, stock_options, sub_categories, enable_low_stock_reporting, is_non_beverage } = await req.json();
         if (!name) return NextResponse.json({ error: 'Missing name' }, { status: 400 });
 
         const options = stock_options ? JSON.stringify(stock_options) : JSON.stringify([1]);
         const enableReporting = enable_low_stock_reporting !== false;
+        const nonBeverage = is_non_beverage === true;
 
         const res = await db.one(
-            'INSERT INTO categories (name, stock_options, enable_low_stock_reporting, organization_id) VALUES ($1, $2, $3, $4) RETURNING id',
-            [name, options, enableReporting, session.organizationId]
+            'INSERT INTO categories (name, stock_options, enable_low_stock_reporting, is_non_beverage, organization_id) VALUES ($1, $2, $3, $4, $5) RETURNING id',
+            [name, options, enableReporting, nonBeverage, session.organizationId]
         );
 
         if (Array.isArray(sub_categories) && sub_categories.length > 0) {
@@ -200,15 +201,16 @@ export async function PUT(req: NextRequest) {
         const session = await getSession();
         if (!session || (session.role !== 'admin' && !session.isSuperAdmin)) return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
 
-        const { id, name, stock_options, sub_categories, enable_low_stock_reporting } = await req.json();
+        const { id, name, stock_options, sub_categories, enable_low_stock_reporting, is_non_beverage } = await req.json();
         if (!id || !name) return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
 
         const options = stock_options ? JSON.stringify(stock_options) : JSON.stringify([1]);
         const enableReporting = enable_low_stock_reporting !== false;
+        const nonBeverage = is_non_beverage === true;
 
         await db.execute(
-            'UPDATE categories SET name = $1, stock_options = $2, enable_low_stock_reporting = $3 WHERE id = $4 AND organization_id = $5',
-            [name, options, enableReporting, id, session.organizationId]
+            'UPDATE categories SET name = $1, stock_options = $2, enable_low_stock_reporting = $3, is_non_beverage = $4 WHERE id = $5 AND organization_id = $6',
+            [name, options, enableReporting, nonBeverage, id, session.organizationId]
         );
 
         await syncSubCategories(id, session.organizationId, Array.isArray(sub_categories) ? sub_categories : []);

@@ -300,7 +300,8 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
         // Intercept for Bottle Level Tracking
         if (change < 0 && trackBottleLevels && !bottleLevel) {
             const item = items.find(i => i.id === itemId);
-            if (item && (item.type === 'Liquor' || item.type === 'Wine')) {
+            const cat = item ? categories.find((c: any) => c.name === item.type) : null;
+            if (item && !cat?.is_non_beverage && (item.type === 'Liquor' || item.type === 'Wine')) {
                 setBottleModal({ show: true, itemId, amount: change, item });
                 return;
             }

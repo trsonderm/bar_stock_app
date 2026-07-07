@@ -1073,7 +1073,24 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_column THEN NULL; END $$;
 
 -- =========================================================
--- 61. Shifts — replace amber (#f59e0b) with rose (#fb7185)
+-- 61. Categories — is_non_beverage flag
+-- When true, bottle-size tracking is suppressed for items in this category.
+-- =========================================================
+DO $$ BEGIN
+  ALTER TABLE categories ADD COLUMN is_non_beverage BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
+-- =========================================================
+-- 62. Global "Self-Supply" supplier — available to every organization.
+-- Stored with organization_id = NULL; the suppliers GET endpoint
+-- includes NULL-org rows alongside org-specific suppliers.
+-- =========================================================
+INSERT INTO suppliers (organization_id, name)
+SELECT NULL, 'Self-Supply'
+WHERE NOT EXISTS (SELECT 1 FROM suppliers WHERE organization_id IS NULL AND name = 'Self-Supply');
+
+-- =========================================================
+-- 64. Shifts — replace amber (#f59e0b) with rose (#fb7185)
 -- Amber conflicts with the app's brand color, making shift
 -- pills hard to distinguish from UI chrome on dark backgrounds.
 -- =========================================================

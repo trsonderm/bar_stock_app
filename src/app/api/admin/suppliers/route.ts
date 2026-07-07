@@ -10,7 +10,10 @@ export async function GET(req: NextRequest) {
 
     try {
         const suppliers = await db.query(
-            'SELECT * FROM suppliers WHERE organization_id = $1 ORDER BY name ASC',
+            `SELECT *, (organization_id IS NULL) AS is_global
+             FROM suppliers
+             WHERE organization_id = $1 OR organization_id IS NULL
+             ORDER BY CASE WHEN organization_id IS NULL THEN 0 ELSE 1 END, name ASC`,
             [session.organizationId]
         );
         return NextResponse.json({ suppliers });

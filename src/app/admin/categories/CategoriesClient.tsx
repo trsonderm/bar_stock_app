@@ -11,6 +11,7 @@ interface Category {
     stock_options: number[];
     sub_categories: string[];
     enable_low_stock_reporting: boolean;
+    is_non_beverage: boolean;
 }
 
 export default function CategoriesClient() {
@@ -24,6 +25,7 @@ export default function CategoriesClient() {
     const [subCats, setSubCats] = useState<string[]>([]);
     const [newSubCat, setNewSubCat] = useState('');
     const [enableReporting, setEnableReporting] = useState(true);
+    const [isNonBeverage, setIsNonBeverage] = useState(false);
 
     const [editingId, setEditingId] = useState<number | null>(null);
 
@@ -61,7 +63,8 @@ export default function CategoriesClient() {
                     name: name.trim(),
                     stock_options: selectedOptions.sort((a, b) => a - b),
                     sub_categories: subCats,
-                    enable_low_stock_reporting: enableReporting
+                    enable_low_stock_reporting: enableReporting,
+                    is_non_beverage: isNonBeverage,
                 })
             });
             if (res.ok) {
@@ -88,7 +91,8 @@ export default function CategoriesClient() {
                     name: name.trim(),
                     stock_options: selectedOptions.sort((a, b) => a - b),
                     sub_categories: subCats,
-                    enable_low_stock_reporting: enableReporting
+                    enable_low_stock_reporting: enableReporting,
+                    is_non_beverage: isNonBeverage,
                 })
             });
             if (res.ok) {
@@ -124,6 +128,7 @@ export default function CategoriesClient() {
         setSelectedOptions(cat.stock_options || [1]);
         setSubCats(cat.sub_categories || []);
         setEnableReporting(cat.enable_low_stock_reporting !== false);
+        setIsNonBeverage(cat.is_non_beverage === true);
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
@@ -134,6 +139,7 @@ export default function CategoriesClient() {
         setSubCats([]);
         setNewSubCat('');
         setEnableReporting(true);
+        setIsNonBeverage(false);
     };
 
     const toggleOption = (opt: number) => {
@@ -160,6 +166,7 @@ export default function CategoriesClient() {
                     stock_options: selectedOptions.sort((a, b) => a - b),
                     sub_categories: updated,
                     enable_low_stock_reporting: enableReporting,
+                    is_non_beverage: isNonBeverage,
                 }),
             });
             if (!res.ok) {
@@ -199,6 +206,18 @@ export default function CategoriesClient() {
                                 style={{ width: '18px', height: '18px' }}
                             />
                             <label style={{ fontSize: '0.9rem', color: '#d1d5db' }}>Include in "Bottle Levels" Report</label>
+                        </div>
+                        <div style={{ marginTop: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <input
+                                type="checkbox"
+                                checked={isNonBeverage}
+                                onChange={e => setIsNonBeverage(e.target.checked)}
+                                style={{ width: '18px', height: '18px' }}
+                            />
+                            <div>
+                                <label style={{ fontSize: '0.9rem', color: '#d1d5db', display: 'block' }}>Non-Beverage Category</label>
+                                <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>Hides bottle size tracking; order quantities still apply.</span>
+                            </div>
                         </div>
                     </div>
 
@@ -354,7 +373,12 @@ export default function CategoriesClient() {
                     <tbody>
                         {categories.map((cat: any) => (
                             <tr key={cat.id}>
-                                <td>{cat.name}</td>
+                                <td>
+                                    {cat.name}
+                                    {cat.is_non_beverage && (
+                                        <span style={{ marginLeft: '0.5rem', fontSize: '0.7rem', background: '#374151', color: '#9ca3af', padding: '2px 6px', borderRadius: '4px' }}>Non-Beverage</span>
+                                    )}
+                                </td>
                                 {stockMode === 'CATEGORY' && (
                                     <td>
                                         <div style={{ display: 'flex', gap: '0.25rem' }}>
