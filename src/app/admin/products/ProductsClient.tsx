@@ -75,6 +75,11 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
     const [showSuggestions, setShowSuggestions] = useState(false);
     const suggestTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
     const suggestRef = useRef<HTMLDivElement>(null);
+    const [globalProductId, setGlobalProductId] = useState<number | null>(null);
+
+    // Global product update notifications
+    const [gpNotifications, setGpNotifications] = useState<any[]>([]);
+    const [notifExpanded, setNotifExpanded] = useState(false);
 
     // Quick Add
     const [showQuickAdd, setShowQuickAdd] = useState(false);
@@ -216,6 +221,20 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
         fetchData();
     }, [overrideOrgId, selectedLocationId]);
 
+    // Load global product update notifications (org admin only)
+    useEffect(() => {
+        if (overrideOrgId) return; // super admin impersonation — skip
+        fetch('/api/admin/global-product-notifications')
+            .then(r => r.json())
+            .then(d => {
+                if (d.notifications?.length > 0) {
+                    setGpNotifications(d.notifications);
+                    setNotifExpanded(true);
+                }
+            })
+            .catch(() => {});
+    }, [overrideOrgId]);
+
     // Auto-open edit modal when ?editId=N is in the URL (e.g. linked from Prices page)
     useEffect(() => {
         const editId = searchParams.get('editId');
@@ -304,6 +323,7 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
         setAddToAllLocations(false);
         setModalTab('basic');
         setQtyInputValues({});
+        setGlobalProductId(null);
     };
 
     const handleBulkApply = async () => {
@@ -610,11 +630,18 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
     }, []);
 
     const applyGlobalSuggestion = (s: any) => {
+        const matchedCat = categories.find(c => c.name === s.category_name);
         setFormData(prev => ({
             ...prev,
             name: s.name,
+            type: matchedCat ? s.category_name : prev.type,
             order_size: Array.isArray(s.order_size) && s.order_size.length > 0 ? s.order_size : prev.order_size,
+            bottle_size_amount: s.bottle_size_amount != null ? String(s.bottle_size_amount) : prev.bottle_size_amount,
+            bottle_size_unit: s.bottle_size_unit || prev.bottle_size_unit,
+            aliases: Array.isArray(s.aliases) && s.aliases.length > 0 ? s.aliases : prev.aliases,
+            is_alcohol: s.is_alcohol !== false,
         }));
+        setGlobalProductId(s.id);
         setShowSuggestions(false);
     };
 
@@ -688,6 +715,7 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                 bottle_size_unit: formData.bottle_size_unit || null,
                 package_sale_enabled: formData.package_sale_enabled,
                 is_alcohol: formData.is_alcohol,
+                ...(!editingId && globalProductId ? { global_product_id: globalProductId } : {}),
             };
 
             const url = '/api/inventory' + (overrideOrgId ? `?orgId=${overrideOrgId}` : '');
@@ -711,6 +739,16 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
             console.error(e);
             alert('Error saving item');
         }
+    };
+
+    const resolveGpNotification = async (id: number, action: 'ignore' | 'update') => {
+        await fetch(`/api/admin/global-product-notifications/${id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action }),
+        });
+        setGpNotifications(prev => prev.filter(n => n.id !== id));
+        if (action === 'update') fetchData();
     };
 
     const handleArchive = async (id: number) => {
@@ -850,8 +888,78 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
 
     if (loading) return <div className={styles.container}>Loading Product List...</div>;
 
+    const FIELD_LABELS: Record<string, string> = {
+        name: 'Name', category_name: 'Category', bottle_size_amount: 'Bottle Size Amount',
+        bottle_size_unit: 'Bottle Size Unit', order_size: 'Order Size',
+        aliases: 'Aliases', is_alcohol: 'Contains Alcohol', barcodes: 'Barcodes',
+    };
+
     return (
         <>
+            {/* Global Product Update Notifications */}
+            {gpNotifications.length > 0 && !overrideOrgId && (
+                <div style={{ marginBottom: '1rem', border: '1px solid #3b82f6', borderRadius: '0.5rem', overflow: 'hidden' }}>
+                    <button
+                        onClick={() => setNotifExpanded(p => !p)}
+                        style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.75rem 1rem', background: '#1e3a5f', border: 'none', cursor: 'pointer', color: 'white' }}
+                    >
+                        <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>
+                            🔔 Global Product Updates ({gpNotifications.length})
+                        </span>
+                        <span style={{ color: '#93c5fd', fontSize: '0.8rem' }}>{notifExpanded ? '▲ Hide' : '▼ Show'}</span>
+                    </button>
+                    {notifExpanded && (
+                        <div style={{ background: '#111827', padding: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                            {gpNotifications.map(n => {
+                                const changes: Record<string, { from: any; to: any }> = n.changes || {};
+                                return (
+                                    <div key={n.id} style={{ background: '#1f2937', borderRadius: '0.375rem', padding: '0.75rem', border: '1px solid #374151' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                            <div>
+                                                <div style={{ fontWeight: 600, color: '#e5e7eb', marginBottom: '0.35rem' }}>
+                                                    {n.global_product_name}
+                                                    {n.item_name && <span style={{ fontWeight: 400, color: '#9ca3af', marginLeft: '0.4rem' }}>→ {n.item_name}</span>}
+                                                </div>
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                                                    {Object.entries(changes).map(([field, diff]) => (
+                                                        <div key={field} style={{ fontSize: '0.8rem', color: '#9ca3af' }}>
+                                                            <span style={{ color: '#60a5fa' }}>{FIELD_LABELS[field] || field}:</span>
+                                                            {' '}
+                                                            <span style={{ color: '#ef4444' }}>
+                                                                {typeof diff.from === 'object' ? JSON.stringify(diff.from) : String(diff.from ?? '—')}
+                                                            </span>
+                                                            {' → '}
+                                                            <span style={{ color: '#34d399' }}>
+                                                                {typeof diff.to === 'object' ? JSON.stringify(diff.to) : String(diff.to ?? '—')}
+                                                            </span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                            <div style={{ display: 'flex', gap: '0.4rem', flexShrink: 0 }}>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => resolveGpNotification(n.id, 'update')}
+                                                    style={{ background: '#059669', color: 'white', border: 'none', borderRadius: '0.25rem', padding: '0.3rem 0.7rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600 }}
+                                                >
+                                                    Update
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => resolveGpNotification(n.id, 'ignore')}
+                                                    style={{ background: '#374151', color: '#9ca3af', border: 'none', borderRadius: '0.25rem', padding: '0.3rem 0.7rem', cursor: 'pointer', fontSize: '0.8rem' }}
+                                                >
+                                                    Ignore
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
+            )}
             <div className={styles.card}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
                     <h2 className={styles.cardTitle}>Product Catalog</h2>

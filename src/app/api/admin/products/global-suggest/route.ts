@@ -10,14 +10,31 @@ export async function GET(req: NextRequest) {
     if (q.length < 1) return NextResponse.json({ results: [] });
 
     const results = await db.query(
-        `SELECT id, name, category_name, order_size, barcodes
+        `SELECT id, name, category_name, order_size, barcodes,
+                bottle_size_amount, bottle_size_unit,
+                COALESCE(aliases, '[]'::jsonb) AS aliases,
+                COALESCE(is_alcohol, true) AS is_alcohol
          FROM global_products
          WHERE name ILIKE $1
+            OR EXISTS (
+                SELECT 1 FROM jsonb_array_elements_text(COALESCE(aliases, '[]'::jsonb)) AS a(v)
+                WHERE a.v ILIKE $1
+            )
          ORDER BY
            CASE WHEN name ILIKE $2 THEN 0 ELSE 1 END,
            name ASC
-         LIMIT 10`,
+         LIMIT 12`,
         [`%${q}%`, `${q}%`]
+    ).catch(() =>
+        // Fallback if new columns don't exist yet
+        db.query(
+            `SELECT id, name, category_name, order_size, barcodes
+             FROM global_products
+             WHERE name ILIKE $1
+             ORDER BY CASE WHEN name ILIKE $2 THEN 0 ELSE 1 END, name ASC
+             LIMIT 12`,
+            [`%${q}%`, `${q}%`]
+        )
     );
 
     return NextResponse.json({ results });

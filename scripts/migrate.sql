@@ -1097,6 +1097,50 @@ WHERE NOT EXISTS (SELECT 1 FROM suppliers WHERE organization_id IS NULL AND name
 UPDATE shifts SET color = '#fb7185' WHERE color = '#f59e0b';
 
 -- =========================================================
+-- 66. global_products — add detailed product fields for full catalog management
+-- =========================================================
+ALTER TABLE global_products ADD COLUMN IF NOT EXISTS bottle_size_amount NUMERIC(10,2);
+ALTER TABLE global_products ADD COLUMN IF NOT EXISTS bottle_size_unit TEXT;
+ALTER TABLE global_products ADD COLUMN IF NOT EXISTS aliases JSONB DEFAULT '[]';
+ALTER TABLE global_products ADD COLUMN IF NOT EXISTS is_alcohol BOOLEAN DEFAULT TRUE;
+ALTER TABLE global_products ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+ALTER TABLE global_products ADD COLUMN IF NOT EXISTS updated_by INTEGER;
+
+-- =========================================================
+-- 67. item_global_links — track which org items were sourced from a global product
+-- One item can link to at most one global product (UNIQUE on item_id).
+-- Cascades on item delete; when a global product is deleted the link is removed too.
+-- =========================================================
+CREATE TABLE IF NOT EXISTS item_global_links (
+    id                 SERIAL PRIMARY KEY,
+    item_id            INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+    global_product_id  INTEGER NOT NULL REFERENCES global_products(id) ON DELETE CASCADE,
+    organization_id    INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    linked_at          TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(item_id)
+);
+
+-- =========================================================
+-- 68. global_product_notifications — per-org update alerts when a global product changes.
+-- notification_key uniquely identifies ONE edit event (ISO timestamp of that edit).
+-- UNIQUE(global_product_id, organization_id, notification_key) means:
+--   • a second call with the same key is a no-op (ON CONFLICT DO NOTHING)
+--   • a new edit (new key) always creates a fresh pending row
+-- =========================================================
+CREATE TABLE IF NOT EXISTS global_product_notifications (
+    id                 SERIAL PRIMARY KEY,
+    global_product_id  INTEGER NOT NULL REFERENCES global_products(id) ON DELETE CASCADE,
+    organization_id    INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    item_id            INTEGER REFERENCES items(id) ON DELETE SET NULL,
+    changes            JSONB NOT NULL,
+    notification_key   TEXT NOT NULL,
+    status             TEXT NOT NULL DEFAULT 'pending',
+    created_at         TIMESTAMPTZ DEFAULT NOW(),
+    resolved_at        TIMESTAMPTZ,
+    UNIQUE(global_product_id, organization_id, notification_key)
+);
+
+-- =========================================================
 -- 65. Items — is_alcohol flag
 -- Defaults to TRUE so all existing Liquor/Wine items keep
 -- their bottle-tracking behavior. Set to FALSE for non-alcohol

@@ -227,7 +227,7 @@ export async function POST(req: NextRequest) {
         }
 
         const body = await req.json();
-        const { name, type, secondary_type, supplier, supplier_id, low_stock_threshold, low_stock_threshold_type: lstType, low_stock_threshold_factor: lstFactor, order_size, stock_options, include_in_audit, quantity, unit_cost, assignedLocations, add_to_all_locations, barcodes, aliases, package_sale_enabled: postPkgSaleEnabled, is_alcohol: postIsAlcohol } = body;
+        const { name, type, secondary_type, supplier, supplier_id, low_stock_threshold, low_stock_threshold_type: lstType, low_stock_threshold_factor: lstFactor, order_size, stock_options, include_in_audit, quantity, unit_cost, assignedLocations, add_to_all_locations, barcodes, aliases, package_sale_enabled: postPkgSaleEnabled, is_alcohol: postIsAlcohol, global_product_id } = body;
 
         if (!name || !type) return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
 
@@ -243,6 +243,16 @@ export async function POST(req: NextRequest) {
             [name, type, secondary_type || null, supplier || null, organizationId, low_stock_threshold !== undefined ? low_stock_threshold : 5, lstType || 'fixed', lstFactor != null ? parseFloat(lstFactor) : null, JSON.stringify(Array.isArray(order_size) ? order_size : [order_size || 1]), stock_options ? JSON.stringify(stock_options) : null, include_in_audit !== undefined ? include_in_audit : true, unit_cost || 0, JSON.stringify(Array.isArray(barcodes) ? barcodes : []), JSON.stringify(Array.isArray(aliases) ? aliases : []), postPkgSaleEnabled === true || postPkgSaleEnabled === 'true', postIsAlcohol !== false]
         );
         const itemId = res.id;
+
+        // Link to global product if sourced from one
+        if (global_product_id) {
+            await db.execute(
+                `INSERT INTO item_global_links (item_id, global_product_id, organization_id)
+                 VALUES ($1, $2, $3)
+                 ON CONFLICT (item_id) DO NOTHING`,
+                [itemId, global_product_id, organizationId]
+            ).catch(() => {}); // non-fatal if table doesn't exist yet
+        }
 
         // Auto-link Supplier if provided
         if (supplier_id) {
