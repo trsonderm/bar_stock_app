@@ -1096,4 +1096,14 @@ WHERE NOT EXISTS (SELECT 1 FROM suppliers WHERE organization_id IS NULL AND name
 -- =========================================================
 UPDATE shifts SET color = '#fb7185' WHERE color = '#f59e0b';
 
+-- =========================================================
+-- 65. Items — is_alcohol flag
+-- Defaults to TRUE so all existing Liquor/Wine items keep
+-- their bottle-tracking behavior. Set to FALSE for non-alcohol
+-- items that happen to be in a beverage category (e.g. sodas).
+-- =========================================================
+DO $$ BEGIN
+  ALTER TABLE items ADD COLUMN is_alcohol BOOLEAN DEFAULT TRUE;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
 COMMIT;

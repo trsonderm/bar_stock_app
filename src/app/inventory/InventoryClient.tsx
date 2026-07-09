@@ -55,6 +55,7 @@ interface Item {
     stock_display_mode?: 'units' | 'cases' | 'cases_and_units';
     inventory_display_mode?: 'units' | 'cases' | 'cases_and_units';
     aliases?: string[];
+    is_alcohol?: boolean;
 }
 
 interface ActivityLog {
@@ -78,9 +79,10 @@ interface InventoryClientProps {
     trackBottleLevels: boolean;
     bottleOptions: any[];
     orgLocations?: OrgLocation[];
+    organizationMode?: string;
 }
 
-export default function InventoryClient({ user, trackBottleLevels: initialTrack, bottleOptions: initialOptions, orgLocations = [] }: InventoryClientProps) {
+export default function InventoryClient({ user, trackBottleLevels: initialTrack, bottleOptions: initialOptions, orgLocations = [], organizationMode = 'bar_and_food' }: InventoryClientProps) {
     const [items, setItems] = useState<Item[]>([]);
     const [myActivity, setMyActivity] = useState<ActivityLog[]>([]);
     const [sort, setSort] = useState<'usage' | 'name'>('usage');
@@ -298,10 +300,11 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
 
     const handleAdjust = (itemId: number, change: number, bottleLevel?: string) => {
         // Intercept for Bottle Level Tracking
-        if (change < 0 && trackBottleLevels && !bottleLevel) {
+        if (change < 0 && trackBottleLevels && !bottleLevel && organizationMode !== 'food_only') {
             const item = items.find(i => i.id === itemId);
             const cat = item ? categories.find((c: any) => c.name === item.type) : null;
-            if (item && !cat?.is_non_beverage && (item.type === 'Liquor' || item.type === 'Wine')) {
+            const isAlcohol = item?.is_alcohol !== false;
+            if (item && !cat?.is_non_beverage && isAlcohol && (item.type === 'Liquor' || item.type === 'Wine')) {
                 setBottleModal({ show: true, itemId, amount: change, item });
                 return;
             }

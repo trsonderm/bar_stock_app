@@ -182,7 +182,10 @@ export default function ReportingClient() {
 
     const fetchSettings = () => {
         fetch('/api/admin/settings').then(r => r.json()).then(d => {
-            if (d.settings) setShowBottleLevels(d.settings.track_bottle_levels !== 'false');
+            if (d.settings) {
+                const foodOnly = d.settings.organization_mode === 'food_only';
+                setShowBottleLevels(!foodOnly && d.settings.track_bottle_levels !== 'false');
+            }
         });
     };
 

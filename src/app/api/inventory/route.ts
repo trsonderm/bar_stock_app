@@ -16,6 +16,7 @@ async function ensureDisplayColumns() {
     await db.execute(`ALTER TABLE items ADD COLUMN IF NOT EXISTS size_prices JSONB DEFAULT '{}'::jsonb`).catch(() => {});
     await db.execute(`ALTER TABLE items ADD COLUMN IF NOT EXISTS package_prices JSONB DEFAULT '{}'::jsonb`).catch(() => {});
     await db.execute(`ALTER TABLE items ADD COLUMN IF NOT EXISTS package_band_prices JSONB DEFAULT '{}'::jsonb`).catch(() => {});
+    await db.execute(`ALTER TABLE items ADD COLUMN IF NOT EXISTS is_alcohol BOOLEAN DEFAULT TRUE`).catch(() => {});
     // Deduplicate inventory rows before creating unique index — keeps the highest-quantity row
     // for each (item_id, location_id) pair so no stock data is silently lost.
     await db.execute(`
@@ -119,6 +120,7 @@ export async function GET(req: NextRequest) {
         COALESCE(i.use_category_qty_defaults, true) as use_category_qty_defaults,
         COALESCE(i.stock_display_mode, 'units') as stock_display_mode,
         COALESCE(i.inventory_display_mode, 'units') as inventory_display_mode,
+        COALESCE(i.is_alcohol, true) as is_alcohol,
         i.archived_at,
         MAX(isp.supplier_id) as supplier_id,
         (SELECT ils.supplier_id FROM item_location_suppliers ils WHERE ils.item_id = i.id AND ils.location_id = $2 LIMIT 1) as location_supplier_id,
@@ -225,7 +227,7 @@ export async function POST(req: NextRequest) {
         }
 
         const body = await req.json();
-        const { name, type, secondary_type, supplier, supplier_id, low_stock_threshold, low_stock_threshold_type: lstType, low_stock_threshold_factor: lstFactor, order_size, stock_options, include_in_audit, quantity, unit_cost, assignedLocations, add_to_all_locations, barcodes, aliases, package_sale_enabled: postPkgSaleEnabled } = body;
+        const { name, type, secondary_type, supplier, supplier_id, low_stock_threshold, low_stock_threshold_type: lstType, low_stock_threshold_factor: lstFactor, order_size, stock_options, include_in_audit, quantity, unit_cost, assignedLocations, add_to_all_locations, barcodes, aliases, package_sale_enabled: postPkgSaleEnabled, is_alcohol: postIsAlcohol } = body;
 
         if (!name || !type) return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
 
@@ -237,8 +239,8 @@ export async function POST(req: NextRequest) {
 
         // Insert and Return ID
         const res = await db.one(
-            'INSERT INTO items (name, type, secondary_type, supplier, organization_id, low_stock_threshold, low_stock_threshold_type, low_stock_threshold_factor, order_size, stock_options, include_in_audit, unit_cost, barcodes, aliases, package_sale_enabled) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING id',
-            [name, type, secondary_type || null, supplier || null, organizationId, low_stock_threshold !== undefined ? low_stock_threshold : 5, lstType || 'fixed', lstFactor != null ? parseFloat(lstFactor) : null, JSON.stringify(Array.isArray(order_size) ? order_size : [order_size || 1]), stock_options ? JSON.stringify(stock_options) : null, include_in_audit !== undefined ? include_in_audit : true, unit_cost || 0, JSON.stringify(Array.isArray(barcodes) ? barcodes : []), JSON.stringify(Array.isArray(aliases) ? aliases : []), postPkgSaleEnabled === true || postPkgSaleEnabled === 'true']
+            'INSERT INTO items (name, type, secondary_type, supplier, organization_id, low_stock_threshold, low_stock_threshold_type, low_stock_threshold_factor, order_size, stock_options, include_in_audit, unit_cost, barcodes, aliases, package_sale_enabled, is_alcohol) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING id',
+            [name, type, secondary_type || null, supplier || null, organizationId, low_stock_threshold !== undefined ? low_stock_threshold : 5, lstType || 'fixed', lstFactor != null ? parseFloat(lstFactor) : null, JSON.stringify(Array.isArray(order_size) ? order_size : [order_size || 1]), stock_options ? JSON.stringify(stock_options) : null, include_in_audit !== undefined ? include_in_audit : true, unit_cost || 0, JSON.stringify(Array.isArray(barcodes) ? barcodes : []), JSON.stringify(Array.isArray(aliases) ? aliases : []), postPkgSaleEnabled === true || postPkgSaleEnabled === 'true', postIsAlcohol !== false]
         );
         const itemId = res.id;
 
@@ -332,7 +334,7 @@ export async function PUT(req: NextRequest) {
 
         if (!canEdit && !canStock) return NextResponse.json({ error: 'Permission denied' }, { status: 403 });
 
-        const { id, unit_cost, sale_price, package_price, package_sale_enabled, size_prices, package_prices, package_band_prices, name, type, quantity, secondary_type, supplier, supplier_id, low_stock_threshold, low_stock_threshold_type, low_stock_threshold_factor, order_size, stock_options, include_in_audit, include_in_low_stock_alerts, exclude_from_smart_order, assignedLocations, stock_unit_label, stock_unit_size, order_unit_label, order_unit_size, use_category_qty_defaults, stock_display_mode, inventory_display_mode, location_supplier_id, location_sale_price, locationId: bodyLocationId, barcodes, aliases, abv, bottle_size, bottle_size_amount, bottle_size_unit } = await req.json();
+        const { id, unit_cost, sale_price, package_price, package_sale_enabled, size_prices, package_prices, package_band_prices, name, type, quantity, secondary_type, supplier, supplier_id, low_stock_threshold, low_stock_threshold_type, low_stock_threshold_factor, order_size, stock_options, include_in_audit, include_in_low_stock_alerts, exclude_from_smart_order, assignedLocations, stock_unit_label, stock_unit_size, order_unit_label, order_unit_size, use_category_qty_defaults, stock_display_mode, inventory_display_mode, location_supplier_id, location_sale_price, locationId: bodyLocationId, barcodes, aliases, abv, bottle_size, bottle_size_amount, bottle_size_unit, is_alcohol } = await req.json();
 
         if (!id) return NextResponse.json({ error: 'Missing ID' }, { status: 400 });
 
@@ -465,6 +467,10 @@ export async function PUT(req: NextRequest) {
             if (bottle_size_unit !== undefined) {
                 updates.push(`bottle_size_unit = $${pIdx++} `);
                 params.push(bottle_size_unit || null);
+            }
+            if (is_alcohol !== undefined) {
+                updates.push(`is_alcohol = $${pIdx++} `);
+                params.push(is_alcohol === true || is_alcohol === 'true');
             }
 
             if (updates.length > 0) {

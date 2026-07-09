@@ -39,5 +39,11 @@ export default async function InventoryPage() {
         );
     } catch {}
 
-    return <InventoryClient user={user} trackBottleLevels={trackBottleLevels} bottleOptions={bottleOptions} orgLocations={orgLocations} />;
+    let organizationMode = 'bar_and_food';
+    try {
+        const orgRow = await db.one('SELECT settings FROM organizations WHERE id = $1', [session.organizationId]);
+        if (orgRow?.settings?.organization_mode) organizationMode = orgRow.settings.organization_mode;
+    } catch {}
+
+    return <InventoryClient user={user} trackBottleLevels={trackBottleLevels} bottleOptions={bottleOptions} orgLocations={orgLocations} organizationMode={organizationMode} />;
 }

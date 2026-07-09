@@ -40,6 +40,7 @@ export default function SettingsClient() {
         package_sale_enabled: 'false',
         export_format: 'xlsx',
         pricing_bands_enabled: 'false',
+        organization_mode: 'bar_and_food',
     });
 
     const [users, setUsers] = useState<any[]>([]);
@@ -1253,9 +1254,51 @@ export default function SettingsClient() {
                 </div>
 
                 <div className={styles.card} style={{ gridColumn: 'span 2' }}>
+                    <div className={styles.cardTitle}>Organization Type</div>
+                    <p style={{ color: '#9ca3af', fontSize: '0.9rem', marginBottom: '1.25rem' }}>
+                        Controls bottle-level tracking and reporting across the app. "Food Only" removes all bottle size and level tracking while keeping quantity management.
+                    </p>
+                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '1.25rem' }}>
+                        {([
+                            { value: 'bar_and_food', label: 'Food & Beverage', desc: 'Full bar tracking. Bottle levels recorded for items marked as alcohol.' },
+                            { value: 'bar_with_food', label: 'Bar with Food', desc: 'Same as Food & Beverage — food items appear alongside bar inventory.' },
+                            { value: 'food_only', label: 'Food Only', desc: 'No bottle tracking, sizes, or level reports. Quantity management only.' },
+                        ] as { value: string; label: string; desc: string }[]).map(opt => {
+                            const active = settings.organization_mode === opt.value;
+                            return (
+                                <button
+                                    key={opt.value}
+                                    type="button"
+                                    onClick={() => setSettings(prev => ({ ...prev, organization_mode: opt.value }))}
+                                    style={{
+                                        flex: '1 1 160px',
+                                        padding: '0.75rem 1rem',
+                                        borderRadius: '0.5rem',
+                                        border: active ? '2px solid #3b82f6' : '2px solid #374151',
+                                        background: active ? '#1e3a5f' : '#1f2937',
+                                        color: active ? '#93c5fd' : '#9ca3af',
+                                        textAlign: 'left',
+                                        cursor: 'pointer',
+                                        transition: 'all 0.15s',
+                                    }}
+                                >
+                                    <div style={{ fontWeight: 600, marginBottom: '0.25rem', color: active ? '#bfdbfe' : '#e5e7eb' }}>{opt.label}</div>
+                                    <div style={{ fontSize: '0.78rem' }}>{opt.desc}</div>
+                                </button>
+                            );
+                        })}
+                    </div>
+                    <button onClick={handleSubmit} style={{ padding: '0.5rem 1rem', background: '#374151', color: 'white', borderRadius: '0.25rem', cursor: 'pointer', border: 'none' }}>
+                        Save Setting
+                    </button>
+                </div>
+
+                <div className={styles.card} style={{ gridColumn: 'span 2', opacity: settings.organization_mode === 'food_only' ? 0.4 : 1, pointerEvents: settings.organization_mode === 'food_only' ? 'none' : undefined }}>
                     <div className={styles.cardTitle}>Bottle Level Tracking</div>
                     <p style={{ color: '#9ca3af', fontSize: '0.9rem', marginBottom: '1rem' }}>
-                        If enabled, staff will be asked to record the "Existing Bottle Level" when they replace a bottle (Subtract Stock) for Wine/Liquor.
+                        {settings.organization_mode === 'food_only'
+                            ? 'Not available in "Food Only" mode.'
+                            : 'If enabled, staff will be asked to record the "Existing Bottle Level" when they replace a bottle (Subtract Stock) for items marked as alcohol.'}
                     </p>
 
                     <div style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>

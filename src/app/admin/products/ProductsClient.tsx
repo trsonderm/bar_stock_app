@@ -45,6 +45,7 @@ interface Item {
     bottle_size_unit?: string | null;
     package_price?: number | null;
     package_sale_enabled?: boolean;
+    is_alcohol?: boolean;
 }
 
 interface Category {
@@ -120,6 +121,7 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
         bottle_size_amount: '',
         bottle_size_unit: '',
         package_sale_enabled: false,
+        is_alcohol: true,
     });
 
     // Temp input for stock options
@@ -294,6 +296,7 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
             bottle_size_amount: '',
             bottle_size_unit: '',
             package_sale_enabled: false,
+            is_alcohol: true,
         });
         setTempOptionInput('');
         setTempOrderLabel('Pack');
@@ -461,6 +464,7 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
             bottle_size_amount: item.bottle_size_amount != null ? String(item.bottle_size_amount) : '',
             bottle_size_unit: item.bottle_size_unit || '',
             package_sale_enabled: item.package_sale_enabled === true,
+            is_alcohol: item.is_alcohol !== false,
         });
 
         // Distribute existing qty across order sizes
@@ -531,6 +535,7 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
             bottle_size_amount: item.bottle_size_amount != null ? String(item.bottle_size_amount) : '',
             bottle_size_unit: item.bottle_size_unit || '',
             package_sale_enabled: item.package_sale_enabled === true,
+            is_alcohol: item.is_alcohol !== false,
         });
         setQtyInputValues({});
         setTempOrderLabel('Pack');
@@ -682,6 +687,7 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                 bottle_size_amount: formData.bottle_size_amount !== '' ? parseFloat(formData.bottle_size_amount) : null,
                 bottle_size_unit: formData.bottle_size_unit || null,
                 package_sale_enabled: formData.package_sale_enabled,
+                is_alcohol: formData.is_alcohol,
             };
 
             const url = '/api/inventory' + (overrideOrgId ? `?orgId=${overrideOrgId}` : '');
@@ -1266,6 +1272,35 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                                     </div>
                                 );
                             })()}
+
+                            {/* Alcohol flag */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                                <label style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}>
+                                    <input
+                                        type="checkbox"
+                                        aria-label="Contains Alcohol"
+                                        checked={formData.is_alcohol}
+                                        onChange={e => setFormData({ ...formData, is_alcohol: e.target.checked })}
+                                        style={{ opacity: 0, width: 0, height: 0, position: 'absolute' }}
+                                    />
+                                    <span style={{
+                                        display: 'inline-block', width: '40px', height: '22px',
+                                        background: formData.is_alcohol ? '#3b82f6' : '#374151',
+                                        borderRadius: '11px', transition: 'background 0.2s', position: 'relative', flexShrink: 0,
+                                    }}>
+                                        <span style={{
+                                            position: 'absolute', top: '3px',
+                                            left: formData.is_alcohol ? '20px' : '3px',
+                                            width: '16px', height: '16px',
+                                            background: 'white', borderRadius: '50%', transition: 'left 0.2s',
+                                        }} />
+                                    </span>
+                                </label>
+                                <div>
+                                    <div style={{ fontSize: '0.85rem', color: '#e5e7eb', fontWeight: 500 }}>Contains Alcohol</div>
+                                    <div style={{ fontSize: '0.72rem', color: '#6b7280' }}>Enables bottle level tracking for this product</div>
+                                </div>
+                            </div>
 
                             {/* Supplier */}
                             <div>
