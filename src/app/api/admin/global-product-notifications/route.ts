@@ -2,6 +2,34 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
 
+export async function DELETE(req: NextRequest) {
+    const session = await getSession();
+    if (!session || session.role !== 'admin') {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const itemId = parseInt(req.nextUrl.searchParams.get('itemId') || '');
+    if (!itemId) return NextResponse.json({ error: 'Missing itemId' }, { status: 400 });
+
+    try {
+        // Remove the global product link so this item no longer receives update notifications
+        await db.execute(
+            'DELETE FROM item_global_links WHERE item_id = $1 AND organization_id = $2',
+            [itemId, session.organizationId]
+        );
+        // Dismiss any pending notifications tied to this item
+        await db.execute(
+            `UPDATE global_product_notifications
+             SET status = 'ignored', resolved_at = NOW()
+             WHERE item_id = $1 AND organization_id = $2 AND status = 'pending'`,
+            [itemId, session.organizationId]
+        );
+        return NextResponse.json({ ok: true });
+    } catch {
+        return NextResponse.json({ error: 'Internal Error' }, { status: 500 });
+    }
+}
+
 export async function GET(req: NextRequest) {
     const session = await getSession();
     if (!session || session.role !== 'admin') {

@@ -46,6 +46,7 @@ interface Item {
     package_price?: number | null;
     package_sale_enabled?: boolean;
     is_alcohol?: boolean;
+    global_product_id?: number | null;
 }
 
 interface Category {
@@ -154,7 +155,9 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
 
     const [stockMode, setStockMode] = useState<string>('CATEGORY');
     const [exportFormat, setExportFormat] = useState<'xlsx' | 'csv'>('xlsx');
-    const [modalTab, setModalTab] = useState<'basic' | 'inventory' | 'alerts'>('basic');
+    const [modalTab, setModalTab] = useState<'basic' | 'inventory' | 'alerts' | 'advanced'>('basic');
+    const [organizationMode, setOrganizationMode] = useState<string>('bar_and_food');
+    const [disconnecting, setDisconnecting] = useState(false);
 
     // Multi-location Logic
     const [myLocations, setMyLocations] = useState<{ id: number, name: string }[]>([]);
@@ -188,6 +191,7 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
         fetch('/api/admin/settings').then(r => r.json()).then(d => {
             if (d.settings?.stock_count_mode) setStockMode(d.settings.stock_count_mode);
             if (d.settings?.export_format === 'csv') setExportFormat('csv');
+            if (d.settings?.organization_mode) setOrganizationMode(d.settings.organization_mode);
         });
 
         // When viewing another org as super admin, fetch that org's locations directly
@@ -499,6 +503,7 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
             return [{ label: 'Unit', amount: 1 }];
         })();
         setQtyInputValues(distributeQty(item.quantity ?? 0, parsedSizes));
+        setGlobalProductId(item.global_product_id ?? null);
         setModalTab('basic');
         setShowModal(true);
     };
@@ -1214,8 +1219,9 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                 );
                 const tabStyle = (t: typeof modalTab) => ({
                     flex: 1, padding: '0.6rem 0.5rem', fontSize: '0.82rem', fontWeight: modalTab === t ? 700 : 400,
-                    background: modalTab === t ? '#1d4ed8' : 'transparent', color: modalTab === t ? 'white' : '#9ca3af',
-                    border: 'none', borderBottom: modalTab === t ? '2px solid #3b82f6' : '2px solid transparent',
+                    background: modalTab === t ? (t === 'advanced' ? '#374151' : '#1d4ed8') : 'transparent',
+                    color: modalTab === t ? 'white' : '#9ca3af',
+                    border: 'none', borderBottom: modalTab === t ? `2px solid ${t === 'advanced' ? '#6b7280' : '#3b82f6'}` : '2px solid transparent',
                     cursor: 'pointer', transition: 'all 0.15s',
                 });
                 return (
@@ -1240,6 +1246,10 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                             <button type="button" style={tabStyle('basic')} onClick={() => setModalTab('basic')}>Basic Info</button>
                             <button type="button" style={tabStyle('inventory')} onClick={() => setModalTab('inventory')}>Inventory</button>
                             <button type="button" style={tabStyle('alerts')} onClick={() => setModalTab('alerts')}>Alerts &amp; Orders</button>
+                            <button type="button" style={{ ...tabStyle('advanced'), display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }} onClick={() => setModalTab('advanced')}>
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                                Advanced
+                            </button>
                         </div>
                         {scannedBarcode && (
                             <div style={{ background: '#1e3a5f', border: '1px solid #1d4ed8', borderRadius: '6px', padding: '0.5rem 0.75rem', margin: '0.75rem 1.25rem 0', fontSize: '0.8rem', color: '#93c5fd', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -1963,19 +1973,63 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                                 </div>
                             </label>
 
-                            {/* Package Sale */}
-                            <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', cursor: 'pointer', padding: '0.875rem', background: '#1f2937', borderRadius: '8px', border: `1px solid ${formData.package_sale_enabled ? '#d97706' : '#374151'}` }}>
-                                <input type="checkbox" checked={formData.package_sale_enabled}
-                                    onChange={e => setFormData({ ...formData, package_sale_enabled: e.target.checked })}
-                                    style={{ width: '20px', height: '20px', marginTop: '2px', flexShrink: 0, accentColor: '#d97706' }} />
-                                <div>
-                                    <div style={{ color: 'white', fontWeight: 600, fontSize: '0.9rem' }}>Package Sale Eligible</div>
-                                    <div style={{ color: '#6b7280', fontSize: '0.78rem', marginTop: '2px' }}>
-                                        When checked, a package price (per order quantity) can be set for this product on the Prices page.
-                                        Requires Package Sale Pricing to be enabled in General Settings.
+                        </div>)}
+
+                        {/* ── TAB 4: ADVANCED ─────────────────────────────── */}
+                        {modalTab === 'advanced' && (<div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+
+                            {/* Package Sale — hidden for food-only orgs */}
+                            {organizationMode !== 'food_only' && (
+                                <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', cursor: 'pointer', padding: '0.875rem', background: '#1f2937', borderRadius: '8px', border: `1px solid ${formData.package_sale_enabled ? '#d97706' : '#374151'}` }}>
+                                    <input type="checkbox" checked={formData.package_sale_enabled}
+                                        onChange={e => setFormData({ ...formData, package_sale_enabled: e.target.checked })}
+                                        style={{ width: '20px', height: '20px', marginTop: '2px', flexShrink: 0, accentColor: '#d97706' }} />
+                                    <div>
+                                        <div style={{ color: 'white', fontWeight: 600, fontSize: '0.9rem' }}>Package Sale Eligible</div>
+                                        <div style={{ color: '#6b7280', fontSize: '0.78rem', marginTop: '2px' }}>
+                                            When checked, a package price (per order quantity) can be set for this product on the Prices page.
+                                            Requires Package Sale Pricing to be enabled in General Settings.
+                                        </div>
+                                    </div>
+                                </label>
+                            )}
+
+                            {/* Global Product Disconnect — only shown when editing a linked item */}
+                            {editingId && globalProductId && (
+                                <div style={{ padding: '0.875rem', background: '#1f2937', borderRadius: '8px', border: '1px solid #374151' }}>
+                                    <div style={{ color: 'white', fontWeight: 600, fontSize: '0.9rem', marginBottom: '0.4rem' }}>Global Product Catalog</div>
+                                    <div style={{ color: '#6b7280', fontSize: '0.78rem', marginBottom: '0.75rem' }}>
+                                        This product is linked to the global catalog and will receive update notifications when the master record changes.
+                                    </div>
+                                    <button
+                                        type="button"
+                                        disabled={disconnecting}
+                                        onClick={async () => {
+                                            if (!confirm('Disconnect this product from the global catalog? It will no longer receive update notifications.')) return;
+                                            setDisconnecting(true);
+                                            try {
+                                                await fetch(`/api/admin/global-product-notifications?itemId=${editingId}`, { method: 'DELETE' });
+                                                setGlobalProductId(null);
+                                            } finally {
+                                                setDisconnecting(false);
+                                            }
+                                        }}
+                                        style={{ background: '#374151', color: '#f87171', border: '1px solid #4b5563', borderRadius: '6px', padding: '0.45rem 1rem', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600, opacity: disconnecting ? 0.6 : 1 }}
+                                    >
+                                        {disconnecting ? 'Disconnecting…' : 'Disconnect from Global Catalog'}
+                                    </button>
+                                </div>
+                            )}
+
+                            {/* When editing with no global link, show that it's disconnected */}
+                            {editingId && !globalProductId && (
+                                <div style={{ padding: '0.875rem', background: '#1f2937', borderRadius: '8px', border: '1px solid #374151' }}>
+                                    <div style={{ color: 'white', fontWeight: 600, fontSize: '0.9rem', marginBottom: '0.4rem' }}>Global Product Catalog</div>
+                                    <div style={{ color: '#6b7280', fontSize: '0.78rem' }}>
+                                        This product is not linked to the global catalog and will not receive update notifications.
                                     </div>
                                 </div>
-                            </label>
+                            )}
 
                         </div>)}
 

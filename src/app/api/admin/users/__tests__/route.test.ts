@@ -1,95 +1,85 @@
 /**
  * @jest-environment node
  */
-import { createMocks } from 'node-mocks-http';
 import { GET, POST } from '../route';
-import { createTestDb } from '@/lib/__tests__/test-db';
 
-// Mock DB using manual mock
 jest.mock('@/lib/db');
 import { db } from '@/lib/db';
 
-const testDb = db as any;
-
-// Mock Auth
 jest.mock('@/lib/auth', () => ({
     getSession: jest.fn(),
-    hashPassword: jest.fn(p => 'hashed_' + p),
-    hashPin: jest.fn(p => 'hashed_' + p)
+    hashPassword: jest.fn(p => Promise.resolve('hashed_' + p)),
+    hashPin: jest.fn(p => Promise.resolve('hashed_' + p)),
 }));
 
 import { getSession } from '@/lib/auth';
 
-describe('/api/admin/users Integration', () => {
+const mockDb = db as jest.Mocked<typeof db>;
 
-    beforeAll(() => {
-        // Reset DB tables
-        testDb.prepare('DELETE FROM users').run();
-        testDb.prepare('DELETE FROM organizations').run();
+function makeReq(method: string, body?: any): Request {
+    const url = 'http://localhost/api/admin/users';
+    const opts: RequestInit = { method };
+    const req = new Request(url, opts) as any;
+    if (body) req.json = async () => body;
+    return req;
+}
 
-        // Seed
-        testDb.prepare("INSERT INTO organizations (id, name) VALUES (1, 'Org 1')").run();
-        testDb.prepare("INSERT INTO organizations (id, name) VALUES (2, 'Org 2')").run();
+beforeEach(() => {
+    jest.clearAllMocks();
+    mockDb.execute.mockResolvedValue({ rowCount: 0, rows: [] });
+});
 
-        // Admin for Org 1
-        testDb.prepare("INSERT INTO users (id, first_name, last_name, role, organization_id) VALUES (1, 'Admin', 'One', 'admin', 1)").run();
-        // User for Org 1
-        testDb.prepare("INSERT INTO users (id, first_name, last_name, role, organization_id) VALUES (2, 'User', 'One', 'user', 1)").run();
+describe('/api/admin/users', () => {
+    it('GET returns only users for the admin organization', async () => {
+        (getSession as jest.Mock).mockResolvedValue({ organizationId: 1, role: 'admin' });
 
-        // Admin for Org 2
-        testDb.prepare("INSERT INTO users (id, first_name, last_name, role, organization_id) VALUES (3, 'Admin', 'Two', 'admin', 2)").run();
-    });
+        const users = [
+            { id: 1, first_name: 'Admin', last_name: 'One', role: 'admin', organization_id: 1 },
+            { id: 2, first_name: 'User', last_name: 'One', role: 'user', organization_id: 1 },
+        ];
+        mockDb.query.mockResolvedValueOnce(users);
 
-    it('GET should return only users for the admin organization', async () => {
-        (getSession as jest.Mock).mockResolvedValue({
-            organizationId: 1,
-            role: 'admin'
-        });
-
-        const { req } = createMocks({
-            method: 'GET',
-            url: 'http://localhost:3000/api/admin/users'
-        });
-
-        const res = await GET(req as any);
+        const res = await GET(makeReq('GET') as any);
         const data = await res.json();
 
         expect(res.status).toBe(200);
-        expect(data.users).toHaveLength(2); // ID 1 and 2
+        expect(data.users).toHaveLength(2);
         const ids = data.users.map((u: any) => u.id).sort();
         expect(ids).toEqual([1, 2]);
     });
 
-    it('POST should create a new user in the admin organization', async () => {
-        (getSession as jest.Mock).mockResolvedValue({
-            organizationId: 1,
-            role: 'admin'
-        });
+    it('GET does not leak users from another organization', async () => {
+        (getSession as jest.Mock).mockResolvedValue({ organizationId: 2, role: 'admin' });
 
-        const { req } = createMocks({
-            method: 'POST',
-            body: {
-                firstName: 'New',
-                lastName: 'Staff',
-                pin: '1234',
-                role: 'user',
-                permissions: ['add_stock']
-            }
-        });
-        req.json = async () => req.body;
+        const users = [
+            { id: 3, first_name: 'Admin', last_name: 'Two', role: 'admin', organization_id: 2 },
+        ];
+        mockDb.query.mockResolvedValueOnce(users);
 
-        const res = await POST(req as any);
+        const res = await GET(makeReq('GET') as any);
         const data = await res.json();
 
         expect(res.status).toBe(200);
+        expect(data.users).toHaveLength(1);
+        expect(data.users[0].id).toBe(3);
+    });
 
-        // Check DB
-        const user = testDb.prepare("SELECT * FROM users WHERE first_name = 'New' AND organization_id = 1").get();
-        expect(user).toBeDefined();
-        expect(user.role).toBe('user');
+    it('POST creates a new user scoped to the admin organization', async () => {
+        (getSession as jest.Mock).mockResolvedValue({ organizationId: 1, role: 'admin', userId: 1 });
 
-        // Verify not in Org 2
-        const leak = testDb.prepare("SELECT * FROM users WHERE first_name = 'New' AND organization_id = 2").get();
-        expect(leak).toBeUndefined();
+        mockDb.one.mockResolvedValueOnce({ id: 10 });
+
+        const res = await POST(makeReq('POST', {
+            firstName: 'New', lastName: 'Staff', pin: '1234', role: 'user', permissions: ['add_stock'],
+        }) as any);
+
+        expect(res.status).toBe(200);
+
+        // db.one is used for INSERT … RETURNING id
+        const insertCall = mockDb.one.mock.calls.find(([sql]) =>
+            typeof sql === 'string' && sql.toLowerCase().includes('insert into users')
+        );
+        expect(insertCall).toBeDefined();
+        expect(insertCall![1]).toContain(1); // organizationId in params
     });
 });

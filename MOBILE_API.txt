@@ -1687,57 +1687,548 @@ TOKEN EXPIRY HANDLING:
 
 
 ────────────────────────────────────────────────────────────────────────────────
-18. ENDPOINT QUICK REFERENCE
+18. PRODUCT MANAGEMENT — Full CRUD for inventory products (admin only)
 ────────────────────────────────────────────────────────────────────────────────
 
-METHOD  PATH                                      AUTH    DESCRIPTION
-──────  ────────────────────────────────────────  ──────  ────────────────────────────────────────────
-POST    /api/mobile/auth                          No      Login → get Bearer token
-GET     /api/mobile/auth/me                       Bearer  Who am I? — identity, permissions, capabilities
-GET     /api/mobile/register?token=…              No      Validate invite token
-POST    /api/mobile/register                      No      Complete registration
-POST    /api/mobile/device-token                  Bearer  Register device for push notifications
-DELETE  /api/mobile/device-token                  Bearer  Unregister device (logout)
-GET     /api/mobile/notifications                 Bearer  List in-app notifications + unread count
-PATCH   /api/mobile/notifications                 Bearer  Mark notification(s) as read
-GET     /api/mobile/feed                          Bearer  Dashboard feed with likes/comments
-POST    /api/mobile/feed                          Bearer  Create a post
-POST    /api/mobile/feed/like?id=…                Bearer  Toggle like on a post (notifies author)
-GET     /api/mobile/feed/comments?postId=…        Bearer  Load comments for a post
-POST    /api/mobile/feed/comments?postId=…        Bearer  Add a comment (notifies author + engaged)
-DELETE  /api/mobile/feed/comments?id=…            Bearer  Delete a comment
-GET     /api/mobile/barred                        Bearer  Barred persons list
-POST    /api/mobile/barred                        Bearer  Add a barred person (permission: add_barred)
-GET     /api/mobile/incidents                     Bearer  List incident reports (permission: add/review)
-POST    /api/mobile/incidents                     Bearer  File an incident report (permission: add_incident)
-GET     /api/mobile/inventory                     Bearer  Full inventory with per-item thresholds
-GET     /api/mobile/out-of-stock                  Bearer  Low/out-of-stock items only
-POST    /api/mobile/stock/adjust                  Bearer  Add or subtract stock quantity
-GET     /api/mobile/orders                        Bearer  List pending/in-transit orders for check-in
-GET     /api/mobile/orders/<id>                   Bearer  Order details with line items
-POST    /api/mobile/orders/<id>                   Bearer  Check in / receive items (permission: add_stock)
-GET     /api/mobile/schedule                      Bearer  Full org schedule with pending swaps
-GET     /api/mobile/schedule/swap                 Bearer  List my shift swap requests
-POST    /api/mobile/schedule/swap                 Bearer  Create a shift swap request
-PATCH   /api/mobile/schedule/swap                 Bearer  Accept or decline a swap (target employee)
-GET     /api/mobile/schedule/time-off             Bearer  List my time-off requests
-POST    /api/mobile/schedule/time-off             Bearer  Submit a time-off request
-PATCH   /api/mobile/schedule/time-off             Bearer  Approve or decline a request (admin only)
-GET     /api/mobile/messages                      Bearer  List all threads (inbox) with unread counts
-POST    /api/mobile/messages                      Bearer  Start a thread or send first message
-GET     /api/mobile/messages/<threadId>           Bearer  Get paginated messages; marks thread read
-POST    /api/mobile/messages/<threadId>           Bearer  Send a message to an existing thread
-DELETE  /api/mobile/messages/<threadId>           Bearer  Leave a thread
-GET     /api/mobile/messages/poll?since=<ISO>     Bearer  Poll for new messages across all threads
-GET     /api/mobile/recipes                       Bearer  List / search recipes (local + global)
-GET     /api/mobile/recipes/<id>                  Bearer  Get a single recipe by ID (l:, g:, or int)
-GET     /api/mobile/profile                       Bearer  Get your profile (no password fields)
-PATCH   /api/mobile/profile                       Bearer  Update name, email, phone, bio, etc.
-POST    /api/mobile/profile/picture               Bearer  Upload profile picture (base64 data-URI)
-DELETE  /api/mobile/profile/picture               Bearer  Remove profile picture
-GET     /api/mobile/settings                      Bearer  Get notification preferences + address
-PATCH   /api/mobile/settings                      Bearer  Update notification preferences + address
-GET     /api/mobile/settings/permissions          Bearer  Legacy alias — prefer GET /api/mobile/auth/me
+All endpoints below require admin role (role = "admin").
+Non-admin users receive 403 Forbidden.
+
+── List products ────────────────────────────────────────────────────────────────
+
+GET /api/mobile/products
+
+Returns all products with every editable field. Use this to populate the product
+list screen and pre-fill edit forms.
+
+QUERY PARAMETERS (all optional):
+  ?q=vodka           Search by name or category (case-insensitive)
+  ?type=Liquor       Filter to a specific category name
+  ?location_id=2     Include quantities scoped to that location (otherwise sums all)
+  ?limit=200         Page size (default 200, max 500)
+  ?offset=0          Page offset
+
+RESPONSE (200 OK):
+{
+  "items": [
+    {
+      "id": 88,
+      "name": "Tito's Vodka 750ml",
+      "type": "Liquor",                    ← category name (text field)
+      "secondary_type": "Vodka",           ← sub-category (text field, nullable)
+      "unit_cost": 22.50,                  ← number input
+      "sale_price": null,                  ← number input, nullable
+      "package_price": null,               ← number input, nullable
+      "package_sale_enabled": false,       ← checkbox/toggle
+      "supplier": "Southern Glazers",      ← text field (free-form name)
+      "supplier_id": 3,                    ← dropdown: supplier list from /api/mobile/suppliers (nullable)
+      "order_size": [                      ← array of order size options
+        { "label": "Unit",  "amount": 1  },
+        { "label": "Case",  "amount": 12 }
+      ],
+      "barcodes": ["0123456789012"],       ← array of barcode strings (scan or type)
+      "aliases": ["Titos", "Tito Vodka"],  ← array of alternate name strings
+      "low_stock_threshold": 3,            ← number input (nullable = disabled)
+      "low_stock_threshold_type": "fixed", ← dropdown: "fixed" | "order_qty" | "stock_options"
+      "low_stock_threshold_factor": 1,     ← number input (multiplier for order_qty / stock_options modes)
+      "include_in_low_stock_alerts": true, ← checkbox/toggle
+      "exclude_from_smart_order": false,   ← checkbox/toggle
+      "include_in_audit": true,            ← checkbox/toggle
+      "bottle_size_amount": 750,           ← number input, nullable
+      "bottle_size_unit": "ml",            ← dropdown: "ml" | "L" | "oz" | "cl" (nullable)
+      "is_alcohol": true,                  ← checkbox/toggle (hidden for food_only orgs)
+      "stock_display_mode": "units",       ← dropdown: "units" | "cases" | "cases_and_units"
+      "inventory_display_mode": "units",   ← dropdown: "units" | "cases" | "cases_and_units"
+      "stock_unit_label": "unit",          ← text field (custom label when not using category defaults)
+      "stock_unit_size": 1,               ← number input
+      "order_unit_label": "case",          ← text field
+      "order_unit_size": 12,              ← number input
+      "use_category_qty_defaults": true,   ← checkbox/toggle
+      "stock_options": [1, 0.5, 0.25],    ← array of numbers (quick-count button values)
+      "quantity": 24,                      ← current stock level (read-only in product editor)
+      "global_product_id": null            ← integer if linked to global catalog, null if not
+    }
+  ],
+  "total": 142,
+  "limit": 200,
+  "offset": 0
+}
+
+── Get a single product ──────────────────────────────────────────────────────────
+
+GET /api/mobile/products/<id>
+
+Returns the full product record including per-location quantities.
+
+RESPONSE (200 OK):
+{
+  "item": {
+    ...all fields from list above...,
+    "location_quantities": [
+      { "location_id": 1, "location_name": "Main Bar", "quantity": 12 },
+      { "location_id": 2, "location_name": "Back Bar",  "quantity": 12 }
+    ],
+    "assigned_locations": [1, 2]           ← location IDs this item is assigned to
+  }
+}
+
+ERROR RESPONSES:
+  403 { "error": "Admin access required" }
+  404 { "error": "Product not found" }
+
+── Create a product ──────────────────────────────────────────────────────────────
+
+POST /api/mobile/products
+
+Creates a new product. The product is added to all locations unless
+assigned_locations is provided.
+
+REQUEST BODY:
+{
+  "name": "Tito's Vodka 750ml",          ← required; text input
+  "type": "Liquor",                       ← required; dropdown: list from GET /api/mobile/categories
+  "secondary_type": "Vodka",             ← optional; text input or dropdown (sub-categories)
+  "unit_cost": 22.50,                    ← optional; number input (decimal)
+  "supplier": "Southern Glazers",        ← optional; text input (free-form)
+  "supplier_id": 3,                      ← optional; dropdown: supplier list
+  "order_size": [                        ← optional; default [{ label: "Unit", amount: 1 }]
+    { "label": "Unit",  "amount": 1 },
+    { "label": "Case",  "amount": 12 }
+  ],
+  "barcodes": ["0123456789012"],         ← optional; scan or text input array
+  "aliases": ["Titos"],                  ← optional; text input array
+  "low_stock_threshold": 3,             ← optional; number input (null = disabled)
+  "low_stock_threshold_type": "fixed",  ← optional; dropdown: "fixed" | "order_qty" | "stock_options"
+  "low_stock_threshold_factor": 1,      ← optional; number input
+  "include_in_low_stock_alerts": true,  ← optional; checkbox/toggle (default: true)
+  "exclude_from_smart_order": false,    ← optional; checkbox/toggle (default: false)
+  "include_in_audit": true,             ← optional; checkbox/toggle (default: true)
+  "bottle_size_amount": 750,            ← optional; number input
+  "bottle_size_unit": "ml",             ← optional; dropdown: "ml" | "L" | "oz" | "cl"
+  "is_alcohol": true,                   ← optional; checkbox/toggle (default: true)
+  "stock_display_mode": "units",        ← optional; dropdown: "units" | "cases" | "cases_and_units"
+  "inventory_display_mode": "units",    ← optional; dropdown: "units" | "cases" | "cases_and_units"
+  "stock_unit_label": "unit",           ← optional; text input
+  "stock_unit_size": 1,                ← optional; number input
+  "order_unit_label": "case",          ← optional; text input
+  "order_unit_size": 12,               ← optional; number input
+  "use_category_qty_defaults": true,   ← optional; checkbox/toggle (default: true)
+  "stock_options": [1, 0.5],           ← optional; number array (quick-count presets)
+  "package_sale_enabled": false,       ← optional; checkbox/toggle (default: false)
+  "assigned_locations": [1, 2]         ← optional; multi-select: location IDs
+}
+
+RESPONSE (200 OK):
+  { "ok": true, "id": 89 }
+
+ERROR RESPONSES:
+  400 { "error": "name is required" }
+  400 { "error": "type (category) is required" }
+  403 { "error": "Admin access required" }
+
+── Update a product ──────────────────────────────────────────────────────────────
+
+PUT /api/mobile/products/<id>
+
+Send only the fields you want to change. All fields are optional.
+Field types and valid values are identical to POST above.
+
+REQUEST BODY (any subset of POST fields):
+{
+  "name": "Tito's Handmade Vodka 750ml",
+  "low_stock_threshold": 5,
+  "include_in_low_stock_alerts": true,
+  "bottle_size_amount": 750,
+  "bottle_size_unit": "ml"
+}
+
+RESPONSE (200 OK):
+  { "ok": true }
+
+ERROR RESPONSES:
+  400 { "error": "Invalid id" }
+  403 { "error": "Admin access required" }
+  404 { "error": "Product not found" }
+
+── Delete a product ──────────────────────────────────────────────────────────────
+
+DELETE /api/mobile/products/<id>
+
+Permanently deletes the product and all inventory quantity records.
+This action cannot be undone — confirm with the user before calling.
+
+RESPONSE (200 OK):
+  { "ok": true }
+
+ERROR RESPONSES:
+  403 { "error": "Admin access required" }
+  404 { "error": "Product not found" }
+
+── Field type reference for product forms ────────────────────────────────────────
+
+When building a Create / Edit Product form, use these UI control types:
+
+  FIELD                        CONTROL TYPE       NOTES
+  ───────────────────────────  ─────────────────  ──────────────────────────────────────────────────
+  name                         Text input         Required
+  type                         Dropdown           Values from GET /api/mobile/categories
+  secondary_type               Text / Dropdown    Sub-categories vary per org (optional)
+  unit_cost                    Number input       Decimal allowed; label "Cost per Unit"
+  sale_price                   Number input       Decimal; optional
+  package_price                Number input       Decimal; only shown when package_sale_enabled = true
+  package_sale_enabled         Toggle/Checkbox    Label "Package Sale Eligible"; hidden for food_only orgs
+  supplier                     Text input         Free-form OR link to supplier_id below
+  supplier_id                  Dropdown           Fetch list from GET /api/mobile/suppliers
+  order_size                   Repeating rows     Each row: label (text) + amount (number). Min 1 row.
+  barcodes                     Chip list + scan   Tap to scan barcode or type manually; multi-value
+  aliases                      Chip list          Type and press Enter/Add; multi-value strings
+  low_stock_threshold          Number input       Nullable — "null" = no threshold (disabled)
+  low_stock_threshold_type     Dropdown           "fixed" (set qty) | "order_qty" (× order size) |
+                                                  "stock_options" (× quick-count preset)
+  low_stock_threshold_factor   Number input       Multiplier; only relevant when type ≠ "fixed"
+  include_in_low_stock_alerts  Toggle/Checkbox    Label "Include in Low Stock Alerts"
+  exclude_from_smart_order     Toggle/Checkbox    Label "Exclude from Smart Order"
+  include_in_audit             Toggle/Checkbox    Label "Include in Audit"
+  bottle_size_amount           Number input       Decimal; hidden for food_only orgs
+  bottle_size_unit             Dropdown           "ml" | "L" | "oz" | "cl"; hidden for food_only orgs
+  is_alcohol                   Toggle/Checkbox    Label "Contains Alcohol"; hidden for food_only orgs
+  stock_display_mode           Dropdown           "units" | "cases" | "cases_and_units"
+  inventory_display_mode       Dropdown           "units" | "cases" | "cases_and_units"
+  stock_unit_label             Text input         Only editable when use_category_qty_defaults = false
+  stock_unit_size              Number input       Only editable when use_category_qty_defaults = false
+  order_unit_label             Text input         Only editable when use_category_qty_defaults = false
+  order_unit_size              Number input       Only editable when use_category_qty_defaults = false
+  use_category_qty_defaults    Toggle/Checkbox    Label "Use Category Defaults"; when true, lock unit fields
+  stock_options                Number chip list   Quick-count preset values (e.g. 1, 0.5, 0.25)
+  assigned_locations           Multi-select       From GET /api/mobile/locations
+
+NOTE: Check organization_mode from GET /api/mobile/admin/settings before rendering:
+  "food_only"     → hide: bottle_size_amount, bottle_size_unit, is_alcohol, package_sale_enabled
+  "bar_with_food" → show all fields
+  "bar_and_food"  → show all fields
+
+── Get categories (for type dropdown) ───────────────────────────────────────────
+
+GET /api/mobile/categories
+
+Returns all org categories to populate the type dropdown on product forms.
+
+RESPONSE (200 OK):
+{
+  "categories": [
+    {
+      "id": 1,
+      "name": "Liquor",
+      "sub_categories": ["Vodka", "Gin", "Rum", "Tequila", "Whiskey"],
+      "is_non_beverage": false
+    }
+  ]
+}
+
+── Get suppliers (for supplier_id dropdown) ─────────────────────────────────────
+
+GET /api/mobile/suppliers
+
+Returns all org suppliers for the supplier_id dropdown.
+
+RESPONSE (200 OK):
+{
+  "suppliers": [
+    { "id": 1, "name": "Southern Glazers", "contact_email": "orders@sg.com" },
+    { "id": 2, "name": "Republic National", "contact_email": null }
+  ]
+}
+
+── Get locations (for assigned_locations multi-select) ──────────────────────────
+
+GET /api/mobile/locations
+
+Returns all org locations for location assignment.
+
+RESPONSE (200 OK):
+{
+  "locations": [
+    { "id": 1, "name": "Main Bar" },
+    { "id": 2, "name": "Back Bar" }
+  ]
+}
+
+
+────────────────────────────────────────────────────────────────────────────────
+19. ADMIN SETTINGS — Read and update all organization settings (admin only)
+────────────────────────────────────────────────────────────────────────────────
+
+All endpoints below require admin role. Non-admins receive 403.
+
+── Get all settings ──────────────────────────────────────────────────────────────
+
+GET /api/mobile/admin/settings
+
+Returns every org-level setting in a single flat object. Use this to populate
+a settings screen and pre-fill all controls before editing.
+
+RESPONSE (200 OK):
+{
+  "settings": {
+
+    ── Organization Identity ──────────────────────────────────────────────────
+    "org_name": "The Rusty Nail",          ← read-only display
+    "subdomain": "rusty-nail",             ← text input; lowercase a-z 0-9 hyphens only
+                                              (changes PIN login URL)
+
+    ── Organization Type ─────────────────────────────────────────────────────
+    "organization_mode": "bar_and_food",   ← 3-way toggle:
+                                              "bar_and_food"  — full bar + food operation
+                                              "bar_with_food" — bar that also serves food
+                                              "food_only"     — no alcohol; hides bottle fields
+
+    ── Stock View ────────────────────────────────────────────────────────────
+    "stock_count_mode": "CATEGORY",        ← radio group: "CATEGORY" | "PRODUCT"
+                                              CATEGORY = group items by category in stock view
+                                              PRODUCT  = flat alphabetical list
+    "allow_custom_increment": false,       ← checkbox: allow free-type qty in stock view
+    "show_items_at_all_locations": true,   ← checkbox: show all items regardless of location filter
+    "shared_inventory_count": false,       ← checkbox: sum qty across all locations (single pool)
+
+    ── Bottle Level Tracking ─────────────────────────────────────────────────
+    "track_bottle_levels": true,           ← toggle; disabled/hidden when organization_mode = "food_only"
+                                              When false, no bottle-level tracking modal appears on subtracts
+
+    ── Recipes ───────────────────────────────────────────────────────────────
+    "recipes_enabled": false,              ← toggle: enable recipe library in stock view
+    "recipe_search_source": "both",        ← radio group (shown when recipes_enabled = true):
+                                              "local"  — only your org's recipes
+                                              "global" — only the shared global library
+                                              "both"   — search both libraries
+    "recipe_search_primary": "local",      ← radio group (shown when recipe_search_source = "both"):
+                                              "local"  — show your recipes first
+                                              "global" — show global recipes first
+
+    ── Pricing ───────────────────────────────────────────────────────────────
+    "package_sale_enabled": false,         ← toggle: enable package sale pricing org-wide
+                                              (hidden when organization_mode = "food_only")
+    "pricing_bands_enabled": false,        ← toggle: enable time-based pricing bands
+    "per_location_pricing": false,         ← toggle: allow different sale prices per location
+
+    ── Export Format ─────────────────────────────────────────────────────────
+    "export_format": "xlsx",               ← radio group: "xlsx" | "csv"
+
+    ── AI / Smart Ordering ───────────────────────────────────────────────────
+    "ai_ordering_enabled": false,          ← toggle: enable AI-generated order proposals
+    "ai_ordering_require_confirmation":    ← toggle (shown when ai_ordering_enabled = true):
+        true,                                 require admin approval before orders are sent
+    "ai_ordering_cc_user_ids": [],         ← multi-select: user IDs to CC on order emails
+    "ai_ordering_supplier_ids": [],        ← multi-select: which suppliers to include in auto-orders
+    "smart_order_per_location": false,     ← toggle: generate separate orders per location
+
+    ── Reports (Scheduled Emails) ────────────────────────────────────────────
+    "report_emails": {                     ← email recipient picker (to/cc/bcc arrays of email strings)
+      "to": ["owner@bar.com"],
+      "cc": [],
+      "bcc": []
+    },
+    "report_schedule": {                   ← schedule picker object
+      "frequency": "daily",               ←   dropdown: "daily" | "weekly" | "monthly" | "never"
+      "time": "08:00",                    ←   time picker: HH:MM 24-hour
+      "day": "monday"                     ←   dropdown (weekly only): day of week
+    },
+    "report_title": "Daily Stock Report",  ← text input: subject line for report emails
+    "report_per_location": false,          ← radio: false = one combined report | true = one per location
+    "backup_time": "06:00",               ← time picker: when to run the daily DB backup
+
+    ── Low Stock Alerts ──────────────────────────────────────────────────────
+    "low_stock_threshold": 5,             ← number input: org-wide fallback threshold
+    "use_global_low_stock": false,        ← toggle: use this global threshold for all items
+                                              (when false, per-item thresholds apply)
+    "low_stock_alert_enabled": false,     ← toggle: send low-stock email alerts
+    "low_stock_alert_emails": {           ← email recipient picker (shown when enabled)
+      "to": [], "cc": [], "bcc": []
+    },
+    "low_stock_alert_schedule": {         ← schedule picker (shown when enabled)
+      "frequency": "daily",
+      "time": "14:00"
+    },
+    "low_stock_alert_title":              ← text input: email subject
+        "URGENT: Low Stock Alert",
+
+    ── Shift Close Reports ───────────────────────────────────────────────────
+    "shift_report_enabled": false,        ← toggle: send shift-close summary emails
+    "shift_report_emails": {             ← email recipient picker (shown when enabled)
+      "to": [], "cc": [], "bcc": []
+    },
+    "shift_report_schedule": {           ← schedule picker (shown when enabled)
+      "frequency": "per_shift",          ←   "per_shift" = send after every shift ends
+      "time": "00:00"
+    },
+    "shift_report_title":                ← text input: email subject
+        "Shift Close Report",
+
+    ── Audit Alerts ──────────────────────────────────────────────────────────
+    "audit_alert_enabled": false,        ← toggle: email alerts when audits are submitted
+    "audit_alert_emails": {             ← email recipient picker (shown when enabled)
+      "to": [], "cc": [], "bcc": []
+    },
+    "audit_alert_actions": "both",       ← dropdown (shown when enabled):
+                                            "add"  — only alert on stock increases
+                                            "sub"  — only alert on stock decreases
+                                            "both" — alert on any change
+
+    ── Workday ───────────────────────────────────────────────────────────────
+    "workday_start": "00:00"             ← time picker: when the business day starts
+                                            (affects daily rollover in activity logs)
+  }
+}
+
+── Update settings ───────────────────────────────────────────────────────────────
+
+PATCH /api/mobile/admin/settings
+
+Send any subset of the fields from GET above. Only supplied fields are updated.
+All boolean fields accept true/false (not strings). All string fields accept
+their documented values only (validated server-side).
+
+REQUEST BODY EXAMPLES:
+
+Turn on bottle level tracking:
+  { "track_bottle_levels": true }
+
+Change organization type to food only:
+  { "organization_mode": "food_only" }
+
+Enable recipes using both libraries:
+  { "recipes_enabled": true, "recipe_search_source": "both", "recipe_search_primary": "local" }
+
+Enable AI ordering for two suppliers:
+  { "ai_ordering_enabled": true, "ai_ordering_supplier_ids": [1, 3], "ai_ordering_require_confirmation": true }
+
+Configure a weekly stock report every Monday at 8am:
+  {
+    "report_emails": { "to": ["owner@bar.com"], "cc": [], "bcc": [] },
+    "report_schedule": { "frequency": "weekly", "time": "08:00", "day": "monday" },
+    "report_title": "Weekly Stock Report"
+  }
+
+RESPONSE (200 OK):
+  { "ok": true }
+
+ERROR RESPONSES:
+  400 { "error": "organization_mode must be \"bar_and_food\", \"bar_with_food\", or \"food_only\"" }
+  400 { "error": "stock_count_mode must be \"CATEGORY\" or \"PRODUCT\"" }
+  400 { "error": "recipe_search_source must be \"local\", \"global\", or \"both\"" }
+  400 { "error": "recipe_search_primary must be \"local\" or \"global\"" }
+  403 { "error": "Admin access required" }
+
+── Settings field type reference ────────────────────────────────────────────────
+
+Use this table when building a Settings screen in the mobile app:
+
+  FIELD                          CONTROL TYPE        VALID VALUES / NOTES
+  ─────────────────────────────  ──────────────────  ──────────────────────────────────────────────
+  subdomain                      Text input          a-z, 0-9, hyphens; no spaces
+  organization_mode              3-button segment    "bar_and_food" | "bar_with_food" | "food_only"
+  stock_count_mode               Radio group         "CATEGORY" | "PRODUCT"
+  allow_custom_increment         Toggle              true / false
+  show_items_at_all_locations    Toggle              true / false (default true)
+  shared_inventory_count         Toggle              true / false
+  track_bottle_levels            Toggle              true / false; hide when org_mode = food_only
+  recipes_enabled                Toggle              true / false
+  recipe_search_source           Radio group         "local" | "global" | "both"; shown when recipes on
+  recipe_search_primary          Radio group         "local" | "global"; shown when source = "both"
+  package_sale_enabled           Toggle              true / false; hide when org_mode = food_only
+  pricing_bands_enabled          Toggle              true / false
+  per_location_pricing           Toggle              true / false
+  export_format                  Radio group         "xlsx" | "csv"
+  ai_ordering_enabled            Toggle              true / false
+  ai_ordering_require_           Toggle              true / false; shown when ai_ordering on
+    confirmation
+  ai_ordering_cc_user_ids        Multi-select        Integer array; user IDs; fetch names from /users
+  ai_ordering_supplier_ids       Multi-select        Integer array; supplier IDs
+  smart_order_per_location       Toggle              true / false
+  report_emails                  Email picker        Object: { to: string[], cc: string[], bcc: string[] }
+  report_schedule                Schedule picker     Object: { frequency, time, day? }
+                                                       frequency: "daily" | "weekly" | "monthly" | "never"
+                                                       time: "HH:MM" (24-hour)
+                                                       day: "monday" … "sunday" (weekly only)
+  report_title                   Text input          Email subject line
+  report_per_location            Radio group         false = combined | true = per location
+  backup_time                    Time picker         "HH:MM" 24-hour
+  low_stock_threshold            Number input        Positive integer; org-wide fallback
+  use_global_low_stock           Toggle              true / false
+  low_stock_alert_enabled        Toggle              true / false
+  low_stock_alert_emails         Email picker        { to, cc, bcc }; shown when alert enabled
+  low_stock_alert_schedule       Schedule picker     { frequency, time }; shown when alert enabled
+  low_stock_alert_title          Text input          Email subject
+  shift_report_enabled           Toggle              true / false
+  shift_report_emails            Email picker        { to, cc, bcc }
+  shift_report_schedule          Schedule picker     frequency can also be "per_shift"
+  shift_report_title             Text input          Email subject
+  audit_alert_enabled            Toggle              true / false
+  audit_alert_emails             Email picker        { to, cc, bcc }
+  audit_alert_actions            Dropdown            "add" | "sub" | "both"
+  workday_start                  Time picker         "HH:MM" 24-hour
+
+
+────────────────────────────────────────────────────────────────────────────────
+20. ENDPOINT QUICK REFERENCE
+────────────────────────────────────────────────────────────────────────────────
+
+METHOD  PATH                                      AUTH    ROLE    DESCRIPTION
+──────  ────────────────────────────────────────  ──────  ──────  ────────────────────────────────────────────
+POST    /api/mobile/auth                          No      —       Login → get Bearer token
+GET     /api/mobile/auth/me                       Bearer  Any     Who am I? — identity, permissions, capabilities
+GET     /api/mobile/register?token=…              No      —       Validate invite token
+POST    /api/mobile/register                      No      —       Complete registration
+POST    /api/mobile/device-token                  Bearer  Any     Register device for push notifications
+DELETE  /api/mobile/device-token                  Bearer  Any     Unregister device (logout)
+GET     /api/mobile/notifications                 Bearer  Any     List in-app notifications + unread count
+PATCH   /api/mobile/notifications                 Bearer  Any     Mark notification(s) as read
+GET     /api/mobile/feed                          Bearer  Any     Dashboard feed with likes/comments
+POST    /api/mobile/feed                          Bearer  Any     Create a post
+POST    /api/mobile/feed/like?id=…                Bearer  Any     Toggle like on a post (notifies author)
+GET     /api/mobile/feed/comments?postId=…        Bearer  Any     Load comments for a post
+POST    /api/mobile/feed/comments?postId=…        Bearer  Any     Add a comment (notifies author + engaged)
+DELETE  /api/mobile/feed/comments?id=…            Bearer  Any     Delete a comment
+GET     /api/mobile/barred                        Bearer  Any     Barred persons list
+POST    /api/mobile/barred                        Bearer  Perm    Add a barred person (permission: add_barred)
+GET     /api/mobile/incidents                     Bearer  Perm    List incident reports (permission: add/review)
+POST    /api/mobile/incidents                     Bearer  Perm    File an incident report (add_incident)
+GET     /api/mobile/inventory                     Bearer  Any     Inventory list (lightweight, qty + thresholds)
+GET     /api/mobile/out-of-stock                  Bearer  Any     Low/out-of-stock items only
+POST    /api/mobile/stock/adjust                  Bearer  Perm    Add or subtract stock quantity (add_stock)
+GET     /api/mobile/products                      Bearer  Admin   Full product list with all editable fields
+GET     /api/mobile/products/<id>                 Bearer  Admin   Single product with per-location quantities
+POST    /api/mobile/products                      Bearer  Admin   Create a product
+PUT     /api/mobile/products/<id>                 Bearer  Admin   Update any product field(s)
+DELETE  /api/mobile/products/<id>                 Bearer  Admin   Delete a product (permanent)
+GET     /api/mobile/categories                    Bearer  Any     List org categories (for type dropdown)
+GET     /api/mobile/suppliers                     Bearer  Any     List org suppliers (for supplier_id dropdown)
+GET     /api/mobile/locations                     Bearer  Any     List org locations
+GET     /api/mobile/orders                        Bearer  Any     List pending/in-transit orders for check-in
+GET     /api/mobile/orders/<id>                   Bearer  Any     Order details with line items
+POST    /api/mobile/orders/<id>                   Bearer  Perm    Check in / receive items (add_stock)
+GET     /api/mobile/schedule                      Bearer  Any     Full org schedule with pending swaps
+GET     /api/mobile/schedule/swap                 Bearer  Any     List my shift swap requests
+POST    /api/mobile/schedule/swap                 Bearer  Any     Create a shift swap request
+PATCH   /api/mobile/schedule/swap                 Bearer  Any     Accept or decline a swap (target employee)
+GET     /api/mobile/schedule/time-off             Bearer  Any     List my time-off requests
+POST    /api/mobile/schedule/time-off             Bearer  Any     Submit a time-off request
+PATCH   /api/mobile/schedule/time-off             Bearer  Admin   Approve or decline a request
+GET     /api/mobile/messages                      Bearer  Any     List all threads (inbox) with unread counts
+POST    /api/mobile/messages                      Bearer  Any     Start a thread or send first message
+GET     /api/mobile/messages/<threadId>           Bearer  Any     Get paginated messages; marks thread read
+POST    /api/mobile/messages/<threadId>           Bearer  Any     Send a message to an existing thread
+DELETE  /api/mobile/messages/<threadId>           Bearer  Any     Leave a thread
+GET     /api/mobile/messages/poll?since=<ISO>     Bearer  Any     Poll for new messages across all threads
+GET     /api/mobile/recipes                       Bearer  Any     List / search recipes (local + global)
+GET     /api/mobile/recipes/<id>                  Bearer  Any     Get a single recipe by ID (l:, g:, or int)
+GET     /api/mobile/profile                       Bearer  Any     Get your profile (no password fields)
+PATCH   /api/mobile/profile                       Bearer  Any     Update name, email, phone, bio, etc.
+POST    /api/mobile/profile/picture               Bearer  Any     Upload profile picture (base64 data-URI)
+DELETE  /api/mobile/profile/picture               Bearer  Any     Remove profile picture
+GET     /api/mobile/settings                      Bearer  Any     Get push notification preferences + address
+PATCH   /api/mobile/settings                      Bearer  Any     Update push notification preferences + address
+GET     /api/mobile/settings/permissions          Bearer  Any     Legacy alias — prefer GET /api/mobile/auth/me
+GET     /api/mobile/admin/settings                Bearer  Admin   Get all org settings (all sections)
+PATCH   /api/mobile/admin/settings                Bearer  Admin   Update any org setting(s)
 
 
 ────────────────────────────────────────────────────────────────────────────────

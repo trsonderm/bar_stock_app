@@ -122,6 +122,7 @@ export async function GET(req: NextRequest) {
         COALESCE(i.inventory_display_mode, 'units') as inventory_display_mode,
         COALESCE(i.is_alcohol, true) as is_alcohol,
         i.archived_at,
+        (SELECT igl.global_product_id FROM item_global_links igl WHERE igl.item_id = i.id LIMIT 1) as global_product_id,
         MAX(isp.supplier_id) as supplier_id,
         (SELECT ils.supplier_id FROM item_location_suppliers ils WHERE ils.item_id = i.id AND ils.location_id = $2 LIMIT 1) as location_supplier_id,
         COALESCE(SUM(inv.quantity), 0) as quantity,
