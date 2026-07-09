@@ -2342,67 +2342,522 @@ SECTION 5 — REPORTED BY
 
 
 ────────────────────────────────────────────────────────────────────────────────
-21. ENDPOINT QUICK REFERENCE
+22. ADMIN — ORGANIZATION MANAGEMENT (admin role required for all writes)
 ────────────────────────────────────────────────────────────────────────────────
 
-METHOD  PATH                                      AUTH    ROLE    DESCRIPTION
-──────  ────────────────────────────────────────  ──────  ──────  ────────────────────────────────────────────
-POST    /api/mobile/auth                          No      —       Login → get Bearer token
-GET     /api/mobile/auth/me                       Bearer  Any     Who am I? — identity, permissions, capabilities
-GET     /api/mobile/register?token=…              No      —       Validate invite token
-POST    /api/mobile/register                      No      —       Complete registration
-POST    /api/mobile/device-token                  Bearer  Any     Register device for push notifications
-DELETE  /api/mobile/device-token                  Bearer  Any     Unregister device (logout)
-GET     /api/mobile/notifications                 Bearer  Any     List in-app notifications + unread count
-PATCH   /api/mobile/notifications                 Bearer  Any     Mark notification(s) as read
-GET     /api/mobile/feed                          Bearer  Any     Dashboard feed with likes/comments
-POST    /api/mobile/feed                          Bearer  Any     Create a post
-POST    /api/mobile/feed/like?id=…                Bearer  Any     Toggle like on a post (notifies author)
-GET     /api/mobile/feed/comments?postId=…        Bearer  Any     Load comments for a post
-POST    /api/mobile/feed/comments?postId=…        Bearer  Any     Add a comment (notifies author + engaged)
-DELETE  /api/mobile/feed/comments?id=…            Bearer  Any     Delete a comment
-GET     /api/mobile/barred                        Bearer  Any     Barred persons list
-POST    /api/mobile/barred                        Bearer  Perm    Add a barred person (permission: add_barred)
-GET     /api/mobile/incidents                     Bearer  Perm    List incident reports (permission: add/review)
-POST    /api/mobile/incidents                     Bearer  Perm    File an incident report (add_incident)
-GET     /api/mobile/inventory                     Bearer  Any     Inventory list (lightweight, qty + thresholds)
-GET     /api/mobile/out-of-stock                  Bearer  Any     Low/out-of-stock items only
-POST    /api/mobile/stock/adjust                  Bearer  Perm    Add or subtract stock quantity (add_stock)
-GET     /api/mobile/products                      Bearer  Admin   Full product list with all editable fields
-GET     /api/mobile/products/<id>                 Bearer  Admin   Single product with per-location quantities
-POST    /api/mobile/products                      Bearer  Admin   Create a product
-PUT     /api/mobile/products/<id>                 Bearer  Admin   Update any product field(s)
-DELETE  /api/mobile/products/<id>                 Bearer  Admin   Delete a product (permanent)
-GET     /api/mobile/categories                    Bearer  Any     List org categories (for type dropdown)
-GET     /api/mobile/suppliers                     Bearer  Any     List org suppliers (for supplier_id dropdown)
-GET     /api/mobile/locations                     Bearer  Any     List org locations
-GET     /api/mobile/orders                        Bearer  Any     List pending/in-transit orders for check-in
-GET     /api/mobile/orders/<id>                   Bearer  Any     Order details with line items
-POST    /api/mobile/orders/<id>                   Bearer  Perm    Check in / receive items (add_stock)
-GET     /api/mobile/schedule                      Bearer  Any     Full org schedule with pending swaps
-GET     /api/mobile/schedule/swap                 Bearer  Any     List my shift swap requests
-POST    /api/mobile/schedule/swap                 Bearer  Any     Create a shift swap request
-PATCH   /api/mobile/schedule/swap                 Bearer  Any     Accept or decline a swap (target employee)
-GET     /api/mobile/schedule/time-off             Bearer  Any     List my time-off requests
-POST    /api/mobile/schedule/time-off             Bearer  Any     Submit a time-off request
-PATCH   /api/mobile/schedule/time-off             Bearer  Admin   Approve or decline a request
-GET     /api/mobile/messages                      Bearer  Any     List all threads (inbox) with unread counts
-POST    /api/mobile/messages                      Bearer  Any     Start a thread or send first message
-GET     /api/mobile/messages/<threadId>           Bearer  Any     Get paginated messages; marks thread read
-POST    /api/mobile/messages/<threadId>           Bearer  Any     Send a message to an existing thread
-DELETE  /api/mobile/messages/<threadId>           Bearer  Any     Leave a thread
-GET     /api/mobile/messages/poll?since=<ISO>     Bearer  Any     Poll for new messages across all threads
-GET     /api/mobile/recipes                       Bearer  Any     List / search recipes (local + global)
-GET     /api/mobile/recipes/<id>                  Bearer  Any     Get a single recipe by ID (l:, g:, or int)
-GET     /api/mobile/profile                       Bearer  Any     Get your profile (no password fields)
-PATCH   /api/mobile/profile                       Bearer  Any     Update name, email, phone, bio, etc.
-POST    /api/mobile/profile/picture               Bearer  Any     Upload profile picture (base64 data-URI)
-DELETE  /api/mobile/profile/picture               Bearer  Any     Remove profile picture
-GET     /api/mobile/settings                      Bearer  Any     Get push notification preferences + address
-PATCH   /api/mobile/settings                      Bearer  Any     Update push notification preferences + address
-GET     /api/mobile/settings/permissions          Bearer  Any     Legacy alias — prefer GET /api/mobile/auth/me
-GET     /api/mobile/admin/settings                Bearer  Admin   Get all org settings (all sections)
-PATCH   /api/mobile/admin/settings                Bearer  Admin   Update any org setting(s)
+All endpoints in this section use Bearer token authentication.
+GET endpoints are accessible to any authenticated user.
+POST / PUT / DELETE require role = "admin".
+
+── Categories ──────────────────────────────────────────────────────────────────
+
+GET /api/mobile/admin/categories
+  Returns all org categories with sub-categories, unit labels, and stock options.
+
+  RESPONSE:
+  {
+    "categories": [
+      {
+        "id": 1,
+        "name": "Spirits",
+        "stock_options":            [1, 0.75, 0.5, 0.25],  ← bottle-level options
+        "sub_categories":           ["Vodka", "Gin", "Rum"],
+        "enable_low_stock_reporting": true,
+        "default_stock_unit_label": "bottle",
+        "default_stock_unit_size":  1,
+        "default_order_unit_label": "case",
+        "default_order_unit_size":  12
+      }
+    ]
+  }
+
+POST /api/mobile/admin/categories
+  Body (all optional except name):
+  {
+    "name":                       "Beer",           ← required; unique per org
+    "stock_options":              [1, 0.5],         ← array of numeric fill levels
+    "sub_categories":             ["Domestic", "Craft"],
+    "enable_low_stock_reporting": true,
+    "default_stock_unit_label":   "bottle",
+    "default_stock_unit_size":    1,
+    "default_order_unit_label":   "case",
+    "default_order_unit_size":    24
+  }
+  RESPONSE: { "ok": true, "id": 5 }
+  RESPONSE 409: Category name already exists
+
+PUT /api/mobile/admin/categories
+  Body: same fields as POST plus "id" (required). Only include fields to change.
+  RESPONSE: { "ok": true }
+  RESPONSE 404: Category not found
+
+DELETE /api/mobile/admin/categories?id=<id>
+  Blocked if any products are assigned to this category.
+  RESPONSE: { "ok": true }
+  RESPONSE 409: Category is in use — reassign products first
+
+── Locations ───────────────────────────────────────────────────────────────────
+
+GET /api/mobile/admin/locations
+  Returns all org locations.
+  RESPONSE: { "locations": [{ "id": 1, "name": "Main Bar", "address": "..." }] }
+
+POST /api/mobile/admin/locations
+  Body: { "name": "Back Bar", "address": "123 Main St" }
+  RESPONSE: { "ok": true, "location": { "id": 2, "name": "Back Bar", "address": "..." } }
+
+PUT /api/mobile/admin/locations
+  Body: { "id": 2, "name": "Back Bar", "address": "..." }
+  RESPONSE: { "ok": true }
+
+DELETE /api/mobile/admin/locations?id=<id>
+  WARNING: Cascades and deletes all inventory rows for this location.
+  RESPONSE: { "ok": true }
+
+── Suppliers ───────────────────────────────────────────────────────────────────
+
+GET /api/mobile/admin/suppliers
+  Returns org-specific AND global suppliers (those shared across all orgs).
+  RESPONSE:
+  {
+    "suppliers": [
+      {
+        "id":               3,
+        "name":             "Southern Glazer's",
+        "contact_email":    "rep@sg.com",
+        "contact_phone":    "555-1234",
+        "delivery_days_json": ["Monday", "Wednesday", "Friday"],
+        "order_days_json":    ["Sunday", "Tuesday"],
+        "lead_time_days":   2,
+        "is_global":        false        ← true = shared across all orgs (read-only)
+      }
+    ]
+  }
+
+POST /api/mobile/admin/suppliers
+  Body:
+  {
+    "name":            "Republic National",    ← required
+    "contact_email":   "rep@rn.com",           ← optional
+    "contact_phone":   "555-5678",             ← optional
+    "delivery_days":   ["Tuesday", "Friday"],  ← optional; days supplier delivers
+    "order_days":      ["Monday", "Thursday"], ← optional; days to place orders by
+    "lead_time_days":  2                       ← optional; days between order and delivery
+  }
+  RESPONSE: { "ok": true, "id": 7 }
+
+PUT /api/mobile/admin/suppliers
+  Body: same fields as POST plus "id" (required). Only changed fields needed.
+  RESPONSE: { "ok": true }
+
+DELETE /api/mobile/admin/suppliers?id=<id>
+  Only works on org-owned suppliers (not global ones).
+  RESPONSE: { "ok": true }
+
+── Users (Employee Management) ─────────────────────────────────────────────────
+
+GET /api/mobile/admin/users[?locationId=<id>]
+  Returns all active org users with their permissions and assigned locations.
+  Optional ?locationId= filters to users at that location only.
+
+  RESPONSE:
+  {
+    "users": [
+      {
+        "id":                  5,
+        "first_name":          "Jane",
+        "last_name":           "Smith",
+        "email":               "jane@bar.com",
+        "role":                "user",         ← "user" | "admin"
+        "permissions":         ["add_stock", "add_incident"],
+        "phone":               "555-0001",
+        "bio":                 null,
+        "notes":               null,
+        "is_active":           true,
+        "display_name":        "Jane",
+        "profile_picture":     null,
+        "hide_from_scheduler": false,
+        "assigned_locations":  [1, 2],
+        "created_at":          "2025-01-15T10:00:00Z"
+      }
+    ]
+  }
+
+  Available permission values:
+    add_stock        add_barred       delete_barred
+    add_incident     review_incidents view_reports
+    manage_orders    manage_recipes   all   (grants all permissions)
+
+POST /api/mobile/admin/users
+  Body:
+  {
+    "first_name":         "Bob",            ← required
+    "last_name":          "Jones",          ← required
+    "email":              "bob@bar.com",    ← optional; needed for email login
+    "pin":                "1234",           ← optional 4-digit PIN; default 0000
+    "password":           "secret",        ← optional; enables email+password login
+    "role":               "user",          ← "user" | "admin"  (default: "user")
+    "permissions":        ["add_stock"],   ← array of permission strings
+    "phone":              "555-9999",      ← optional
+    "bio":                "Bartender",     ← optional
+    "notes":              "Internal notes",← optional
+    "display_name":       "Bobby",         ← optional; overrides first+last in UI
+    "assigned_locations": [1, 2]           ← location IDs to assign
+  }
+  RESPONSE: { "ok": true, "id": 12 }
+  RESPONSE 409: Email already in use
+
+PUT /api/mobile/admin/users
+  Body: same fields as POST plus "id" (required). Only include fields to change.
+  To change PIN: include "pin" field.
+  To change password: include "password" field.
+  To replace location assignments entirely: include "assigned_locations" array.
+  RESPONSE: { "ok": true }
+
+DELETE /api/mobile/admin/users?id=<id>
+  Cannot delete your own account.
+  RESPONSE: { "ok": true }
+
+── Pricing Bands ───────────────────────────────────────────────────────────────
+
+Pricing bands define time windows for package pricing (e.g. happy hour, late night).
+
+GET /api/mobile/admin/pricing-bands
+  RESPONSE:
+  {
+    "bands": [
+      {
+        "id":         1,
+        "name":       "Happy Hour",
+        "start_time": "16:00:00",
+        "end_time":   "19:00:00",
+        "sort_order": 0
+      }
+    ]
+  }
+
+POST /api/mobile/admin/pricing-bands
+  Body: { "name": "Happy Hour", "start_time": "16:00", "end_time": "19:00", "sort_order": 0 }
+  RESPONSE: { "band": { "id": 1, "name": "Happy Hour", "start_time": "16:00:00", ... } }
+
+PUT /api/mobile/admin/pricing-bands
+  Body: { "id": 1, ...fields to update... }
+  RESPONSE: { "ok": true }
+
+DELETE /api/mobile/admin/pricing-bands?id=<id>
+  RESPONSE: { "ok": true }
+
+UI FIELD GUIDE — Pricing Bands form:
+  name        Text input   e.g. "Happy Hour", "Weekend", "Late Night"
+  start_time  Time picker  24-hour or 12-hour with AM/PM conversion
+  end_time    Time picker  End time of the band
+  sort_order  Number       Display order; lower = first
+
+
+────────────────────────────────────────────────────────────────────────────────
+23. ADMIN — SCHEDULE MANAGEMENT (admin role required for all writes)
+────────────────────────────────────────────────────────────────────────────────
+
+The schedule system has three layers:
+  1. Shift templates — reusable named shifts with times and colors
+  2. Schedule entries  — assignments of users to shifts on specific dates
+  3. Settings          — display mode and per-location hour configs
+
+── Shift Templates ─────────────────────────────────────────────────────────────
+
+GET /api/mobile/admin/schedule/shifts[?locationId=<id>]
+  Returns all shift templates. With ?locationId, returns global shifts + that location's.
+
+  RESPONSE:
+  {
+    "shifts": [
+      {
+        "id":                1,
+        "label":             "Morning",
+        "start_time":        "08:00",
+        "end_time":          "16:00",
+        "color":             "#3b82f6",
+        "assigned_user_ids": [3, 7],    ← user IDs who regularly work this shift
+        "location_id":       null        ← null = global; int = location-specific
+      }
+    ]
+  }
+
+POST /api/mobile/admin/schedule/shifts
+  Body:
+  {
+    "label":             "Evening",     ← required
+    "start_time":        "16:00",       ← required; HH:MM 24-hour
+    "end_time":          "00:00",       ← required
+    "color":             "#10b981",     ← hex color for calendar display; default #3b82f6
+    "assigned_user_ids": [3, 5],        ← optional; pre-assigned users
+    "location_id":       null           ← null = applies to all locations
+  }
+  RESPONSE: { "ok": true, "id": 4 }
+
+PUT /api/mobile/admin/schedule/shifts
+  Body: { "id": 4, ...same fields... }  — all fields required including label/times.
+  RESPONSE: { "ok": true }
+
+DELETE /api/mobile/admin/schedule/shifts?id=<id>
+  RESPONSE: { "ok": true }
+
+UI FIELD GUIDE — Shift template form:
+  label             Text input    Short name, e.g. "AM", "Lunch", "Closing"
+  start_time        Time picker   24-hour input
+  end_time          Time picker   Can be after midnight (crosses-midnight shift)
+  color             Color picker  Hex color; used in calendar view
+  assigned_user_ids Multi-select  Users who normally work this shift (shown pre-checked)
+  location_id       Dropdown      Leave blank for global; pick a location to scope it
+
+── Schedule Entries ────────────────────────────────────────────────────────────
+
+Schedule entries are the actual day-by-day assignments (user + shift + date).
+
+GET /api/mobile/admin/schedule/entries?start=YYYY-MM-DD&end=YYYY-MM-DD[&locationId=]
+  Returns all schedule entries in the date range with full user and shift details.
+
+  RESPONSE:
+  {
+    "schedules": [
+      {
+        "id":                 101,
+        "user_id":            5,
+        "shift_id":           2,
+        "date":               "2026-07-14",
+        "recurring_group_id": "abc123",    ← null for one-off; UUID for recurring sets
+        "first_name":         "Jane",
+        "last_name":          "Smith",
+        "display_name":       "Jane",
+        "shift_label":        "Evening",
+        "start_time":         "16:00",
+        "end_time":           "00:00",
+        "color":              "#10b981",
+        "location_id":        null
+      }
+    ]
+  }
+
+POST /api/mobile/admin/schedule/entries
+  Create one or more schedule entries (assign users to a shift).
+  Body:
+  {
+    "userIds":     [3, 5, 7],           ← required; one or more user IDs
+    "shiftId":     2,                   ← required; shift template ID
+    "dates":       ["2026-07-14", "2026-07-15", "2026-07-16"],  ← required; ISO dates
+    "locationId":  null,                ← optional; scope the entry to a location
+    "isRecurring": true                 ← optional; if true + multiple dates, links them
+                                           so they can be edited/deleted together
+  }
+  Behavior: if a user already has an entry on a given date, it is replaced.
+  RESPONSE: { "ok": true }
+
+PUT /api/mobile/admin/schedule/entries
+  Update a schedule entry. Use modifyStrategy to handle recurring sets.
+  Body:
+  {
+    "id":             101,             ← required; schedule entry ID
+    "shiftId":        3,               ← optional; new shift ID
+    "date":           "2026-07-15",    ← optional; move to a different date
+    "modifyStrategy": "instance"       ← "instance" | "following" | "all"
+  }
+
+  modifyStrategy values:
+    "instance"  — edit only this one entry (detaches from recurring group)
+    "following" — edit this entry and all future entries in the same recurring group
+    "all"       — edit every entry in the recurring group (past and future)
+
+  RESPONSE: { "ok": true }
+
+DELETE /api/mobile/admin/schedule/entries
+  Body: { "id": 101, "modifyStrategy": "instance" }
+  Same modifyStrategy logic as PUT.
+  RESPONSE: { "ok": true }
+
+── Schedule Settings ───────────────────────────────────────────────────────────
+
+GET /api/mobile/admin/schedule/settings
+  RESPONSE:
+  {
+    "globalMode":    true,             ← true = one schedule for all locations;
+                                          false = separate schedule per location
+    "locationHours": {                 ← per-location workday window for the calendar view
+      "1": { "workdayStart": "08:00", "workdayEnd": "02:00" }
+    },
+    "userColors": {                    ← per-user override color for calendar display
+      "5": "#f59e0b"
+    },
+    "locations": [                     ← available locations for the pickers
+      { "id": 1, "name": "Main Bar" }
+    ]
+  }
+
+POST /api/mobile/admin/schedule/settings
+  Body (all optional — only send what's changing):
+  {
+    "globalMode":    true,
+    "locationHours": { "1": { "workdayStart": "09:00", "workdayEnd": "01:00" } },
+    "userColors":    { "5": "#ef4444" }
+  }
+  RESPONSE: { "ok": true }
+
+UI FIELD GUIDE — Schedule settings:
+  globalMode      Toggle          ON = one schedule; OFF = per-location schedules
+  locationHours   Per-location    Two time pickers (workday start / end) per location
+  userColors      Per-user        Color picker; changes how each employee appears on calendar
+
+── Bulk Schedule Operations ────────────────────────────────────────────────────
+
+POST /api/mobile/admin/schedule/bulk
+  Body:
+  { "action": "clear_week", "start": "2026-07-14", "end": "2026-07-20" }
+    — Delete all schedule entries between start and end dates (inclusive).
+
+  { "action": "clear_after_today" }
+    — Delete all schedule entries from today onwards.
+
+  RESPONSE: { "ok": true, "deleted": 42 }   ← deleted = number of rows removed
+
+── Schedule Notifications ──────────────────────────────────────────────────────
+
+POST /api/mobile/admin/schedule/notify
+  Send schedule update emails to selected employees.
+  Body:
+  {
+    "userIds":         [3, 5, 7],     ← required; employees to notify
+    "scheduleEntries": [              ← shift details to include in the email
+      {
+        "date":       "2026-07-14",
+        "shiftName":  "Evening",
+        "startTime":  "16:00",
+        "endTime":    "00:00",
+        "color":      "#10b981"
+      }
+    ],
+    "message": "Schedule updated for next week."   ← optional banner message
+  }
+  Only users with an email address receive the notification.
+  RESPONSE: { "ok": true, "sent": 2 }
+
+── Swap Request Management (Admin) ─────────────────────────────────────────────
+
+PATCH /api/mobile/schedule/swap
+  Admin approve/decline of a pending swap request.
+  Body: { "id": 99, "action": "approve" | "decline", "isAdmin": true }
+  On approve: the actual schedule mutation (shift swap or giveaway) is performed.
+  Both parties are notified.
+  RESPONSE: { "ok": true }
+
+
+────────────────────────────────────────────────────────────────────────────────
+24. ENDPOINT QUICK REFERENCE
+────────────────────────────────────────────────────────────────────────────────
+
+METHOD  PATH                                           AUTH    ROLE    DESCRIPTION
+──────  ─────────────────────────────────────────────  ──────  ──────  ──────────────────────────────────────────
+── Authentication ──────────────────────────────────────────────────────────────
+POST    /api/mobile/auth                               No      —       Login → get Bearer token
+GET     /api/mobile/auth/me                            Bearer  Any     Identity, role, permissions, capabilities
+GET     /api/mobile/register?token=…                   No      —       Validate invite token
+POST    /api/mobile/register                           No      —       Complete registration
+POST    /api/mobile/device-token                       Bearer  Any     Register device for push notifications
+DELETE  /api/mobile/device-token                       Bearer  Any     Unregister device (logout)
+── Notifications & Feed ────────────────────────────────────────────────────────
+GET     /api/mobile/notifications                      Bearer  Any     List in-app notifications + unread count
+PATCH   /api/mobile/notifications                      Bearer  Any     Mark notification(s) as read
+GET     /api/mobile/feed                               Bearer  Any     Org feed with posts, likes, comments
+POST    /api/mobile/feed                               Bearer  Any     Create a post
+POST    /api/mobile/feed/like?id=…                     Bearer  Any     Toggle like on a post
+GET     /api/mobile/feed/comments?postId=…             Bearer  Any     Load comments for a post
+POST    /api/mobile/feed/comments?postId=…             Bearer  Any     Add a comment
+DELETE  /api/mobile/feed/comments?id=…                 Bearer  Any     Delete a comment
+── Security ────────────────────────────────────────────────────────────────────
+GET     /api/mobile/barred                             Bearer  Any     Barred persons list (auto-archives expired)
+POST    /api/mobile/barred                             Bearer  Perm    Add a barred person (add_barred)
+GET     /api/mobile/incidents                          Bearer  Perm    List incident reports (add/review_incidents)
+POST    /api/mobile/incidents                          Bearer  Perm    File incident report (add_incident)
+── Inventory ───────────────────────────────────────────────────────────────────
+GET     /api/mobile/inventory                          Bearer  Any     Inventory list (qty + thresholds per item)
+GET     /api/mobile/out-of-stock                       Bearer  Any     Low / out-of-stock items only
+POST    /api/mobile/stock/adjust                       Bearer  Perm    Add or subtract stock quantity (add_stock)
+── Products (Admin) ────────────────────────────────────────────────────────────
+GET     /api/mobile/products                           Bearer  Admin   Full product list with all editable fields
+GET     /api/mobile/products/<id>                      Bearer  Admin   Single product with per-location quantities
+POST    /api/mobile/products                           Bearer  Admin   Create a product
+PUT     /api/mobile/products/<id>                      Bearer  Admin   Update any product field(s) (partial)
+DELETE  /api/mobile/products/<id>                      Bearer  Admin   Delete a product (permanent)
+── Categories ──────────────────────────────────────────────────────────────────
+GET     /api/mobile/admin/categories                   Bearer  Any     List all categories with sub-categories
+POST    /api/mobile/admin/categories                   Bearer  Admin   Create a category
+PUT     /api/mobile/admin/categories                   Bearer  Admin   Update a category
+DELETE  /api/mobile/admin/categories?id=               Bearer  Admin   Delete a category (blocked if in use)
+── Locations ───────────────────────────────────────────────────────────────────
+GET     /api/mobile/admin/locations                    Bearer  Any     List all org locations
+POST    /api/mobile/admin/locations                    Bearer  Admin   Create a location
+PUT     /api/mobile/admin/locations                    Bearer  Admin   Update a location
+DELETE  /api/mobile/admin/locations?id=                Bearer  Admin   Delete a location (cascades inventory)
+── Suppliers ───────────────────────────────────────────────────────────────────
+GET     /api/mobile/admin/suppliers                    Bearer  Any     List org + global suppliers
+POST    /api/mobile/admin/suppliers                    Bearer  Admin   Create a supplier
+PUT     /api/mobile/admin/suppliers                    Bearer  Admin   Update a supplier
+DELETE  /api/mobile/admin/suppliers?id=                Bearer  Admin   Delete a supplier
+── Users / Employees ───────────────────────────────────────────────────────────
+GET     /api/mobile/admin/users                        Bearer  Admin   List all org users with permissions
+POST    /api/mobile/admin/users                        Bearer  Admin   Create a user / employee
+PUT     /api/mobile/admin/users                        Bearer  Admin   Update a user (PIN, role, permissions…)
+DELETE  /api/mobile/admin/users?id=                    Bearer  Admin   Delete a user
+── Pricing ─────────────────────────────────────────────────────────────────────
+GET     /api/mobile/admin/pricing-bands                Bearer  Admin   List pricing time bands
+POST    /api/mobile/admin/pricing-bands                Bearer  Admin   Create a pricing band
+PUT     /api/mobile/admin/pricing-bands                Bearer  Admin   Update a pricing band
+DELETE  /api/mobile/admin/pricing-bands?id=            Bearer  Admin   Delete a pricing band
+── Orders ──────────────────────────────────────────────────────────────────────
+GET     /api/mobile/orders                             Bearer  Any     List pending/in-transit orders
+GET     /api/mobile/orders/<id>                        Bearer  Any     Order detail with line items
+POST    /api/mobile/orders/<id>                        Bearer  Perm    Check in / receive items (add_stock)
+── Schedule (Employee view) ────────────────────────────────────────────────────
+GET     /api/mobile/schedule                           Bearer  Any     Full org schedule + pending swaps
+GET     /api/mobile/schedule/swap                      Bearer  Any     List my swap requests
+POST    /api/mobile/schedule/swap                      Bearer  Any     Create a swap request (direct or open)
+PUT     /api/mobile/schedule/swap                      Bearer  Any     Claim an open shift request
+PATCH   /api/mobile/schedule/swap                      Bearer  Any     Accept/decline swap (employee or admin)
+GET     /api/mobile/schedule/time-off                  Bearer  Any     List time-off requests (own or all if admin)
+POST    /api/mobile/schedule/time-off                  Bearer  Any     Submit a time-off request
+PATCH   /api/mobile/schedule/time-off                  Bearer  Admin   Approve or decline a time-off request
+── Schedule (Admin management) ─────────────────────────────────────────────────
+GET     /api/mobile/admin/schedule/shifts              Bearer  Any     List shift templates
+POST    /api/mobile/admin/schedule/shifts              Bearer  Admin   Create a shift template
+PUT     /api/mobile/admin/schedule/shifts              Bearer  Admin   Update a shift template
+DELETE  /api/mobile/admin/schedule/shifts?id=          Bearer  Admin   Delete a shift template
+GET     /api/mobile/admin/schedule/entries             Bearer  Admin   List schedule entries in date range
+POST    /api/mobile/admin/schedule/entries             Bearer  Admin   Assign users to shift(s) on date(s)
+PUT     /api/mobile/admin/schedule/entries             Bearer  Admin   Update entry (with recurring strategy)
+DELETE  /api/mobile/admin/schedule/entries             Bearer  Admin   Delete entry (with recurring strategy)
+GET     /api/mobile/admin/schedule/settings            Bearer  Admin   Get scheduler display settings
+POST    /api/mobile/admin/schedule/settings            Bearer  Admin   Update scheduler display settings
+POST    /api/mobile/admin/schedule/bulk                Bearer  Admin   Bulk delete schedule entries
+POST    /api/mobile/admin/schedule/notify              Bearer  Admin   Email schedule updates to employees
+── Messages ────────────────────────────────────────────────────────────────────
+GET     /api/mobile/messages                           Bearer  Any     List all threads (inbox) with unread counts
+POST    /api/mobile/messages                           Bearer  Any     Start a thread / send first message
+GET     /api/mobile/messages/<threadId>                Bearer  Any     Get paginated messages; marks thread read
+POST    /api/mobile/messages/<threadId>                Bearer  Any     Send a message to an existing thread
+DELETE  /api/mobile/messages/<threadId>                Bearer  Any     Leave a thread
+GET     /api/mobile/messages/poll?since=<ISO>          Bearer  Any     Poll for new messages across all threads
+── Recipes ─────────────────────────────────────────────────────────────────────
+GET     /api/mobile/recipes                            Bearer  Any     List / search recipes (local + global)
+GET     /api/mobile/recipes/<id>                       Bearer  Any     Get a single recipe by ID
+── Profile & Settings ──────────────────────────────────────────────────────────
+GET     /api/mobile/profile                            Bearer  Any     Get your profile (no password/PIN fields)
+PATCH   /api/mobile/profile                            Bearer  Any     Update name, email, phone, bio, etc.
+POST    /api/mobile/profile/picture                    Bearer  Any     Upload profile picture (base64 data-URI)
+DELETE  /api/mobile/profile/picture                    Bearer  Any     Remove profile picture
+GET     /api/mobile/settings                           Bearer  Any     Push notification preferences
+PATCH   /api/mobile/settings                           Bearer  Any     Update push notification preferences
+GET     /api/mobile/settings/permissions               Bearer  Any     Legacy alias — prefer GET /api/mobile/auth/me
+── Organization Settings (Admin) ───────────────────────────────────────────────
+GET     /api/mobile/admin/settings                     Bearer  Admin   Get all org settings (flat object)
+PATCH   /api/mobile/admin/settings                     Bearer  Admin   Update any org setting(s)
 
 
 ────────────────────────────────────────────────────────────────────────────────
