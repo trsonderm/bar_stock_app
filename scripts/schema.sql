@@ -409,12 +409,48 @@ CREATE TABLE IF NOT EXISTS security_incidents (
     organization_id INTEGER REFERENCES organizations(id) ON DELETE CASCADE,
     barred_person_id INTEGER REFERENCES security_barred(id) ON DELETE SET NULL,
     person_name TEXT,
-    description TEXT NOT NULL,
+    description TEXT,
     submitted_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
     submitted_by_name TEXT,
+    media JSONB DEFAULT '[]',
+    incident_date DATE,
+    incident_time TIME,
+    reported_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    reported_by_name TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS security_incidents_org_idx ON security_incidents(organization_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS incident_persons (
+    id               SERIAL PRIMARY KEY,
+    incident_id      INTEGER NOT NULL REFERENCES security_incidents(id) ON DELETE CASCADE,
+    organization_id  INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    first_name       TEXT,
+    last_name        TEXT,
+    aliases          JSONB DEFAULT '[]',
+    race             TEXT,
+    height           TEXT,
+    weight           TEXT,
+    hair_color       TEXT,
+    clothing_description TEXT,
+    description      TEXT,
+    media            JSONB DEFAULT '[]',
+    sort_order       INTEGER DEFAULT 0,
+    created_at       TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS incident_persons_incident_idx ON incident_persons(incident_id);
+
+CREATE TABLE IF NOT EXISTS incident_timeline (
+    id               SERIAL PRIMARY KEY,
+    incident_id      INTEGER NOT NULL REFERENCES security_incidents(id) ON DELETE CASCADE,
+    organization_id  INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    segment_date     DATE,
+    segment_time     TIME,
+    description      TEXT NOT NULL,
+    sort_order       INTEGER DEFAULT 0,
+    created_at       TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS incident_timeline_incident_idx ON incident_timeline(incident_id);
 
 CREATE TABLE IF NOT EXISTS user_invitations (
     id SERIAL PRIMARY KEY,

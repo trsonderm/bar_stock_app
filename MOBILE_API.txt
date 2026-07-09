@@ -2168,7 +2168,181 @@ Use this table when building a Settings screen in the mobile app:
 
 
 ────────────────────────────────────────────────────────────────────────────────
-20. ENDPOINT QUICK REFERENCE
+20. SECURITY — INCIDENTS & BARRED LIST
+────────────────────────────────────────────────────────────────────────────────
+
+The security module has two sub-sections: the barred persons list (existing) and
+enriched incident reports (new structure). This section documents the incident
+report endpoints in full.
+
+Required permission for viewing:   add_incident  OR  review_incidents  OR  admin
+Required permission for creating:  add_incident  OR  admin
+
+────────────────────────────────────────────────────────────────────────────────
+GET /api/mobile/incidents
+────────────────────────────────────────────────────────────────────────────────
+
+Returns a list of incident reports ordered newest first (by incident_date falling
+back to created_at). Each incident includes its persons and timeline arrays.
+
+RESPONSE 200:
+{
+  "incidents": [
+    {
+      "id":                  42,               ← integer ID
+      "incident_date":       "2026-07-09",     ← date of incident (nullable)
+      "incident_time":       "23:45:00",       ← time of incident (nullable)
+      "media":               [ ... ],          ← incident-level media (see MediaItem below)
+      "reported_by_name":    "Jane Smith",     ← who reported it (nullable)
+      "submitted_by_name":   "John Doe",       ← who filed it in the system
+      "barred_person_name":  null,             ← linked barred person name (nullable)
+      "barred_person_photo": null,             ← linked barred person photo (nullable)
+      "created_at":          "2026-07-09T23:55:00Z",
+      "persons": [                             ← persons involved (array, may be empty)
+        {
+          "id":                    101,
+          "incident_id":           42,
+          "first_name":            "Unknown",     ← nullable
+          "last_name":             null,           ← nullable
+          "aliases":               ["Johnny"],     ← array of strings
+          "race":                  "White / Caucasian",   ← nullable; free text
+          "height":                "5'10\"",       ← nullable; free text
+          "weight":                "180 lbs",      ← nullable; free text
+          "hair_color":            "Brown",        ← nullable; free text
+          "clothing_description":  "Red hoodie, blue jeans",  ← nullable
+          "description":           "Had a visible tattoo on left arm",  ← nullable
+          "media":                 [ ... ],        ← per-person photos/videos (MediaItem[])
+          "sort_order":            0               ← display order
+        }
+      ],
+      "timeline": [                            ← description segments (array, may be empty)
+        {
+          "id":           201,
+          "incident_id":  42,
+          "segment_date": "2026-07-09",        ← nullable; ISO date
+          "segment_time": "23:30:00",          ← nullable; HH:MM:SS
+          "description":  "Subject entered and became aggressive at the bar.",
+          "sort_order":   0
+        },
+        {
+          "id":           202,
+          "incident_id":  42,
+          "segment_date": "2026-07-09",
+          "segment_time": "23:45:00",
+          "description":  "Police were called; subject was escorted out.",
+          "sort_order":   1
+        }
+      ]
+    }
+  ]
+}
+
+MediaItem structure (used for both incident-level media and per-person media):
+  {
+    "type": "image" | "video",   ← media type
+    "data": "<base64 data URI>", ← full base64-encoded file (data:image/jpeg;base64,...)
+    "name": "photo.jpg"          ← original filename
+  }
+
+────────────────────────────────────────────────────────────────────────────────
+POST /api/mobile/incidents
+────────────────────────────────────────────────────────────────────────────────
+
+File a new incident report. At least one timeline entry with a description OR
+at least one person involved must be provided.
+
+REQUEST BODY:
+{
+  "incident_date":       "2026-07-09",      ← date string (YYYY-MM-DD), optional but recommended
+  "incident_time":       "23:45",           ← time string (HH:MM or HH:MM:SS), optional
+  "media":               [ ... ],           ← MediaItem[] for whole-incident photos/videos
+  "persons": [                              ← array of persons involved (can be empty [])
+    {
+      "first_name":            "John",      ← optional; free text
+      "last_name":             "Doe",       ← optional; free text
+      "aliases":               ["Johnny"],  ← array of strings (can be [])
+      "race":                  "White / Caucasian",   ← optional; see preset list below
+      "height":                "5'10\"",    ← optional; free text
+      "weight":                "180 lbs",   ← optional; free text
+      "hair_color":            "Brown",     ← optional; free text
+      "clothing_description":  "Red hoodie",  ← optional; free text
+      "description":           "Tattoo on left arm",  ← optional; general description
+      "media":                 [ ... ]      ← MediaItem[] photos/videos of this person
+    }
+  ],
+  "timeline": [                             ← description segments (can be empty [] if persons provided)
+    {
+      "segment_date":  "2026-07-09",        ← optional date for this segment
+      "segment_time":  "23:30",             ← optional time for this segment
+      "description":   "Subject became aggressive at the bar."  ← required per entry
+    }
+  ],
+  "reported_by_user_id":  5,               ← optional integer user ID of reporter
+  "reported_by_name":     "Jane Smith"     ← optional free text reporter name
+}
+
+RACE PRESETS (UI should offer as a combobox/datalist with custom typing allowed):
+  White / Caucasian
+  Black / African American
+  Hispanic / Latino
+  Asian / Pacific Islander
+  Middle Eastern / North African
+  Native American / Alaska Native
+  Multiracial
+  Unknown / Other
+
+RESPONSE 200:
+{ "ok": true, "id": 42 }
+
+RESPONSE 400: Neither a timeline entry nor a person was provided
+
+
+────────────────────────────────────────────────────────────────────────────────
+INCIDENT FORM — UI FIELD GUIDE
+────────────────────────────────────────────────────────────────────────────────
+
+The mobile incident form should be presented as a scrollable single-screen form
+(or a wizard) with these sections in order:
+
+SECTION 1 — DATE & TIME
+  incident_date    Date picker         Auto-populate with today's date; user can change
+  incident_time    Time picker         Auto-populate with current time; user can change
+
+SECTION 2 — INCIDENT MEDIA
+  media            Multi-file picker   Photos and videos for the whole incident
+                                       Each file → MediaItem { type, data, name }
+
+SECTION 3 — PERSONS INVOLVED
+  Display added persons as cards; each card shows name, key descriptors, media count.
+  "Add Person" opens a sub-form:
+    first_name            Text input       Optional
+    last_name             Text input       Optional
+    aliases               Chip input       Type text + add button → array of strings
+    race                  Combobox         Preset options above + allow custom free typing
+    height                Text input       Free text (e.g. 5'10")
+    weight                Text input       Free text (e.g. 180 lbs); optional
+    hair_color            Text input       Free text
+    clothing_description  Text input       Free text; describe what they wore
+    description           Text area        Optional; tattoos, distinguishing features, behavior
+    media (per person)    Multi-file       Photos/videos of THIS specific person
+
+SECTION 4 — INCIDENT DESCRIPTION (TIMELINE)
+  Start with one segment auto-populated with today's date and current time.
+  "+ Add Entry" appends another segment.
+  Each segment:
+    segment_date    Date picker    Optional date label for this part of the description
+    segment_time    Time picker    Optional time label for this part of the description
+    description     Text area      Required text for this segment; multi-line
+  Segments are sent in the order they appear on screen (sort_order is assigned server-side).
+
+SECTION 5 — REPORTED BY
+  reported_by_user_id  Dropdown    Populated from GET /api/mobile/employees or the user list.
+                                   Default to the currently logged-in user.
+  If the employee list is unavailable, fall back to a text input for reported_by_name.
+
+
+────────────────────────────────────────────────────────────────────────────────
+21. ENDPOINT QUICK REFERENCE
 ────────────────────────────────────────────────────────────────────────────────
 
 METHOD  PATH                                      AUTH    ROLE    DESCRIPTION

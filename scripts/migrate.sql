@@ -1150,4 +1150,63 @@ DO $$ BEGIN
   ALTER TABLE items ADD COLUMN is_alcohol BOOLEAN DEFAULT TRUE;
 EXCEPTION WHEN duplicate_column THEN NULL; END $$;
 
+-- =========================================================
+-- 69. Incident reports — structured date/time and reporter fields.
+-- incident_date/time record when the incident actually occurred
+-- (distinct from created_at which is when it was filed).
+-- reported_by distinguishes the filing employee from the person
+-- who logged it into the system (submitted_by).
+-- description is made nullable because timeline entries replace it.
+-- =========================================================
+ALTER TABLE security_incidents ADD COLUMN IF NOT EXISTS incident_date DATE;
+ALTER TABLE security_incidents ADD COLUMN IF NOT EXISTS incident_time TIME;
+ALTER TABLE security_incidents ADD COLUMN IF NOT EXISTS reported_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE security_incidents ADD COLUMN IF NOT EXISTS reported_by_name TEXT;
+ALTER TABLE security_incidents ADD COLUMN IF NOT EXISTS media JSONB DEFAULT '[]';
+
+DO $$ BEGIN
+  ALTER TABLE security_incidents ALTER COLUMN description DROP NOT NULL;
+EXCEPTION WHEN OTHERS THEN NULL; END $$;
+
+-- =========================================================
+-- 70. Incident persons — one row per person involved in an incident.
+-- All descriptive fields are optional; media stores per-person
+-- photos/videos separate from the incident-level media array.
+-- =========================================================
+CREATE TABLE IF NOT EXISTS incident_persons (
+    id               SERIAL PRIMARY KEY,
+    incident_id      INTEGER NOT NULL REFERENCES security_incidents(id) ON DELETE CASCADE,
+    organization_id  INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    first_name       TEXT,
+    last_name        TEXT,
+    aliases          JSONB DEFAULT '[]',
+    race             TEXT,
+    height           TEXT,
+    weight           TEXT,
+    hair_color       TEXT,
+    clothing_description TEXT,
+    description      TEXT,
+    media            JSONB DEFAULT '[]',
+    sort_order       INTEGER DEFAULT 0,
+    created_at       TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS incident_persons_incident_idx ON incident_persons(incident_id);
+
+-- =========================================================
+-- 71. Incident timeline — ordered description segments.
+-- Allows the incident narrative to be broken into chronological
+-- entries each stamped with their own date and time.
+-- =========================================================
+CREATE TABLE IF NOT EXISTS incident_timeline (
+    id               SERIAL PRIMARY KEY,
+    incident_id      INTEGER NOT NULL REFERENCES security_incidents(id) ON DELETE CASCADE,
+    organization_id  INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    segment_date     DATE,
+    segment_time     TIME,
+    description      TEXT NOT NULL,
+    sort_order       INTEGER DEFAULT 0,
+    created_at       TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS incident_timeline_incident_idx ON incident_timeline(incident_id);
+
 COMMIT;
