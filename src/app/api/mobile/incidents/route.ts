@@ -9,6 +9,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db, pool } from '@/lib/db';
 import { verifyMobileToken } from '@/lib/mobile-auth';
 
+export const maxDuration = 60;
+export const dynamic = 'force-dynamic';
+
 function checkPerms(session: any): { canView: boolean; canAdd: boolean } {
     const perms: string[] = session.permissions || [];
     const isAdmin = session.role === 'admin';
