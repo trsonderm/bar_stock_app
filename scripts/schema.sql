@@ -469,4 +469,39 @@ CREATE TABLE IF NOT EXISTS user_invitations (
 CREATE INDEX IF NOT EXISTS user_invitations_token_idx ON user_invitations(token);
 CREATE INDEX IF NOT EXISTS user_invitations_org_idx ON user_invitations(organization_id);
 
+CREATE TABLE IF NOT EXISTS bar_maps (
+    id              SERIAL PRIMARY KEY,
+    organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    name            TEXT NOT NULL DEFAULT 'Main Bar',
+    map_data        JSONB NOT NULL DEFAULT '{}',
+    width_ft        NUMERIC(10,2) DEFAULT 40,
+    height_ft       NUMERIC(10,2) DEFAULT 20,
+    is_active       BOOLEAN DEFAULT TRUE,
+    created_at      TIMESTAMPTZ DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS bar_maps_org_idx ON bar_maps(organization_id);
+
+CREATE TABLE IF NOT EXISTS bar_map_history (
+    id              SERIAL PRIMARY KEY,
+    organization_id INTEGER NOT NULL,
+    bar_map_id      INTEGER NOT NULL REFERENCES bar_maps(id) ON DELETE CASCADE,
+    map_data        JSONB NOT NULL,
+    saved_by_name   TEXT,
+    description     TEXT,
+    created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS bar_map_history_map_idx ON bar_map_history(bar_map_id);
+
+CREATE TABLE IF NOT EXISTS setup_checklist (
+    id                SERIAL PRIMARY KEY,
+    organization_id   INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    step_key          TEXT NOT NULL,
+    completed         BOOLEAN DEFAULT FALSE,
+    completed_at      TIMESTAMPTZ,
+    completed_by_name TEXT,
+    UNIQUE(organization_id, step_key)
+);
+CREATE INDEX IF NOT EXISTS setup_checklist_org_idx ON setup_checklist(organization_id);
+
 COMMIT;

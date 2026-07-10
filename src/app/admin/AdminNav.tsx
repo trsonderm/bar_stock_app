@@ -56,6 +56,8 @@ import NotificationsIcon from '@mui/icons-material/Notifications';
 import ApiIcon from '@mui/icons-material/Api';
 import MenuBookIcon from '@mui/icons-material/MenuBook';
 import RestoreIcon from '@mui/icons-material/Restore';
+import MapIcon from '@mui/icons-material/Map';
+import PlaylistAddCheckIcon from '@mui/icons-material/PlaylistAddCheck';
 
 const drawerWidth = 260;
 
@@ -102,6 +104,9 @@ export default function AdminNav({ user, children }: { user: NavUser, children: 
     const [showMessages, setShowMessages] = useState(false);
     const [unreadMessages, setUnreadMessages] = useState(0);
     const [myUserId, setMyUserId] = useState(0);
+    const [showChecklist, setShowChecklist] = useState(false);
+    const [checklistSteps, setChecklistSteps] = useState<any[]>([]);
+    const [checklistDone, setChecklistDone] = useState(0);
 
     useEffect(() => {
         const fetchUnread = async () => {
@@ -145,6 +150,13 @@ export default function AdminNav({ user, children }: { user: NavUser, children: 
     const canStock = hasPerm('add_stock', 'subtract_stock', 'manage_products', 'audit', 'add_item_name');
     const showProductFolder = canStock || canManageProducts || canAudit;
     const showSettingsFolder = isFullAdmin || canManageEmployees;
+
+    useEffect(() => {
+        if (!isFullAdmin) return;
+        fetch('/api/admin/setup-checklist').then(r => r.json()).then(d => {
+            if (d.steps) { setChecklistSteps(d.steps); setChecklistDone(d.done); }
+        }).catch(() => {});
+    }, [isFullAdmin]);
 
     useEffect(() => {
         fetch('/api/user/locations')
@@ -301,6 +313,7 @@ export default function AdminNav({ user, children }: { user: NavUser, children: 
 
                 {(isFullAdmin || canViewReports || canAudit) && <DrawerItem text="Activity Search" icon={<SearchIcon />} href="/admin/query" />}
                 {canStock && <DrawerItem text="Stock View" icon={<StoreIcon />} href="/inventory" />}
+                {isFullAdmin && <DrawerItem text="Bar Map" icon={<MapIcon />} href="/admin/bar-map" />}
                 {canSecurity && <DrawerItem text="Security" icon={<SecurityIcon />} href="/admin/security" />}
 
                 {/* ORDER FOLDER */}
@@ -454,6 +467,15 @@ export default function AdminNav({ user, children }: { user: NavUser, children: 
                         </>
                     )}
 
+                    {isFullAdmin && (
+                        <Tooltip title={`Setup Checklist (${checklistDone}/${checklistSteps.length} complete)`}>
+                            <IconButton onClick={() => setShowChecklist(s => !s)} sx={{ mr: 0.5, color: checklistDone === checklistSteps.length && checklistSteps.length > 0 ? 'success.main' : 'text.primary' }}>
+                                <Badge badgeContent={checklistSteps.length > 0 && checklistDone < checklistSteps.length ? checklistSteps.length - checklistDone : undefined} color="warning" max={99}>
+                                    <PlaylistAddCheckIcon fontSize="small" />
+                                </Badge>
+                            </IconButton>
+                        </Tooltip>
+                    )}
                     <Box sx={{ mr: 1 }}>
                         <IconButton onClick={() => setShowMessages(s => !s)} sx={{ color: 'text.primary' }}>
                             <Badge badgeContent={unreadMessages > 0 ? unreadMessages : undefined} color="error" max={99}>
@@ -517,6 +539,95 @@ export default function AdminNav({ user, children }: { user: NavUser, children: 
             {showMessages && myUserId > 0 && (
                 <MessagePanel myId={myUserId} onClose={() => setShowMessages(false)} />
             )}
+
+            {showChecklist && (
+                <SetupChecklistPanel
+                    steps={checklistSteps}
+                    done={checklistDone}
+                    total={checklistSteps.length}
+                    onClose={() => setShowChecklist(false)}
+                    onToggle={async (key: string, completed: boolean) => {
+                        await fetch('/api/admin/setup-checklist', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ step_key: key, completed }) });
+                        const data = await fetch('/api/admin/setup-checklist').then(r => r.json());
+                        if (data.steps) { setChecklistSteps(data.steps); setChecklistDone(data.done); }
+                    }}
+                />
+            )}
+        </Box>
+    );
+}
+
+// ─── Setup Checklist Panel ────────────────────────────────────────────────────
+
+function SetupChecklistPanel({ steps, done, total, onClose, onToggle }: {
+    steps: any[]; done: number; total: number; onClose: () => void; onToggle: (key: string, completed: boolean) => void;
+}) {
+    const percent = total > 0 ? Math.round((done / total) * 100) : 0;
+    return (
+        <Box sx={{
+            position: 'fixed', top: 64, right: 16, width: 360, maxHeight: 'calc(100vh - 80px)',
+            bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider', borderRadius: 3,
+            boxShadow: '0 20px 60px rgba(0,0,0,0.5)', zIndex: 1400, display: 'flex', flexDirection: 'column', overflow: 'hidden',
+        }}>
+            <Box sx={{ px: 2, py: 1.5, borderBottom: '1px solid', borderColor: 'divider', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Box>
+                    <Typography sx={{ fontWeight: 700, fontSize: 15 }}>🚀 Setup Checklist</Typography>
+                    <Typography variant="caption" color="text.secondary">{done} of {total} steps complete</Typography>
+                </Box>
+                <IconButton size="small" onClick={onClose} aria-label="close checklist"><span aria-hidden>×</span></IconButton>
+            </Box>
+
+            {/* Progress bar */}
+            <Box sx={{ height: 4, bgcolor: 'action.hover' }}>
+                <Box sx={{ height: '100%', width: `${percent}%`, bgcolor: percent === 100 ? 'success.main' : 'primary.main', transition: 'width 0.4s' }} />
+            </Box>
+
+            <Box sx={{ overflowY: 'auto', p: 1.5, flex: 1 }}>
+                {percent === 100 && (
+                    <Typography sx={{ textAlign: 'center', py: 1.5, color: 'success.main', fontSize: 13, fontWeight: 600 }}>
+                        🎉 All steps complete! Your bar is fully set up.
+                    </Typography>
+                )}
+                {steps.map((step, i) => (
+                    <Box key={step.key} sx={{
+                        display: 'flex', alignItems: 'flex-start', gap: 1.25, px: 1, py: 1,
+                        borderRadius: 2, mb: 0.5,
+                        bgcolor: step.completed ? 'rgba(34,197,94,0.06)' : 'transparent',
+                        border: '1px solid', borderColor: step.completed ? 'rgba(34,197,94,0.2)' : 'transparent',
+                    }}>
+                        <IconButton
+                            type="button"
+                            size="small"
+                            onClick={() => onToggle(step.key, !step.completed)}
+                            aria-label={step.completed ? 'Mark incomplete' : 'Mark complete'}
+                            sx={{
+                                flexShrink: 0, width: 22, height: 22, borderRadius: '50%', mt: 0.25,
+                                border: '2px solid', borderColor: step.completed ? 'success.main' : 'divider',
+                                bgcolor: step.completed ? 'success.main' : 'transparent',
+                                color: 'white', fontSize: 11, fontWeight: 700, p: 0,
+                                '&:hover': { bgcolor: step.completed ? 'success.dark' : 'action.hover' },
+                            }}
+                        >
+                            {step.completed ? '✓' : ''}
+                        </IconButton>
+                        <Box sx={{ flex: 1 }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                                <Typography component="span" sx={{ fontSize: 11, color: 'text.disabled', fontWeight: 600, minWidth: 16 }}>{i + 1}.</Typography>
+                                <Typography component="a" href={step.href}
+                                    sx={{ fontSize: 13, color: step.completed ? 'success.light' : 'text.primary', textDecoration: 'none', fontWeight: step.completed ? 400 : 500, '&:hover': { textDecoration: 'underline' } }}>
+                                    {step.label}
+                                </Typography>
+                            </Box>
+                            <Typography sx={{ fontSize: 11, color: 'text.disabled', mt: 0.25, pl: 2.75 }}>{step.description}</Typography>
+                            {step.completed && step.completed_by_name && (
+                                <Typography sx={{ fontSize: 10, color: 'success.main', mt: 0.25, pl: 2.75 }}>
+                                    ✓ Done by {step.completed_by_name}
+                                </Typography>
+                            )}
+                        </Box>
+                    </Box>
+                ))}
+            </Box>
         </Box>
     );
 }
