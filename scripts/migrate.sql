@@ -1084,7 +1084,12 @@ EXCEPTION WHEN duplicate_column THEN NULL; END $$;
 -- 62. Global "Self-Supply" supplier — available to every organization.
 -- Stored with organization_id = NULL; the suppliers GET endpoint
 -- includes NULL-org rows alongside org-specific suppliers.
+-- Drop the NOT NULL constraint first so the global row can be inserted.
 -- =========================================================
+DO $$ BEGIN
+  ALTER TABLE suppliers ALTER COLUMN organization_id DROP NOT NULL;
+EXCEPTION WHEN OTHERS THEN NULL; END $$;
+
 INSERT INTO suppliers (organization_id, name)
 SELECT NULL, 'Self-Supply'
 WHERE NOT EXISTS (SELECT 1 FROM suppliers WHERE organization_id IS NULL AND name = 'Self-Supply');
