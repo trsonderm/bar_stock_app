@@ -49,6 +49,7 @@ export interface MapData {
     grid_ft: number;
     outline: Pt[];
     objects: MapObject[];
+    iconLayout?: 'vertical' | 'horizontal';
 }
 
 type Tool = 'select' | 'draw';
@@ -60,7 +61,8 @@ type DragState =
     | { type: 'resize'; id: string; handle: HandlePos; startMouse: Pt; startObj: MapObject }
     | { type: 'rotate'; id: string; centerPx: Pt; startAngle: number; startRotation: number }
     | { type: 'pan'; startMouse: Pt; startPan: Pt }
-    | { type: 'rubber'; startFt: Pt };
+    | { type: 'rubber'; startFt: Pt }
+    | { type: 'room-vertex'; idx: number; startMouse: Pt; startPt: Pt };
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -314,11 +316,11 @@ function CounterCoolerGraphic({ x, y, w, h, shelves, mode, onAudit }:
 
 // ─── Shelf Products Renderer ───────────────────────────────────────────────────
 
-function ShelfProducts({ obj, px: pxPerFt, mode }: { obj: MapObject; px: number; mode: Mode }) {
+function ShelfProducts({ obj, px: pxPerFt, mode, iconLayout = 'vertical' }:
+    { obj: MapObject; px: number; mode: Mode; iconLayout?: 'vertical' | 'horizontal' }) {
     const x = obj.x * pxPerFt, y = obj.y * pxPerFt;
     const w = obj.width * pxPerFt, h = obj.height * pxPerFt;
     if (!obj.shelves.length) return null;
-
     const rowH = h / obj.shelves.length;
 
     return (
@@ -326,21 +328,47 @@ function ShelfProducts({ obj, px: pxPerFt, mode }: { obj: MapObject; px: number;
             {obj.shelves.map((shelf, si) => {
                 const filled = shelf.products.filter(p => p.product_id);
                 if (!filled.length) return null;
-                const available = w - 8;
-                const slotW = available / filled.length;
-                const r = Math.max(2.5, Math.min(slotW * 0.42, rowH * 0.38));
-                const rowY = y + si * rowH + rowH / 2;
+                const rowY = y + si * rowH;
+
+                if (iconLayout === 'horizontal') {
+                    // Each unit of stock gets its own slot across the row
+                    const totalIcons = filled.reduce((acc, p) => acc + Math.max(1, p.quantity ?? 1), 0);
+                    const iconSpacing = (w - 8) / Math.max(totalIcons, 1);
+                    const r = Math.max(2.5, Math.min(iconSpacing * 0.42, rowH * 0.38));
+                    let iconIdx = 0;
+                    return filled.map(p => {
+                        const qty = Math.max(1, p.quantity ?? 1);
+                        const col = productColor(p.product_name || '');
+                        const icons = Array.from({ length: qty }, (_, i) => {
+                            const cx = x + 4 + (iconIdx + i + 0.5) * iconSpacing;
+                            const cy = rowY + rowH / 2;
+                            return <BottleIcon key={i} cx={cx} cy={cy} r={r} color={col} />;
+                        });
+                        iconIdx += qty;
+                        return <g key={p.id}>{icons}</g>;
+                    });
+                }
+
+                // Vertical mode: products as columns, icons stacked bottom-to-top
+                const colW = (w - 8) / filled.length;
+                const maxQty = Math.max(...filled.map(p => Math.max(1, p.quantity ?? 1)));
+                const r = Math.max(2.5, Math.min(colW * 0.38, rowH / (maxQty * 2.4)));
+                const step = r * 2.3;
 
                 return filled.map((p, pi) => {
-                    const cx = x + 4 + slotW * pi + slotW / 2;
+                    const qty = Math.max(1, p.quantity ?? 1);
+                    const cx = x + 4 + colW * pi + colW / 2;
                     const col = productColor(p.product_name || '');
+                    const bottomY = rowY + rowH - r - 2;
                     return (
                         <g key={p.id}>
-                            <BottleIcon cx={cx} cy={rowY} r={r} color={col} />
+                            {Array.from({ length: qty }, (_, i) => (
+                                <BottleIcon key={i} cx={cx} cy={bottomY - i * step} r={r} color={col} />
+                            ))}
                             {mode === 'audit' && p.quantity !== undefined && (
-                                <text x={cx} y={rowY + r + 8} textAnchor="middle" fill={p.quantity === 0 ? '#ef4444' : p.quantity <= 2 ? '#f59e0b' : '#22c55e'} fontSize={7} fontWeight="600">
-                                    {p.quantity}
-                                </text>
+                                <text x={cx} y={rowY + rowH + 9} textAnchor="middle"
+                                    fill={p.quantity === 0 ? '#ef4444' : p.quantity <= 2 ? '#f59e0b' : '#22c55e'}
+                                    fontSize={7} fontWeight="600">{p.quantity}</text>
                             )}
                         </g>
                     );
@@ -352,8 +380,8 @@ function ShelfProducts({ obj, px: pxPerFt, mode }: { obj: MapObject; px: number;
 
 // ─── Object Renderer ──────────────────────────────────────────────────────────
 
-function ObjRenderer({ obj, selected, multiSelected, mode, pxPerFt, onPointerDown, onContextMenu }:
-    { obj: MapObject; selected: boolean; multiSelected: boolean; mode: Mode; pxPerFt: number; onPointerDown: (e: React.PointerEvent, id: string) => void; onContextMenu: (e: React.MouseEvent, id: string) => void }) {
+function ObjRenderer({ obj, selected, multiSelected, mode, pxPerFt, iconLayout, onPointerDown, onContextMenu }:
+    { obj: MapObject; selected: boolean; multiSelected: boolean; mode: Mode; pxPerFt: number; iconLayout?: 'vertical' | 'horizontal'; onPointerDown: (e: React.PointerEvent, id: string) => void; onContextMenu: (e: React.MouseEvent, id: string) => void }) {
     const m = META[obj.type];
     const col = obj.color || m.color;
     const x = obj.x * pxPerFt, y = obj.y * pxPerFt;
@@ -407,7 +435,7 @@ function ObjRenderer({ obj, selected, multiSelected, mode, pxPerFt, onPointerDow
                     })}
                     <text x={cx} y={cy - 4} textAnchor="middle" fill="white" fontSize={fs + 2}>{m.emoji}</text>
                     <text x={cx} y={cy + fs + 2} textAnchor="middle" fill="rgba(255,255,255,0.85)" fontSize={fs - 1}>{obj.name}</text>
-                    <ShelfProducts obj={obj} px={pxPerFt} mode={mode} />
+                    <ShelfProducts obj={obj} px={pxPerFt} mode={mode} iconLayout={iconLayout} />
                 </>
             ) : hasShelves ? (
                 <>
@@ -416,7 +444,7 @@ function ObjRenderer({ obj, selected, multiSelected, mode, pxPerFt, onPointerDow
                         const sy = y + (h / obj.shelves.length) * i;
                         return <line key={shelf.id} x1={x} y1={sy} x2={x + w} y2={sy} stroke="rgba(255,255,255,0.18)" strokeWidth={1} />;
                     })}
-                    <ShelfProducts obj={obj} px={pxPerFt} mode={mode} />
+                    <ShelfProducts obj={obj} px={pxPerFt} mode={mode} iconLayout={iconLayout} />
                     <text x={cx} y={cy + fs / 2} textAnchor="middle" fill="rgba(255,255,255,0.85)" fontSize={fs - 1}>{obj.name}</text>
                 </>
             ) : obj.type === 'table' ? (
@@ -828,6 +856,66 @@ function WelcomeScreen({ onBlank, onVoice, onPreset }: { onBlank: () => void; on
     );
 }
 
+// ─── Audit Panel ─────────────────────────────────────────────────────────────
+
+function AuditPanel({ objects, onAuditChange, onFinish, saving }: {
+    objects: MapObject[];
+    onAuditChange: (objId: string, shelfId: string, slotId: string, qty: number) => void;
+    onFinish: () => void;
+    saving: boolean;
+}) {
+    type AuditEntry = { obj: MapObject; shelf: Shelf; product: ShelfProduct };
+    const entries: AuditEntry[] = [];
+    for (const obj of objects) {
+        for (const shelf of obj.shelves) {
+            for (const product of shelf.products) {
+                if (product.product_id) entries.push({ obj, shelf, product });
+            }
+        }
+    }
+
+    const btnSt: React.CSSProperties = {
+        background: '#1e293b', border: '1px solid #334155', borderRadius: 3,
+        width: 22, height: 22, color: 'white', cursor: 'pointer', fontSize: 15,
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: 0,
+    };
+
+    return (
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', fontSize: 12 }}>
+            <div style={{ padding: '10px 12px', borderBottom: '1px solid #1e293b', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ color: '#fbbf24', fontWeight: 700, fontSize: 13 }}>📋 Audit List</span>
+                <span style={{ color: '#64748b', fontSize: 11 }}>{entries.length} items</span>
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto', padding: '6px 8px' }}>
+                {entries.length === 0 ? (
+                    <div style={{ color: '#334155', textAlign: 'center', padding: 20 }}>No products assigned to shelves yet. Switch to Edit mode to assign products.</div>
+                ) : entries.map(({ obj, shelf, product }) => {
+                    const qty = product.quantity ?? 0;
+                    const qtyColor = qty === 0 ? '#ef4444' : qty <= 2 ? '#f59e0b' : '#22c55e';
+                    return (
+                        <div key={product.id} style={{ background: '#0f172a', borderRadius: 6, padding: '6px 8px', marginBottom: 4, borderLeft: `3px solid ${qtyColor}` }}>
+                            <div style={{ color: '#475569', fontSize: 10, marginBottom: 2 }}>{obj.name} › {shelf.label}</div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                                <span style={{ width: 9, height: 9, borderRadius: '50%', background: productColor(product.product_name || ''), flexShrink: 0, display: 'inline-block' }} />
+                                <span style={{ flex: 1, color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{product.product_name}</span>
+                                <button type="button" style={btnSt} onClick={() => onAuditChange(obj.id, shelf.id, product.id, Math.max(0, qty - 1))}>−</button>
+                                <span style={{ minWidth: 22, textAlign: 'center', color: qtyColor, fontWeight: 700 }}>{qty}</span>
+                                <button type="button" style={btnSt} onClick={() => onAuditChange(obj.id, shelf.id, product.id, qty + 1)}>+</button>
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+            <div style={{ padding: 10, borderTop: '1px solid #1e293b' }}>
+                <button type="button" onClick={onFinish} disabled={saving}
+                    style={{ width: '100%', background: saving ? '#0f172a' : '#166534', border: `1px solid ${saving ? '#334155' : '#15803d'}`, borderRadius: 7, padding: '8px', color: saving ? '#64748b' : '#86efac', cursor: saving ? 'not-allowed' : 'pointer', fontWeight: 600, fontSize: 13 }}>
+                    {saving ? '⏳ Saving…' : '✓ Finish Audit & Save'}
+                </button>
+            </div>
+        </div>
+    );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function BarMapClient({ initialMap, products }: { initialMap: MapData | null; products: { id: number; name: string; type: string }[] }) {
@@ -847,10 +935,13 @@ export default function BarMapClient({ initialMap, products }: { initialMap: Map
     const [showSave, setShowSave] = useState(false);
     const [saving, setSaving] = useState(false);
     const [savedToast, setSavedToast] = useState(false);
+    const [showGrid, setShowGrid] = useState(true);
+    const [roomSelected, setRoomSelected] = useState(false);
 
     const svgRef = useRef<SVGSVGElement>(null);
     const dragRef = useRef<DragState | null>(null);
     const spaceRef = useRef(false);
+    const clickCycleRef = useRef<{ pt: Pt; stack: string[]; idx: number } | null>(null);
 
     const pxPerFt = PX * zoom;
 
@@ -870,7 +961,7 @@ export default function BarMapClient({ initialMap, products }: { initialMap: Map
             if (e.code === 'Space' && !(e.target instanceof HTMLInputElement) && !(e.target instanceof HTMLTextAreaElement)) {
                 e.preventDefault(); spaceRef.current = true;
             }
-            if (e.key === 'Escape') { setDrawingPts([]); setPendingType(null); setSelectedId(null); setSelectedIds([]); if (tool === 'draw') setTool('select'); }
+            if (e.key === 'Escape') { setDrawingPts([]); setPendingType(null); setSelectedId(null); setSelectedIds([]); setRoomSelected(false); clickCycleRef.current = null; if (tool === 'draw') setTool('select'); }
             if ((e.key === 'Delete' || e.key === 'Backspace') && document.activeElement === document.body) {
                 if (selectedIds.length) { setMapData(prev => prev ? { ...prev, objects: prev.objects.filter(o => !selectedSet.has(o.id)) } : prev); setSelectedIds([]); setSelectedId(null); }
                 else if (selectedId) { setMapData(prev => prev ? { ...prev, objects: prev.objects.filter(o => o.id !== selectedId) } : prev); setSelectedId(null); }
@@ -901,6 +992,9 @@ export default function BarMapClient({ initialMap, products }: { initialMap: Map
         }
 
         if (mode !== 'edit') { setSelectedId(null); setSelectedIds([]); return; }
+
+        setRoomSelected(false);
+        clickCycleRef.current = null;
 
         // Draw outline mode
         if (tool === 'draw') {
@@ -947,6 +1041,26 @@ export default function BarMapClient({ initialMap, products }: { initialMap: Map
             setSelectedId(null);
             return;
         }
+
+        setRoomSelected(false);
+
+        // Click-through: if already selected, cycle to next object under cursor
+        if (id === selectedId && !selectedIds.length) {
+            const at = mapData.objects
+                .filter(o => pt.x >= o.x && pt.x <= o.x + o.width && pt.y >= o.y && pt.y <= o.y + o.height)
+                .map(o => o.id);
+            if (at.length > 1) {
+                const prev = clickCycleRef.current;
+                const stack = (prev && Math.hypot(pt.x - prev.pt.x, pt.y - prev.pt.y) < 1.5) ? prev.stack : at;
+                const cur = stack.indexOf(id);
+                const nextIdx = (cur + 1) % stack.length;
+                const nextId = stack[nextIdx];
+                clickCycleRef.current = { pt, stack, idx: nextIdx };
+                setSelectedId(nextId); setSelectedIds([]);
+                return;
+            }
+        }
+        clickCycleRef.current = null;
 
         // If clicking on an already-selected object in multi-select, move all
         const idsToMove = selectedIds.includes(id) ? selectedIds : [id];
@@ -996,6 +1110,14 @@ export default function BarMapClient({ initialMap, products }: { initialMap: Map
         setSelectedId(next.id); setSelectedIds([]);
     }
 
+    function handleRoomVertexDown(e: React.PointerEvent, idx: number) {
+        if (mode !== 'edit' || !mapData) return;
+        e.stopPropagation();
+        const pt = mapData.outline[idx];
+        dragRef.current = { type: 'room-vertex', idx, startMouse: toFt(e), startPt: { ...pt } };
+        (e.currentTarget as Element).setPointerCapture(e.pointerId);
+    }
+
     // ── Global pointer move / up ──────────────────────────────────────────────
 
     useEffect(() => {
@@ -1016,6 +1138,18 @@ export default function BarMapClient({ initialMap, products }: { initialMap: Map
 
             if (drag.type === 'rubber') {
                 setRubberBand({ start: drag.startFt, end: { x: ftX, y: ftY } });
+                return;
+            }
+
+            if (drag.type === 'room-vertex') {
+                const nx = s(drag.startPt.x + ftX - drag.startMouse.x);
+                const ny = s(drag.startPt.y + ftY - drag.startMouse.y);
+                setMapData(prev => {
+                    if (!prev) return prev;
+                    const newOutline = prev.outline.map((p, i) => i === drag.idx ? { x: nx, y: ny } : p);
+                    const xs = newOutline.map(p => p.x), ys = newOutline.map(p => p.y);
+                    return { ...prev, outline: newOutline, width_ft: Math.max(...xs) - Math.min(...xs), height_ft: Math.max(...ys) - Math.min(...ys) };
+                });
                 return;
             }
 
@@ -1040,14 +1174,34 @@ export default function BarMapClient({ initialMap, products }: { initialMap: Map
                                 if (!ps) return obj;
                                 return { ...obj, x: s(ps.x + dx + (obj.x - (parent?.x ?? obj.x))), y: s(ps.y + dy + (obj.y - (parent?.y ?? obj.y))) };
                             }
-                            // Primary moved object — edge snap only when single
-                            let nx = s(start.x + dx), ny = s(start.y + dy);
+                            // Center-based grid snap — rotation-invariant
+                            let nx = s(start.x + obj.width / 2 + dx) - obj.width / 2;
+                            let ny = s(start.y + obj.height / 2 + dy) - obj.height / 2;
                             if (drag.ids.length === 1) {
                                 const candidate = { ...obj, x: nx, y: ny };
                                 const snapped = snapToEdges(candidate, prev.objects, new Set(drag.ids));
                                 nx = snapped.x; ny = snapped.y;
                             }
-                            return { ...obj, x: nx, y: ny };
+                            // Doors and windows: lock to nearest object edge
+                            let rotation = obj.rotation;
+                            if ((obj.type === 'door' || obj.type === 'window') && drag.ids.length === 1) {
+                                const T = EDGE_SNAP_FT * 2;
+                                const ocx = nx + obj.width / 2, ocy = ny + obj.height / 2;
+                                outer: for (const o of prev.objects) {
+                                    if (o.id === obj.id) continue;
+                                    for (const ey of [o.y, o.y + o.height]) {
+                                        if (Math.abs(ocy - ey) < T && ocx >= o.x - T && ocx <= o.x + o.width + T) {
+                                            ny = ey - obj.height / 2; rotation = 0; break outer;
+                                        }
+                                    }
+                                    for (const ex of [o.x, o.x + o.width]) {
+                                        if (Math.abs(ocx - ex) < T && ocy >= o.y - T && ocy <= o.y + o.height + T) {
+                                            nx = ex - obj.width / 2; rotation = 90; break outer;
+                                        }
+                                    }
+                                }
+                            }
+                            return { ...obj, x: nx, y: ny, rotation };
                         }),
                     };
                 });
@@ -1192,6 +1346,15 @@ export default function BarMapClient({ initialMap, products }: { initialMap: Map
 
                 <div style={{ flex: 1 }} />
 
+                {mode === 'audit' && (
+                    <button type="button"
+                        onClick={() => setMapData(p => p ? { ...p, iconLayout: p.iconLayout === 'horizontal' ? 'vertical' : 'horizontal' } : p)}
+                        title="Toggle bottle icon stacking direction"
+                        style={{ background: 'transparent', border: '1px solid #334155', borderRadius: 6, padding: '4px 9px', color: '#94a3b8', fontSize: 11, cursor: 'pointer' }}>
+                        {mapData.iconLayout === 'horizontal' ? '↔ H-Stack' : '↕ V-Stack'}
+                    </button>
+                )}
+
                 {mode === 'edit' && (
                     <>
                         <button type="button" onClick={() => { setTool('select'); setPendingType(null); setDrawingPts([]); }}
@@ -1218,6 +1381,8 @@ export default function BarMapClient({ initialMap, products }: { initialMap: Map
                 <span style={{ color: '#94a3b8', fontSize: 12, minWidth: 38, textAlign: 'center' }}>{Math.round(zoom * 100)}%</span>
                 <button type="button" onClick={() => setZoom(z => Math.min(4, z + 0.15))} style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 4, width: 24, height: 24, color: 'white', cursor: 'pointer' }}>+</button>
                 <button type="button" onClick={() => { setZoom(1); setPan({ x: 40, y: 40 }); }} style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 4, padding: '2px 7px', color: '#64748b', cursor: 'pointer', fontSize: 11 }}>↺</button>
+                <button type="button" onClick={() => setShowGrid(g => !g)} title={showGrid ? 'Hide Grid' : 'Show Grid'}
+                    style={{ background: showGrid ? '#1e293b' : 'transparent', border: `1px solid ${showGrid ? '#3b82f6' : '#334155'}`, borderRadius: 4, width: 24, height: 24, color: showGrid ? '#60a5fa' : '#334155', cursor: 'pointer', fontSize: 13 }}>⊞</button>
 
                 <button type="button" onClick={() => setShowHistory(true)} style={{ background: 'transparent', border: '1px solid #334155', borderRadius: 6, padding: '4px 9px', color: '#64748b', fontSize: 12, cursor: 'pointer' }}>📜</button>
                 <button type="button" onClick={() => setShowSave(true)} disabled={saving}
@@ -1294,12 +1459,30 @@ export default function BarMapClient({ initialMap, products }: { initialMap: Map
                                 <path d={`M ${pxPerFt} 0 L 0 0 0 ${pxPerFt}`} fill="none" stroke="#141e33" strokeWidth={1} />
                             </pattern>
                         </defs>
-                        <rect x={0} y={0} width="100%" height="100%" fill="url(#grid-lg)" />
+                        {showGrid
+                            ? <rect x={0} y={0} width="100%" height="100%" fill="url(#grid-lg)" />
+                            : <rect x={0} y={0} width="100%" height="100%" fill="#080d18" />
+                        }
 
                         <g transform={`translate(${pan.x},${pan.y})`}>
                             {/* Room shadow */}
                             <polygon points={outlinePts} fill="#0b1120" />
-                            <polygon points={outlinePts} fill="rgba(30,58,138,0.1)" stroke="#1e40af" strokeWidth={2} strokeDasharray={mode === 'edit' ? '8 4' : '0'} />
+                            <polygon points={outlinePts} fill="rgba(30,58,138,0.1)" stroke={roomSelected ? '#7c3aed' : '#1e40af'} strokeWidth={roomSelected ? 3 : 2} strokeDasharray={mode === 'edit' && !roomSelected ? '8 4' : '0'} />
+                            {/* Clickable outline for room resize — transparent hit area */}
+                            {mode === 'edit' && (
+                                <polygon points={outlinePts} fill="none" stroke="transparent" strokeWidth={14}
+                                    style={{ cursor: 'pointer' }}
+                                    onPointerDown={e => { e.stopPropagation(); setRoomSelected(true); setSelectedId(null); setSelectedIds([]); clickCycleRef.current = null; }}
+                                />
+                            )}
+                            {/* Room vertex drag handles */}
+                            {roomSelected && mode === 'edit' && mapData.outline.map((pt, i) => (
+                                <circle key={i} cx={pt.x * pxPerFt} cy={pt.y * pxPerFt} r={8}
+                                    fill="#7c3aed" stroke="white" strokeWidth={2}
+                                    style={{ cursor: 'grab' }}
+                                    onPointerDown={e => handleRoomVertexDown(e, i)}
+                                />
+                            ))}
 
                             {/* Rulers */}
                             {mapData.outline.map((pt, i) => {
@@ -1321,6 +1504,7 @@ export default function BarMapClient({ initialMap, products }: { initialMap: Map
                                     selected={selectedId === obj.id}
                                     multiSelected={selectedSet.has(obj.id)}
                                     mode={mode} pxPerFt={pxPerFt}
+                                    iconLayout={mapData.iconLayout || 'vertical'}
                                     onPointerDown={handleObjPointerDown}
                                     onContextMenu={handleContextMenu}
                                 />
@@ -1369,20 +1553,19 @@ export default function BarMapClient({ initialMap, products }: { initialMap: Map
                     </svg>
                 </div>
 
-                {/* Right properties panel */}
-                {(selObj || (mode === 'audit' && selectedIds.length === 1 && (() => { const o = mapData.objects.find(x => x.id === selectedIds[0]); return o?.shelves.length; })()))
-                    && (() => {
-                        const obj = selObj || mapData.objects.find(x => x.id === selectedIds[0])!;
-                        return (
-                            <div style={{ width: 252, background: '#0f172a', borderLeft: '1px solid #1e293b', overflowY: 'auto', flexShrink: 0 }}>
-                                <PropsPanel obj={obj} products={products} mode={mode} allObjects={mapData.objects}
-                                    onUpdate={updateObj} onDelete={deleteObj}
-                                    onAuditChange={handleAuditChange}
-                                    onAttach={attachObj} onDetach={detachObj} />
-                            </div>
-                        );
-                    })()
-                }
+                {/* Right panel — audit list or properties */}
+                {mode === 'audit' ? (
+                    <div style={{ width: 260, background: '#0f172a', borderLeft: '1px solid #1e293b', flexShrink: 0, display: 'flex', flexDirection: 'column' }}>
+                        <AuditPanel objects={mapData.objects} onAuditChange={handleAuditChange} onFinish={() => doSave('Audit save')} saving={saving} />
+                    </div>
+                ) : selObj ? (
+                    <div style={{ width: 252, background: '#0f172a', borderLeft: '1px solid #1e293b', overflowY: 'auto', flexShrink: 0 }}>
+                        <PropsPanel obj={selObj} products={products} mode={mode} allObjects={mapData.objects}
+                            onUpdate={updateObj} onDelete={deleteObj}
+                            onAuditChange={handleAuditChange}
+                            onAttach={attachObj} onDetach={detachObj} />
+                    </div>
+                ) : null}
             </div>
 
             {showHistory && <HistoryPanel onClose={() => setShowHistory(false)} onRestore={d => setMapData(d)} />}
