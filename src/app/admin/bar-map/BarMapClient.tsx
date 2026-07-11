@@ -141,24 +141,49 @@ function makeObj(type: ObjType, x: number, y: number, count: number): MapObject 
     };
 }
 
-function snapToEdges(obj: MapObject, others: MapObject[], excludeIds: Set<string>) {
+function objVisual(o: MapObject) {
+    const r = o.rotation * Math.PI / 180;
+    const cosR = Math.abs(Math.cos(r)), sinR = Math.abs(Math.sin(r));
+    const vw = cosR * o.width + sinR * o.height;
+    const vh = sinR * o.width + cosR * o.height;
+    const cx = o.x + o.width / 2, cy = o.y + o.height / 2;
+    return { cx, cy, vw, vh, x: cx - vw / 2, y: cy - vh / 2 };
+}
+
+function snapToEdges(obj: MapObject, others: MapObject[], excludeIds: Set<string>): { x: number; y: number } {
+    const { cx, cy, vw, vh } = objVisual(obj);
     const T = EDGE_SNAP_FT;
-    let bx = T + 1, by = T + 1, ax = obj.x, ay = obj.y;
-    const ox2 = obj.x + obj.width, oy2 = obj.y + obj.height;
+    let bestDx = T + 1, bestDy = T + 1, snapCx = cx, snapCy = cy;
 
     for (const o of others) {
         if (excludeIds.has(o.id)) continue;
-        const ox = o.x, oy = o.y, ow2 = o.x + o.width, oh2 = o.y + o.height;
-        // x candidates: left-left, left-right, right-left, right-right
-        for (const [dx, snap] of [[ox - obj.x, ox], [ow2 - obj.x, ow2], [ox - ox2, ox - obj.width], [ow2 - ox2, ow2 - obj.width]] as [number,number][]) {
-            if (Math.abs(dx) < Math.abs(bx)) { bx = dx; ax = snap; }
+        const ov = objVisual(o);
+        for (const myX of [cx - vw / 2, cx + vw / 2]) {
+            for (const theirX of [ov.cx - ov.vw / 2, ov.cx + ov.vw / 2]) {
+                const d = theirX - myX;
+                if (Math.abs(d) < Math.abs(bestDx)) { bestDx = d; snapCx = cx + d; }
+            }
         }
-        // y candidates
-        for (const [dy, snap] of [[oy - obj.y, oy], [oh2 - obj.y, oh2], [oy - oy2, oy - obj.height], [oh2 - oy2, oh2 - obj.height]] as [number,number][]) {
-            if (Math.abs(dy) < Math.abs(by)) { by = dy; ay = snap; }
+        for (const myY of [cy - vh / 2, cy + vh / 2]) {
+            for (const theirY of [ov.cy - ov.vh / 2, ov.cy + ov.vh / 2]) {
+                const d = theirY - myY;
+                if (Math.abs(d) < Math.abs(bestDy)) { bestDy = d; snapCy = cy + d; }
+            }
         }
     }
-    return { x: Math.abs(bx) <= T ? ax : obj.x, y: Math.abs(by) <= T ? ay : obj.y };
+
+    return {
+        x: (Math.abs(bestDx) <= T ? snapCx : cx) - obj.width / 2,
+        y: (Math.abs(bestDy) <= T ? snapCy : cy) - obj.height / 2,
+    };
+}
+
+// Returns all object ids under the given point, ordered bottom→top (array order)
+function getStackAt(objects: MapObject[], pt: Pt): string[] {
+    return objects.filter(o => {
+        const { x, y, vw, vh } = objVisual(o);
+        return pt.x >= x && pt.x <= x + vw && pt.y >= y && pt.y <= y + vh;
+    }).map(o => o.id);
 }
 
 // ─── Bottle Icon (top-down) ───────────────────────────────────────────────────
@@ -935,7 +960,7 @@ export default function BarMapClient({ initialMap, products }: { initialMap: Map
     const [showSave, setShowSave] = useState(false);
     const [saving, setSaving] = useState(false);
     const [savedToast, setSavedToast] = useState(false);
-    const [showGrid, setShowGrid] = useState(true);
+    const [gridMode, setGridMode] = useState<'off' | 'dots' | 'lines'>('lines');
     const [roomSelected, setRoomSelected] = useState(false);
 
     const svgRef = useRef<SVGSVGElement>(null);
@@ -1044,25 +1069,33 @@ export default function BarMapClient({ initialMap, products }: { initialMap: Map
 
         setRoomSelected(false);
 
-        // Click-through: if already selected, cycle to next object under cursor
-        if (id === selectedId && !selectedIds.length) {
-            const at = mapData.objects
-                .filter(o => pt.x >= o.x && pt.x <= o.x + o.width && pt.y >= o.y && pt.y <= o.y + o.height)
-                .map(o => o.id);
-            if (at.length > 1) {
-                const prev = clickCycleRef.current;
-                const stack = (prev && Math.hypot(pt.x - prev.pt.x, pt.y - prev.pt.y) < 1.5) ? prev.stack : at;
-                const cur = stack.indexOf(id);
-                const nextIdx = (cur + 1) % stack.length;
-                const nextId = stack[nextIdx];
-                clickCycleRef.current = { pt, stack, idx: nextIdx };
-                setSelectedId(nextId); setSelectedIds([]);
-                return;
-            }
+        // Click-through: find every object under cursor (rotation-aware), cycle backward through stack
+        const stack = getStackAt(mapData.objects, pt);
+
+        if (stack.length > 1) {
+            const prev = clickCycleRef.current;
+            const samePt = prev && Math.hypot(pt.x - prev.pt.x, pt.y - prev.pt.y) < 1.5;
+            const sameStack = samePt && prev && prev.stack.length === stack.length && prev.stack.every((s2, i) => s2 === stack[i]);
+
+            // First click: select topmost (last in array). Subsequent clicks at same spot: cycle backward.
+            const idx = sameStack && prev
+                ? (prev.idx - 1 + stack.length) % stack.length
+                : stack.length - 1;
+
+            const targetId = stack[idx];
+            clickCycleRef.current = { pt, stack, idx };
+            setSelectedId(targetId);
+            setSelectedIds([]);
+
+            const obj = mapData.objects.find(o => o.id === targetId)!;
+            dragRef.current = { type: 'move', ids: [targetId], startMouse: pt, startPositions: { [targetId]: { x: obj.x, y: obj.y } } };
+            (e.currentTarget as Element).setPointerCapture(e.pointerId);
+            return;
         }
+
         clickCycleRef.current = null;
 
-        // If clicking on an already-selected object in multi-select, move all
+        // No overlap — normal single-object selection and drag
         const idsToMove = selectedIds.includes(id) ? selectedIds : [id];
         if (!selectedIds.includes(id)) { setSelectedId(id); setSelectedIds([]); }
 
@@ -1174,9 +1207,12 @@ export default function BarMapClient({ initialMap, products }: { initialMap: Map
                                 if (!ps) return obj;
                                 return { ...obj, x: s(ps.x + dx + (obj.x - (parent?.x ?? obj.x))), y: s(ps.y + dy + (obj.y - (parent?.y ?? obj.y))) };
                             }
-                            // Center-based grid snap — rotation-invariant
-                            let nx = s(start.x + obj.width / 2 + dx) - obj.width / 2;
-                            let ny = s(start.y + obj.height / 2 + dy) - obj.height / 2;
+                            // Rotation-aware snap: snap visual top-left corner to grid, recover stored position
+                            const { vw, vh } = objVisual(obj);
+                            const rawCx = start.x + obj.width / 2 + dx;
+                            const rawCy = start.y + obj.height / 2 + dy;
+                            let nx = (s(rawCx - vw / 2) + vw / 2) - obj.width / 2;
+                            let ny = (s(rawCy - vh / 2) + vh / 2) - obj.height / 2;
                             if (drag.ids.length === 1) {
                                 const candidate = { ...obj, x: nx, y: ny };
                                 const snapped = snapToEdges(candidate, prev.objects, new Set(drag.ids));
@@ -1381,8 +1417,12 @@ export default function BarMapClient({ initialMap, products }: { initialMap: Map
                 <span style={{ color: '#94a3b8', fontSize: 12, minWidth: 38, textAlign: 'center' }}>{Math.round(zoom * 100)}%</span>
                 <button type="button" onClick={() => setZoom(z => Math.min(4, z + 0.15))} style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 4, width: 24, height: 24, color: 'white', cursor: 'pointer' }}>+</button>
                 <button type="button" onClick={() => { setZoom(1); setPan({ x: 40, y: 40 }); }} style={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 4, padding: '2px 7px', color: '#64748b', cursor: 'pointer', fontSize: 11 }}>↺</button>
-                <button type="button" onClick={() => setShowGrid(g => !g)} title={showGrid ? 'Hide Grid' : 'Show Grid'}
-                    style={{ background: showGrid ? '#1e293b' : 'transparent', border: `1px solid ${showGrid ? '#3b82f6' : '#334155'}`, borderRadius: 4, width: 24, height: 24, color: showGrid ? '#60a5fa' : '#334155', cursor: 'pointer', fontSize: 13 }}>⊞</button>
+                <button type="button"
+                    onClick={() => setGridMode(g => g === 'off' ? 'lines' : g === 'lines' ? 'dots' : 'off')}
+                    title={gridMode === 'off' ? 'Show grid lines' : gridMode === 'lines' ? 'Switch to dot grid' : 'Hide grid'}
+                    style={{ background: gridMode !== 'off' ? '#1e293b' : 'transparent', border: `1px solid ${gridMode !== 'off' ? '#3b82f6' : '#334155'}`, borderRadius: 4, padding: '2px 7px', color: gridMode !== 'off' ? '#60a5fa' : '#475569', cursor: 'pointer', fontSize: 11, height: 24 }}>
+                    {gridMode === 'dots' ? '·⊞' : '⊞'}{gridMode !== 'off' ? '' : ' Off'}
+                </button>
 
                 <button type="button" onClick={() => setShowHistory(true)} style={{ background: 'transparent', border: '1px solid #334155', borderRadius: 6, padding: '4px 9px', color: '#64748b', fontSize: 12, cursor: 'pointer' }}>📜</button>
                 <button type="button" onClick={() => setShowSave(true)} disabled={saving}
@@ -1451,6 +1491,15 @@ export default function BarMapClient({ initialMap, products }: { initialMap: Map
                         onWheel={handleWheel}
                         onContextMenu={e => e.preventDefault()}>
                         <defs>
+                            {/* Dot pattern — small dot at every 0.5ft, larger at every 1ft */}
+                            <pattern id="grid-dots-half" width={pxPerFt * SNAP} height={pxPerFt * SNAP} patternUnits="userSpaceOnUse" x={pan.x} y={pan.y}>
+                                <circle cx={0} cy={0} r={0.7} fill="#1a2744" />
+                            </pattern>
+                            <pattern id="grid-dots" width={pxPerFt} height={pxPerFt} patternUnits="userSpaceOnUse" x={pan.x} y={pan.y}>
+                                <rect width={pxPerFt} height={pxPerFt} fill="url(#grid-dots-half)" />
+                                <circle cx={0} cy={0} r={1.3} fill="#1e2f52" />
+                            </pattern>
+                            {/* Line pattern */}
                             <pattern id="grid-sm" width={pxPerFt * SNAP} height={pxPerFt * SNAP} patternUnits="userSpaceOnUse" x={pan.x} y={pan.y}>
                                 <path d={`M ${pxPerFt * SNAP} 0 L 0 0 0 ${pxPerFt * SNAP}`} fill="none" stroke="#0d1424" strokeWidth={0.5} />
                             </pattern>
@@ -1459,30 +1508,20 @@ export default function BarMapClient({ initialMap, products }: { initialMap: Map
                                 <path d={`M ${pxPerFt} 0 L 0 0 0 ${pxPerFt}`} fill="none" stroke="#141e33" strokeWidth={1} />
                             </pattern>
                         </defs>
-                        {showGrid
-                            ? <rect x={0} y={0} width="100%" height="100%" fill="url(#grid-lg)" />
-                            : <rect x={0} y={0} width="100%" height="100%" fill="#080d18" />
-                        }
+                        <rect x={0} y={0} width="100%" height="100%" fill={
+                            gridMode === 'lines' ? 'url(#grid-lg)' :
+                            gridMode === 'dots'  ? 'url(#grid-dots)' :
+                            '#080d18'
+                        } />
 
                         <g transform={`translate(${pan.x},${pan.y})`}>
-                            {/* Room shadow */}
-                            <polygon points={outlinePts} fill="#0b1120" />
-                            <polygon points={outlinePts} fill="rgba(30,58,138,0.1)" stroke={roomSelected ? '#7c3aed' : '#1e40af'} strokeWidth={roomSelected ? 3 : 2} strokeDasharray={mode === 'edit' && !roomSelected ? '8 4' : '0'} />
-                            {/* Clickable outline for room resize — transparent hit area */}
-                            {mode === 'edit' && (
-                                <polygon points={outlinePts} fill="none" stroke="transparent" strokeWidth={14}
-                                    style={{ cursor: 'pointer' }}
-                                    onPointerDown={e => { e.stopPropagation(); setRoomSelected(true); setSelectedId(null); setSelectedIds([]); clickCycleRef.current = null; }}
-                                />
-                            )}
-                            {/* Room vertex drag handles */}
-                            {roomSelected && mode === 'edit' && mapData.outline.map((pt, i) => (
-                                <circle key={i} cx={pt.x * pxPerFt} cy={pt.y * pxPerFt} r={8}
-                                    fill="#7c3aed" stroke="white" strokeWidth={2}
-                                    style={{ cursor: 'grab' }}
-                                    onPointerDown={e => handleRoomVertexDown(e, i)}
-                                />
-                            ))}
+                            {/* Room fills — below everything, no pointer events so clicks pass through */}
+                            <polygon points={outlinePts} fill="#0b1120" style={{ pointerEvents: 'none' }} />
+                            <polygon points={outlinePts} fill="rgba(30,58,138,0.1)"
+                                stroke={roomSelected ? '#7c3aed' : '#1e40af'}
+                                strokeWidth={roomSelected ? 3 : 2}
+                                strokeDasharray={mode === 'edit' && !roomSelected ? '8 4' : '0'}
+                                style={{ pointerEvents: 'none' }} />
 
                             {/* Rulers */}
                             {mapData.outline.map((pt, i) => {
@@ -1514,6 +1553,23 @@ export default function BarMapClient({ initialMap, products }: { initialMap: Map
                             {selObj && mode === 'edit' && (
                                 <ResizeHandles obj={selObj} pxPerFt={pxPerFt} onHandleDown={handleResizePointerDown} onRotateDown={handleRotatePointerDown} />
                             )}
+
+                            {/* Room edge hit polygon — rendered after objects so it's always on top */}
+                            {mode === 'edit' && (
+                                <polygon points={outlinePts} fill="none"
+                                    stroke="rgba(0,0,0,0.01)" strokeWidth={16}
+                                    style={{ cursor: 'pointer', pointerEvents: 'stroke' }}
+                                    onPointerDown={e => { e.stopPropagation(); setRoomSelected(true); setSelectedId(null); setSelectedIds([]); clickCycleRef.current = null; }}
+                                />
+                            )}
+                            {/* Room vertex drag handles — after objects so always clickable */}
+                            {roomSelected && mode === 'edit' && mapData.outline.map((vpt, i) => (
+                                <circle key={i} cx={vpt.x * pxPerFt} cy={vpt.y * pxPerFt} r={9}
+                                    fill="#7c3aed" stroke="white" strokeWidth={2}
+                                    style={{ cursor: 'grab' }}
+                                    onPointerDown={e => handleRoomVertexDown(e, i)}
+                                />
+                            ))}
 
                             {/* Draw outline preview */}
                             {tool === 'draw' && drawingPts.length > 0 && (
