@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { db } from '@/lib/db';
+import { markChanged } from '@/lib/markChanged';
 
 export async function GET(req: NextRequest) {
     const session = await getSession();
@@ -88,6 +89,7 @@ export async function POST(req: NextRequest) {
             }
         }
 
+        markChanged(organizationId, locId ?? 0, 'schedule');
         return NextResponse.json({ success: true });
     } catch (error) {
         console.error('Error saving schedule:', error);
@@ -145,6 +147,7 @@ export async function PUT(req: NextRequest) {
             `, [id, organizationId]);
         }
 
+        markChanged(organizationId, 0, 'schedule');
         return NextResponse.json({ success: true });
     } catch (error) {
         console.error('Error updating schedule:', error);
@@ -184,6 +187,7 @@ export async function DELETE(req: NextRequest) {
             await db.query('DELETE FROM user_schedules WHERE id = $1 AND organization_id = $2', [id, organizationId]);
         }
 
+        markChanged(organizationId, 0, 'schedule');
         return NextResponse.json({ success: true });
     } catch (error) {
         console.error('Error deleting schedule:', error);

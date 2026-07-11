@@ -3819,8 +3819,132 @@ RECIPE SCOPES SUMMARY
 - HTTPS is required. All endpoints are served over TLS only.
 
 ================================================================================
+25. DATA SYNC — LIGHTWEIGHT CHANGE DETECTION FOR MOBILE
+================================================================================
+
+Mobile apps can poll a single lightweight endpoint to learn which data types
+have changed since the last sync, then selectively download only the stale
+data. This avoids unnecessary full-refresh calls on every app launch.
+
+Authentication: Bearer JWT (same mobile token used by all /api/mobile/* routes)
+
+────────────────────────────────────────────────────────────────────────────────
+GET /api/mobile/sync
+────────────────────────────────────────────────────────────────────────────────
+Returns the most-recent change timestamp for every data type this org has
+changed. Optional `since` parameter causes the response to also include a
+`stale` array of data types that were updated after that timestamp.
+
+QUERY PARAMS:
+  since        ISO 8601 timestamp   Optional. When provided, the response
+                                    includes a `stale` array listing all
+                                    data types updated after this timestamp.
+                                    Omit to receive all timestamps without
+                                    a stale list (e.g., on first launch).
+
+  location_id  integer              Optional. Include location-specific rows
+                                    alongside org-wide rows. Defaults to 0
+                                    (org-wide only).
+
+RESPONSE 200:
+{
+  "server_time": "2026-07-11T12:00:00.000Z",
+  "organization_id": 1,
+  "location_id": 0,
+  "stale": ["schedule", "inventory"],   // present only when `since` supplied
+  "data": {
+    "products":      { "updated_at": "2026-07-10T09:00:00.000Z", "endpoint": "/api/mobile/products" },
+    "categories":    { "updated_at": "2026-07-09T14:30:00.000Z", "endpoint": "/api/mobile/admin/categories" },
+    "suppliers":     { "updated_at": "2026-07-09T14:30:00.000Z", "endpoint": "/api/mobile/admin/suppliers" },
+    "inventory":     { "updated_at": "2026-07-11T11:55:00.000Z", "endpoint": "/api/mobile/inventory" },
+    "stock":         { "updated_at": "2026-07-11T11:55:00.000Z", "endpoint": "/api/mobile/stock" },
+    "schedule":      { "updated_at": "2026-07-11T12:00:00.000Z", "endpoint": "/api/mobile/schedule" },
+    "messages":      { "updated_at": "2026-07-10T18:00:00.000Z", "endpoint": "/api/mobile/messages" },
+    "users":         { "updated_at": "2026-07-09T10:00:00.000Z", "endpoint": "/api/mobile/admin/users" },
+    "settings":      { "updated_at": "2026-07-08T08:00:00.000Z", "endpoint": "/api/mobile/settings" },
+    "recipes":       { "updated_at": "2026-07-05T10:00:00.000Z", "endpoint": "/api/mobile/recipes" },
+    "orders":        { "updated_at": "2026-07-11T09:00:00.000Z", "endpoint": "/api/mobile/orders" },
+    "bar_map":       { "updated_at": "2026-07-07T15:00:00.000Z", "endpoint": "/api/admin/bar-map" },
+    "security":      { "updated_at": "2026-07-06T22:00:00.000Z", "endpoint": "/api/mobile/barred" },
+    "locations":     { "updated_at": "2026-07-01T12:00:00.000Z", "endpoint": "/api/mobile/admin/locations" },
+    "pricing_bands": { "updated_at": "2026-07-01T12:00:00.000Z", "endpoint": "/api/mobile/admin/pricing-bands" }
+  }
+}
+
+NOTE: Only data types that have ever been changed appear in `data`. A data type
+absent from `data` means no admin has ever mutated it — treat it as never
+needing a refresh, or perform a full refresh on first launch.
+
+RESPONSE 401: Missing or invalid Bearer token
+
+────────────────────────────────────────────────────────────────────────────────
+RECOMMENDED POLLING PATTERN
+────────────────────────────────────────────────────────────────────────────────
+1. On app launch, load the last-synced ISO timestamp from local storage.
+2. Call GET /api/mobile/sync?since=<last_synced>.
+3. For each data_type in the `stale` array, call the corresponding `endpoint`
+   to download fresh data and update local storage.
+4. Save `server_time` as the new last-synced timestamp.
+5. On subsequent foreground resumes, repeat from step 2.
+
+Example using location-specific data:
+  GET /api/mobile/sync?since=2026-07-11T00:00:00.000Z&location_id=3
+
+This returns schedule/inventory rows that are stale for either the whole org
+or specifically for location 3.
+
+────────────────────────────────────────────────────────────────────────────────
+DATA TYPES TRACKED AND WHEN THEY ARE MARKED STALE
+────────────────────────────────────────────────────────────────────────────────
+
+  products       Items added, bulk-edited, imported, or archived
+  categories     Category created, updated, or deleted
+  suppliers      Supplier created or deleted
+  inventory      Inventory quantity adjusted (admin or mobile)
+  stock          Same events as inventory (synonym for stock-level view)
+  schedule       Shift schedule created, updated, or deleted
+  messages       Admin message sent
+  users          Staff member created, updated, or deleted
+  settings       Organization settings saved
+  recipes        Recipe created
+  orders         Purchase order created
+  bar_map        Bar floor-plan map saved
+  security       Barred person added, edited, restored, or removed;
+                 security incident filed
+  locations      Location created, updated, or deleted
+  pricing_bands  Pricing band updated
+
+────────────────────────────────────────────────────────────────────────────────
+BAR MAP API (admin session required — use admin web session cookie)
+────────────────────────────────────────────────────────────────────────────────
+GET /api/admin/bar-map
+  Returns the active bar floor-plan for the organization.
+  Response: { "map": { id, organization_id, name, map_data, width_ft, height_ft,
+                        is_active, created_at, updated_at } | null }
+
+POST /api/admin/bar-map
+  Save (upsert) the active bar map. Always creates a history snapshot.
+  Body: { name?, map_data (object), width_ft?, height_ft?, description? }
+  Response: { "ok": true, "id": <map_id> }
+
+GET /api/admin/bar-map/history
+  Returns the 50 most recent history snapshots for the active map.
+  Response: { "history": [{ id, saved_by_name, description, created_at }] }
+
+POST /api/admin/bar-map/history
+  Restore a history snapshot as the active map.
+  Body: { history_id: number }
+  Response: { "ok": true }
+
+POST /api/admin/bar-map/ai-generate
+  Generate a bar map from a voice/text description.
+  Requires OPENAI_API_KEY env var for AI generation; falls back to heuristic.
+  Body: { transcript: string }
+  Response: { "ok": true, "map_data": { ... }, "description": string }
+
+================================================================================
   TopShelf Inventory — Developer API Reference (v1)
   Server: https://www.topshelfInventory.com/api/v1
   Docs:   https://www.topshelfInventory.com/admin/developer
-  API Version: v1  |  Last updated: 2026-05-14
+  API Version: v1  |  Last updated: 2026-07-11
 ================================================================================

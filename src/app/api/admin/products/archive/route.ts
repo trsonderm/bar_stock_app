@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
 import { logActivity } from '@/lib/logger';
+import { markChanged } from '@/lib/markChanged';
 
 export const dynamic = 'force-dynamic';
 
@@ -44,5 +45,6 @@ export async function POST(req: NextRequest) {
         { itemId: id, name: item.name },
     );
 
+    markChanged(organizationId, 0, 'products');
     return NextResponse.json({ success: true, archived: archive });
 }

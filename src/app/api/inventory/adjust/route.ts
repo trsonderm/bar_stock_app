@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { pool, db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
 import { sendEmail, enqueuePendingEmail } from '@/lib/mail';
+import { markChanged } from '@/lib/markChanged';
 
 export async function POST(req: NextRequest) {
     try {
@@ -195,6 +196,7 @@ export async function POST(req: NextRequest) {
                 console.error('[adjust] Audit alert email error:', alertErr);
             }
 
+            markChanged(organizationId, targetLocationId ?? 0, 'inventory', 'stock');
             return NextResponse.json({ success: true });
 
         } catch (err) {

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
+import { markChanged } from '@/lib/markChanged';
 
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
     const session = await getSession();
@@ -53,6 +54,7 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
             'DELETE FROM suppliers WHERE id = $1 AND organization_id = $2',
             [params.id, session.organizationId]
         );
+        markChanged(session.organizationId, 0, 'suppliers');
         return NextResponse.json({ success: true });
     } catch (e) {
         return NextResponse.json({ error: 'Internal Error' }, { status: 500 });

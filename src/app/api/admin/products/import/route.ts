@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
+import { markChanged } from '@/lib/markChanged';
 
 export async function POST(req: NextRequest) {
     try {
@@ -123,6 +124,7 @@ export async function POST(req: NextRequest) {
             );
 
             await db.execute('COMMIT');
+            markChanged(organizationId, 0, 'products');
             return NextResponse.json({ success: true, count: successCount, skipped: skipCount });
 
         } catch (err) {

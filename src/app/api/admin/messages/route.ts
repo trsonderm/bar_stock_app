@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
+import { markChanged } from '@/lib/markChanged';
 
 export async function GET(req: NextRequest) {
     const session = await getSession();
@@ -91,5 +92,6 @@ export async function POST(req: NextRequest) {
         VALUES ($1, $2, $3, $4) RETURNING id, created_at
     `, [session.organizationId, session.id, recipient_id, content.trim()]);
 
+    markChanged(session.organizationId, 0, 'messages');
     return NextResponse.json({ ok: true, id: row.id });
 }

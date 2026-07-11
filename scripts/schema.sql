@@ -504,4 +504,15 @@ CREATE TABLE IF NOT EXISTS setup_checklist (
 );
 CREATE INDEX IF NOT EXISTS setup_checklist_org_idx ON setup_checklist(organization_id);
 
+-- Data sync: lightweight change-tracking for mobile clients
+CREATE TABLE IF NOT EXISTS data_sync (
+    id              SERIAL PRIMARY KEY,
+    organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    location_id     INTEGER NOT NULL DEFAULT 0,
+    data_type       VARCHAR(50) NOT NULL,
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(organization_id, location_id, data_type)
+);
+CREATE INDEX IF NOT EXISTS idx_data_sync_org_loc ON data_sync(organization_id, location_id);
+
 COMMIT;

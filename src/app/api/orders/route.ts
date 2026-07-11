@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
 import { sendEmail } from '@/lib/mail';
 import { sendSMS } from '@/lib/twilio';
+import { markChanged } from '@/lib/markChanged';
 
 export async function POST(req: NextRequest) {
     const session = await getSession();
@@ -60,6 +61,7 @@ export async function POST(req: NextRequest) {
             }
         }
 
+        markChanged(session.organizationId, 0, 'orders');
         return NextResponse.json({ success: true, orderId });
 
     } catch (e) {

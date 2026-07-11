@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
+import { markChanged } from '@/lib/markChanged';
 
 export async function GET(req: NextRequest) {
     const session = await getSession();
@@ -35,6 +36,7 @@ export async function POST(req: NextRequest) {
             'INSERT INTO locations (name, address, organization_id) VALUES ($1, $2, $3) RETURNING id',
             [name, address || '', session.organizationId]
         );
+        markChanged(session.organizationId, 0, 'locations');
         return NextResponse.json({ success: true, id: res.id });
     } catch (e) {
         return NextResponse.json({ error: 'Internal Error' }, { status: 500 });
@@ -58,6 +60,7 @@ export async function PUT(req: NextRequest) {
             return NextResponse.json({ error: 'Location not found or no changes made' }, { status: 404 });
         }
 
+        markChanged(session.organizationId, 0, 'locations');
         return NextResponse.json({ success: true });
     } catch (e) {
         return NextResponse.json({ error: 'Internal Error' }, { status: 500 });
@@ -79,6 +82,7 @@ export async function DELETE(req: NextRequest) {
         // So it will cascade delete inventory. That's fine for now, but maybe warn user.
 
         await db.execute('DELETE FROM locations WHERE id = $1 AND organization_id = $2', [id, session.organizationId]);
+        markChanged(session.organizationId, 0, 'locations');
         return NextResponse.json({ success: true });
     } catch (e) {
         return NextResponse.json({ error: 'Internal Error' }, { status: 500 });

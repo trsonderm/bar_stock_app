@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
+import { markChanged } from '@/lib/markChanged';
 
 export async function POST(req: NextRequest) {
     try {
@@ -142,6 +143,7 @@ export async function POST(req: NextRequest) {
             }
         }
 
+        markChanged(session.organizationId, 0, 'products');
         return NextResponse.json({ success: true, updated: item_ids.length });
     } catch (err: any) {
         console.error('Bulk update error:', err);

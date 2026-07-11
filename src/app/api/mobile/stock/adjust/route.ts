@@ -11,6 +11,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool, db } from '@/lib/db';
 import { verifyMobileToken } from '@/lib/mobile-auth';
+import { markChanged } from '@/lib/markChanged';
 
 export async function POST(req: NextRequest) {
     const session = await verifyMobileToken(req);
@@ -126,6 +127,7 @@ export async function POST(req: NextRequest) {
 
         await client.query('COMMIT');
 
+        markChanged(session.organizationId, targetLocationId ?? 0, 'inventory', 'stock');
         return NextResponse.json({
             item_id: Number(item_id),
             item_name: item.name,

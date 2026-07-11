@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
+import { markChanged } from '@/lib/markChanged';
 
 // Ensure the relational sub_categories table exists (added in migration 32,
 // may be absent on databases that weren't fully migrated).
@@ -185,6 +186,7 @@ export async function POST(req: NextRequest) {
             await syncSubCategories(res.id, session.organizationId, sub_categories);
         }
 
+        markChanged(session.organizationId, 0, 'categories', 'products');
         return NextResponse.json({ success: true, id: res.id });
     } catch (e: any) {
         console.error('[categories POST]', e);
@@ -215,6 +217,7 @@ export async function PUT(req: NextRequest) {
 
         await syncSubCategories(id, session.organizationId, Array.isArray(sub_categories) ? sub_categories : []);
 
+        markChanged(session.organizationId, 0, 'categories', 'products');
         return NextResponse.json({ success: true });
     } catch (e: any) {
         console.error('[categories PUT]', e);
@@ -253,6 +256,7 @@ export async function DELETE(req: NextRequest) {
             'DELETE FROM categories WHERE id = $1 AND organization_id = $2',
             [id, session.organizationId]
         );
+        markChanged(session.organizationId, 0, 'categories', 'products');
         return NextResponse.json({ success: true });
     } catch (e) {
         return NextResponse.json({ error: 'Internal Error' }, { status: 500 });

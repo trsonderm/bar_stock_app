@@ -1258,4 +1258,21 @@ CREATE TABLE IF NOT EXISTS setup_checklist (
 );
 CREATE INDEX IF NOT EXISTS setup_checklist_org_idx ON setup_checklist(organization_id);
 
+-- =========================================================
+-- 75. Data Sync — lightweight change-tracking per org/location/data_type.
+--     Mobile apps poll GET /api/mobile/sync?since=ISO to get a list of
+--     stale data_types and their refresh endpoints. Admin routes call
+--     markChanged() fire-and-forget after every successful mutation.
+--     location_id = 0 means org-wide (avoids NULL unique-constraint issues).
+-- =========================================================
+CREATE TABLE IF NOT EXISTS data_sync (
+    id              SERIAL PRIMARY KEY,
+    organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    location_id     INTEGER NOT NULL DEFAULT 0,
+    data_type       VARCHAR(50) NOT NULL,
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(organization_id, location_id, data_type)
+);
+CREATE INDEX IF NOT EXISTS idx_data_sync_org_loc ON data_sync(organization_id, location_id);
+
 COMMIT;

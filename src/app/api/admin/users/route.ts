@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession, hashPin, hashPassword } from '@/lib/auth';
+import { markChanged } from '@/lib/markChanged';
 
 export async function GET(req: NextRequest) {
     try {
@@ -144,6 +145,7 @@ export async function POST(req: NextRequest) {
         await db.execute('INSERT INTO activity_logs (organization_id, user_id, action, details) VALUES ($1, $2, $3, $4)',
             [organizationId, session.id, 'CREATE_USER', JSON.stringify({ firstName, lastName, email, assignedLocations })]);
 
+        markChanged(organizationId, 0, 'users');
         return NextResponse.json({ success: true, id: userId });
     } catch (e: any) {
         console.error(e);
@@ -272,6 +274,7 @@ export async function PUT(req: NextRequest) {
             [organizationId, session.id, 'UPDATE_USER', JSON.stringify({ userId: id })]
         );
 
+        markChanged(organizationId, 0, 'users');
         return NextResponse.json({ success: true });
     } catch (e: any) {
         console.error(e);
@@ -301,6 +304,7 @@ export async function DELETE(req: NextRequest) {
             [organizationId, session.id, 'DELETE_USER', JSON.stringify({ userId: id })]
         );
 
+        markChanged(organizationId, 0, 'users');
         return NextResponse.json({ success: true });
     } catch (e: any) {
         return NextResponse.json({ error: 'Failed to delete: ' + e.message }, { status: 500 });

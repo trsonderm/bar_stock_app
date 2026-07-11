@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
+import { markChanged } from '@/lib/markChanged';
 
 export async function GET(req: NextRequest) {
     const session = await getSession();
@@ -56,6 +57,7 @@ export async function POST(req: NextRequest) {
             barred_until || null,
         ]
     );
+    markChanged(session.organizationId, 0, 'security');
     return NextResponse.json({ barred: rows[0] });
 }
 
@@ -91,6 +93,7 @@ export async function PUT(req: NextRequest) {
             session.organizationId,
         ]
     );
+    markChanged(session.organizationId, 0, 'security');
     return NextResponse.json({ ok: true });
 }
 
@@ -113,6 +116,7 @@ export async function PATCH(req: NextRequest) {
          WHERE id = $2 AND organization_id = $3`,
         [barred_until || null, id, session.organizationId]
     );
+    markChanged(session.organizationId, 0, 'security');
     return NextResponse.json({ ok: true });
 }
 
@@ -130,5 +134,6 @@ export async function DELETE(req: NextRequest) {
     if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 });
 
     await db.execute('DELETE FROM security_barred WHERE id = $1 AND organization_id = $2', [id, session.organizationId]);
+    markChanged(session.organizationId, 0, 'security');
     return NextResponse.json({ ok: true });
 }
