@@ -11,7 +11,7 @@ export type ObjType =
     | 'office' | 'bathroom'
     | 'door' | 'window' | 'pillar' | 'table'
     | 'pool_table' | 'jukebox' | 'atm'
-    | 'draft_tower';
+    | 'draft_tower' | 'text_label';
 
 export interface Pt { x: number; y: number; }
 export interface OutlineVertex extends Pt { arcCtrl?: Pt; }
@@ -29,11 +29,13 @@ export interface ShelfProduct {
     product_name: string | null;
     product_type?: string | null;
     quantity?: number;
+    row?: number;   // depth row: 0 = front/top, 1 = behind/below, etc.
 }
 
 export interface Shelf {
     id: string;
     label: string;
+    depth?: number;   // number of front-to-back rows (default 1)
     products: ShelfProduct[];
 }
 
@@ -48,6 +50,8 @@ export interface MapObject {
     doorDirection: 'n' | 's' | 'e' | 'w';
     notes: string;
     color?: string;
+    textColor?: string;
+    labelFontSize?: number;
     parentId?: string;
     tableStyle?: 'round' | 'rect' | 'booth';
     chairCount?: number;
@@ -71,7 +75,7 @@ type HandlePos = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
 type DragState =
     | { type: 'move'; ids: string[]; startMouse: Pt; startPositions: Record<string, Pt> }
     | { type: 'resize'; id: string; handle: HandlePos; startMouse: Pt; startObj: MapObject }
-    | { type: 'rotate'; id: string; centerPx: Pt; startAngle: number; startRotation: number }
+    | { type: 'rotate'; id: string; centerPx: Pt; startAngle: number; startRotation: number; prevAngle: number; accumulatedRot: number }
     | { type: 'pan'; startMouse: Pt; startPan: Pt }
     | { type: 'rubber'; startFt: Pt }
     | { type: 'room-vertex'; roomId: string; idx: number; startMouse: Pt; startPt: Pt }
@@ -106,6 +110,7 @@ const META: Record<ObjType, { label: string; color: string; emoji: string; w: nu
     jukebox:       { label: 'Jukebox',         color: '#4c1d95', emoji: '🎵', w: 2,   h: 2.5, shelves: false },
     atm:           { label: 'ATM',             color: '#374151', emoji: '💵', w: 1.5, h: 2,   shelves: false },
     draft_tower:   { label: 'Draft Tower',     color: '#92400e', emoji: '🍺', w: 3,   h: 1.5, shelves: true  },
+    text_label:    { label: 'Text Label',      color: 'transparent', emoji: 'T', w: 4, h: 0.75, shelves: false },
 };
 
 const PALETTE = [
@@ -115,6 +120,7 @@ const PALETTE = [
     { label: 'Rooms',          types: ['liquor_room','cooler','office','bathroom'] as ObjType[] },
     { label: 'Architectural',  types: ['door','window','pillar','table'] as ObjType[] },
     { label: 'Entertainment',  types: ['pool_table','jukebox','atm'] as ObjType[] },
+    { label: 'Labels & Text', types: ['text_label'] as ObjType[] },
 ];
 
 const PRODUCT_COLORS = ['#b45309','#1d4ed8','#15803d','#b91c1c','#7c3aed','#0e7490','#c2410c','#4338ca'];
@@ -166,6 +172,17 @@ function arcHandlePt(verts: OutlineVertex[], i: number): Pt {
 const ROOM_COLORS = ['#1e3a5f', '#14532d', '#3b0764', '#7c2d12', '#164e63', '#422006'];
 function nextRoomColor(rooms: RoomArea[]) { return ROOM_COLORS[rooms.length % ROOM_COLORS.length]; }
 
+const PRESET_COLORS = [
+    '#1e3a5f','#1e40af','#1d4ed8','#2563eb','#3b82f6','#60a5fa',
+    '#14532d','#15803d','#16a34a','#22c55e',
+    '#7f1d1d','#b91c1c','#dc2626','#ef4444',
+    '#7c3aed','#6d28d9','#4c1d95',
+    '#78350f','#92400e','#b45309','#d97706',
+    '#164e63','#0e7490','#0891b2','#22d3ee',
+    '#0f172a','#1e293b','#334155','#475569','#64748b','#94a3b8',
+    '#ffffff','#f8fafc','#e2e8f0',
+];
+
 function makeShelves(n = 3): Shelf[] {
     const labels = ['Top Shelf', 'Middle Shelf', 'Bottom Shelf', 'Floor Level', 'Shelf 5'];
     return Array.from({ length: n }, (_, i) => ({
@@ -186,10 +203,12 @@ function makeObj(type: ObjType, x: number, y: number, count: number): MapObject 
     const shelves = type === 'draft_tower' ? makeDraftShelves(2)
         : m.shelves ? makeShelves(3) : [];
     return {
-        id: uid(), type, name: `${m.label} ${count + 1}`,
+        id: uid(), type, name: type === 'text_label' ? 'Label' : `${m.label} ${count + 1}`,
         x, y, width: m.w, height: m.h,
         rotation: 0, shelves,
         doorDirection: 's', notes: '', color: undefined,
+        textColor: type === 'text_label' ? '#ffffff' : undefined,
+        labelFontSize: type === 'text_label' ? 14 : undefined,
         chairCount: type === 'table' ? 4 : undefined,
         tableStyle: type === 'table' ? 'rect' : undefined,
     };
@@ -587,18 +606,21 @@ function ShelfProducts({ obj, px: pxPerFt, mode, iconLayout = 'vertical', onSele
 
 // ─── Object Renderer ──────────────────────────────────────────────────────────
 
-function ObjRenderer({ obj, selected, multiSelected, mode, pxPerFt, iconLayout, onPointerDown, onContextMenu, onSelectProduct }:
-    { obj: MapObject; selected: boolean; multiSelected: boolean; mode: Mode; pxPerFt: number; iconLayout?: 'vertical' | 'horizontal'; onPointerDown: (e: React.PointerEvent, id: string) => void; onContextMenu: (e: React.MouseEvent, id: string) => void; onSelectProduct?: (product: ShelfProduct) => void }) {
+function ObjRenderer({ obj, selected, multiSelected, mode, pxPerFt, iconLayout, onPointerDown, onContextMenu, onSelectProduct, onOpenShelfDetail }:
+    { obj: MapObject; selected: boolean; multiSelected: boolean; mode: Mode; pxPerFt: number; iconLayout?: 'vertical' | 'horizontal'; onPointerDown: (e: React.PointerEvent, id: string) => void; onContextMenu: (e: React.MouseEvent, id: string) => void; onSelectProduct?: (product: ShelfProduct) => void; onOpenShelfDetail?: (id: string) => void }) {
     const m = META[obj.type];
     const col = obj.color || m.color;
+    const txtCol = obj.textColor || 'rgba(255,255,255,0.85)';
     const x = obj.x * pxPerFt, y = obj.y * pxPerFt;
     const w = obj.width * pxPerFt, h = obj.height * pxPerFt;
     const cx = x + w / 2, cy = y + h / 2;
     const fs = Math.max(7, Math.min(13, w / 8));
     const isDoor = obj.type === 'door';
     const isWindow = obj.type === 'window';
-    const hasShelves = obj.shelves.length > 0;
+    const hasShelves = obj.shelves.length > 0 && obj.type !== 'draft_tower';
+    const isDraft = obj.type === 'draft_tower';
     const isRoom = ['liquor_room', 'cooler', 'office', 'bathroom'].includes(obj.type);
+    const isTextLabel = obj.type === 'text_label';
     const highlight = selected || multiSelected;
     const cursor = mode === 'edit' ? 'move' : 'default';
 
@@ -608,7 +630,19 @@ function ObjRenderer({ obj, selected, multiSelected, mode, pxPerFt, iconLayout, 
             onContextMenu={e => onContextMenu(e, obj.id)}
             style={{ cursor }}>
 
-            {isDoor ? (
+            {isTextLabel ? (
+                <>
+                    {/* Invisible hit area */}
+                    <rect x={x} y={y} width={w} height={h} fill="rgba(255,255,255,0.03)" rx={2}
+                        stroke={highlight ? 'rgba(251,191,36,0.5)' : 'rgba(255,255,255,0.08)'} strokeWidth={1} strokeDasharray="4 3" />
+                    <text x={cx} y={cy + (obj.labelFontSize ?? 14) * 0.38}
+                        textAnchor="middle" fill={obj.textColor || '#ffffff'}
+                        fontSize={obj.labelFontSize ?? 14} fontWeight="600"
+                        style={{ pointerEvents: 'none', userSelect: 'none' }}>
+                        {obj.name}
+                    </text>
+                </>
+            ) : isDoor ? (
                 <>
                     <line x1={x} y1={cy} x2={x + w} y2={cy} stroke={col} strokeWidth={4} strokeLinecap="round" />
                     <path d={`M ${x} ${cy} A ${w} ${w} 0 0 1 ${x + w} ${cy + w}`} stroke={col} strokeWidth={1.5} fill="none" strokeDasharray="5 3" opacity={0.7} />
@@ -633,7 +667,7 @@ function ObjRenderer({ obj, selected, multiSelected, mode, pxPerFt, iconLayout, 
                 <RegisterGraphic x={x} y={y} w={w} h={h} selected={selected} />
             ) : obj.type === 'counter_cooler' ? (
                 <CounterCoolerGraphic x={x} y={y} w={w} h={h} shelves={obj.shelves} mode={mode} />
-            ) : obj.type === 'draft_tower' ? (
+            ) : isDraft ? (
                 <DraftTowerGraphic x={x} y={y} w={w} h={h} shelves={obj.shelves} />
             ) : isRoom ? (
                 <>
@@ -643,8 +677,15 @@ function ObjRenderer({ obj, selected, multiSelected, mode, pxPerFt, iconLayout, 
                         return <line key={shelf.id} x1={x + 10} y1={sy} x2={x + w - 10} y2={sy} stroke="rgba(255,255,255,0.18)" strokeWidth={1.5} />;
                     })}
                     <text x={cx} y={cy - 4} textAnchor="middle" fill="white" fontSize={fs + 2}>{m.emoji}</text>
-                    <text x={cx} y={cy + fs + 2} textAnchor="middle" fill="rgba(255,255,255,0.85)" fontSize={fs - 1}>{obj.name}</text>
+                    <text x={cx} y={cy + fs + 2} textAnchor="middle" fill={txtCol} fontSize={fs - 1}>{obj.name}</text>
                     <ShelfProducts obj={obj} px={pxPerFt} mode={mode} iconLayout={iconLayout} onSelectProduct={onSelectProduct} />
+                    {/* Shelf expand button */}
+                    {onOpenShelfDetail && obj.shelves.length > 0 && (
+                        <g onClick={e => { e.stopPropagation(); onOpenShelfDetail(obj.id); }} style={{ cursor: 'pointer' }}>
+                            <rect x={x + w - 18} y={y + 2} width={16} height={14} rx={3} fill="rgba(0,0,0,0.5)" />
+                            <text x={x + w - 10} y={y + 12} textAnchor="middle" fill="#93c5fd" fontSize={9}>⊞</text>
+                        </g>
+                    )}
                 </>
             ) : hasShelves ? (
                 <>
@@ -654,21 +695,28 @@ function ObjRenderer({ obj, selected, multiSelected, mode, pxPerFt, iconLayout, 
                         return <line key={shelf.id} x1={x} y1={sy} x2={x + w} y2={sy} stroke="rgba(255,255,255,0.18)" strokeWidth={1} />;
                     })}
                     <ShelfProducts obj={obj} px={pxPerFt} mode={mode} iconLayout={iconLayout} onSelectProduct={onSelectProduct} />
-                    <text x={cx} y={cy + fs / 2} textAnchor="middle" fill="rgba(255,255,255,0.85)" fontSize={fs - 1}>{obj.name}</text>
+                    <text x={cx} y={cy + fs / 2} textAnchor="middle" fill={txtCol} fontSize={fs - 1}>{obj.name}</text>
+                    {/* Shelf expand button */}
+                    {onOpenShelfDetail && obj.shelves.length > 0 && (
+                        <g onClick={e => { e.stopPropagation(); onOpenShelfDetail(obj.id); }} style={{ cursor: 'pointer' }}>
+                            <rect x={x + w - 18} y={y + 2} width={16} height={14} rx={3} fill="rgba(0,0,0,0.5)" />
+                            <text x={x + w - 10} y={y + 12} textAnchor="middle" fill="#93c5fd" fontSize={9}>⊞</text>
+                        </g>
+                    )}
                 </>
             ) : obj.type === 'table' ? (
                 <>
                     <TableGraphic x={x} y={y} w={w} h={h}
                         chairCount={obj.chairCount ?? 4}
                         tableStyle={obj.tableStyle ?? 'rect'} />
-                    <text x={cx} y={cy + fs / 3} textAnchor="middle" fill="rgba(255,255,255,0.7)" fontSize={fs - 2}>{obj.name}</text>
+                    <text x={cx} y={cy + fs / 3} textAnchor="middle" fill={obj.textColor || 'rgba(255,255,255,0.7)'} fontSize={fs - 2}>{obj.name}</text>
                 </>
             ) : obj.type === 'ice_well' ? (
                 <>
                     <rect x={x} y={y} width={w} height={h} fill={col} rx={2} />
                     <rect x={x + 3} y={y + 3} width={w - 6} height={h - 6} fill="rgba(147,210,255,0.15)" rx={1} />
                     <text x={cx} y={cy - 2} textAnchor="middle" fill="#bae6fd" fontSize={fs + 1}>❄</text>
-                    <text x={cx} y={cy + fs + 1} textAnchor="middle" fill="rgba(255,255,255,0.7)" fontSize={fs - 2}>{obj.name}</text>
+                    <text x={cx} y={cy + fs + 1} textAnchor="middle" fill={txtCol} fontSize={fs - 2}>{obj.name}</text>
                 </>
             ) : obj.type === 'sink' ? (
                 <>
@@ -680,12 +728,12 @@ function ObjRenderer({ obj, selected, multiSelected, mode, pxPerFt, iconLayout, 
                 <>
                     <rect x={x} y={y} width={w} height={h} fill={col} rx={2} />
                     <text x={cx} y={cy - 2} textAnchor="middle" fill="white" fontSize={fs + 2}>{m.emoji}</text>
-                    <text x={cx} y={cy + fs + 1} textAnchor="middle" fill="rgba(255,255,255,0.85)" fontSize={fs - 1}>{obj.name}</text>
+                    <text x={cx} y={cy + fs + 1} textAnchor="middle" fill={txtCol} fontSize={fs - 1}>{obj.name}</text>
                 </>
             )}
 
             {/* Selection ring */}
-            {highlight && (
+            {highlight && !isTextLabel && (
                 <rect x={x - 2} y={y - 2} width={w + 4} height={h + 4} rx={3}
                     fill="none" stroke={selected ? '#fbbf24' : '#60a5fa'} strokeWidth={selected ? 2 : 1.5}
                     strokeDasharray={selected ? '0' : '5 3'}
@@ -693,7 +741,7 @@ function ObjRenderer({ obj, selected, multiSelected, mode, pxPerFt, iconLayout, 
             )}
 
             {/* Dimension tag */}
-            {selected && mode === 'edit' && (
+            {selected && mode === 'edit' && !isTextLabel && (
                 <text x={cx} y={y - 9} textAnchor="middle" fill="#fbbf24" fontSize={9} style={{ pointerEvents: 'none' }}>
                     {obj.width.toFixed(1)}′ × {obj.height.toFixed(1)}′
                 </text>
@@ -845,13 +893,46 @@ function PropsPanel({ obj, products, mode, allObjects, onUpdate, onDelete, onAud
                         <span style={{ color: '#64748b', minWidth: 32, textAlign: 'right' }}>{obj.rotation}°</span>
                     </div>
 
-                    <label style={{ color: '#94a3b8', display: 'block', marginBottom: 2 }}>Custom Color</label>
+                    <label style={{ color: '#94a3b8', display: 'block', marginBottom: 4 }}>Object Color</label>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 6 }}>
+                        {PRESET_COLORS.map(c => (
+                            <button type="button" key={c} onClick={() => onUpdate({ ...obj, color: c })}
+                                title={c}
+                                style={{ width: 18, height: 18, borderRadius: 3, background: c, border: (obj.color || m.color) === c ? '2px solid #fbbf24' : '1px solid rgba(255,255,255,0.15)', cursor: 'pointer', padding: 0 }} />
+                        ))}
+                    </div>
                     <div style={{ display: 'flex', gap: 6, marginBottom: 10, alignItems: 'center' }}>
-                        <input type="color" value={obj.color || m.color} onChange={e => onUpdate({ ...obj, color: e.target.value })}
+                        <input type="color" title="Custom object color" value={obj.color || m.color} onChange={e => onUpdate({ ...obj, color: e.target.value })}
                             style={{ width: 36, height: 28, border: 'none', borderRadius: 4, cursor: 'pointer', background: 'none' }} />
                         <button type="button" onClick={() => onUpdate({ ...obj, color: undefined })}
                             style={{ background: 'transparent', border: '1px solid #334155', borderRadius: 5, padding: '3px 8px', color: '#64748b', cursor: 'pointer', fontSize: 11 }}>Reset</button>
                     </div>
+
+                    <label style={{ color: '#94a3b8', display: 'block', marginBottom: 4 }}>Text Color</label>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 6 }}>
+                        {['#ffffff','#f8fafc','#fbbf24','#93c5fd','#86efac','#fca5a5','#000000','#1e293b'].map(c => (
+                            <button type="button" key={c} onClick={() => onUpdate({ ...obj, textColor: c })}
+                                title={c}
+                                style={{ width: 18, height: 18, borderRadius: 3, background: c, border: (obj.textColor || 'rgba(255,255,255,0.85)') === c ? '2px solid #fbbf24' : '1px solid rgba(255,255,255,0.15)', cursor: 'pointer', padding: 0 }} />
+                        ))}
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, marginBottom: 10, alignItems: 'center' }}>
+                        <input type="color" title="Custom text color" value={obj.textColor || '#ffffff'} onChange={e => onUpdate({ ...obj, textColor: e.target.value })}
+                            style={{ width: 36, height: 28, border: 'none', borderRadius: 4, cursor: 'pointer', background: 'none' }} />
+                        <button type="button" onClick={() => onUpdate({ ...obj, textColor: undefined })}
+                            style={{ background: 'transparent', border: '1px solid #334155', borderRadius: 5, padding: '3px 8px', color: '#64748b', cursor: 'pointer', fontSize: 11 }}>Reset</button>
+                    </div>
+
+                    {obj.type === 'text_label' && (
+                        <>
+                            <label style={{ color: '#94a3b8', display: 'block', marginBottom: 2 }}>Font Size</label>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                                <input type="range" title="Font size" min={8} max={48} step={1} value={obj.labelFontSize ?? 14}
+                                    onChange={e => onUpdate({ ...obj, labelFontSize: +e.target.value })} style={{ flex: 1 }} />
+                                <span style={{ color: '#64748b', minWidth: 28, textAlign: 'right' }}>{obj.labelFontSize ?? 14}px</span>
+                            </div>
+                        </>
+                    )}
 
                     {/* Table-specific: style + chair count */}
                     {obj.type === 'table' && (
@@ -949,7 +1030,19 @@ function PropsPanel({ obj, products, mode, allObjects, onUpdate, onDelete, onAud
                                 {mode === 'edit'
                                     ? <input value={shelf.label} onChange={e => updateShelfLabel(si, e.target.value)} style={{ background: 'transparent', border: 'none', color: '#cbd5e1', fontSize: 11, fontWeight: 600, flex: 1, outline: 'none' }} />
                                     : <span style={{ color: '#cbd5e1', fontWeight: 600 }}>{shelf.label}</span>}
-                                {mode === 'edit' && <button type="button" onClick={() => removeShelf(si)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 15, padding: '0 4px' }}>×</button>}
+                                {mode === 'edit' && (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                        <span style={{ color: '#475569', fontSize: 10 }}>Rows:</span>
+                                        <button type="button" title="Remove depth row"
+                                            onClick={() => onUpdate({ ...obj, shelves: obj.shelves.map((s, i) => i !== si ? s : { ...s, depth: Math.max(1, (s.depth ?? 1) - 1) }) })}
+                                            style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 3, width: 18, height: 18, color: '#94a3b8', cursor: 'pointer', fontSize: 12, lineHeight: 1, padding: 0 }}>−</button>
+                                        <span style={{ color: '#e2e8f0', fontSize: 11, minWidth: 12, textAlign: 'center' }}>{shelf.depth ?? 1}</span>
+                                        <button type="button" title="Add depth row"
+                                            onClick={() => onUpdate({ ...obj, shelves: obj.shelves.map((s, i) => i !== si ? s : { ...s, depth: (s.depth ?? 1) + 1 }) })}
+                                            style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 3, width: 18, height: 18, color: '#94a3b8', cursor: 'pointer', fontSize: 12, lineHeight: 1, padding: 0 }}>+</button>
+                                        <button type="button" onClick={() => removeShelf(si)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 15, padding: '0 4px', marginLeft: 2 }}>×</button>
+                                    </div>
+                                )}
                             </div>
                             <div style={{ padding: '6px 8px' }}>
                                 {shelf.products.map((p, pi) => (
@@ -990,6 +1083,182 @@ function PropsPanel({ obj, products, mode, allObjects, onUpdate, onDelete, onAud
                     ))}
                 </div>
             )}
+        </div>
+    );
+}
+
+// ─── Shelf Detail Modal ───────────────────────────────────────────────────────
+
+function ShelfDetailModal({ obj, products, mode, onUpdate, onClose }: {
+    obj: MapObject; products: any[]; mode: Mode;
+    onUpdate: (o: MapObject) => void; onClose: () => void;
+}) {
+    const [dragOver, setDragOver] = useState<{ shelfIdx: number; row: number; col: number } | null>(null);
+    const [dragging, setDragging] = useState<{ shelfIdx: number; productId: string } | null>(null);
+
+    function assignProduct(si: number, pi: number, productId: number | null, productName: string | null) {
+        onUpdate({
+            ...obj,
+            shelves: obj.shelves.map((s, i) => i !== si ? s : {
+                ...s,
+                products: s.products.map((p, j) => j !== pi ? p : { ...p, product_id: productId, product_name: productName }),
+            }),
+        });
+    }
+
+    function setProductRow(si: number, productId: string, row: number) {
+        onUpdate({
+            ...obj,
+            shelves: obj.shelves.map((s, i) => i !== si ? s : {
+                ...s,
+                products: s.products.map(p => p.id !== productId ? p : { ...p, row }),
+            }),
+        });
+    }
+
+    function moveProduct(fromSi: number, fromProdId: string, toSi: number, toRow: number) {
+        const shelves = obj.shelves.map((s, i) => {
+            if (i === fromSi) {
+                return { ...s, products: s.products.map(p => p.id !== fromProdId ? p : { ...p, row: toRow }) };
+            }
+            return s;
+        });
+        // If moving between shelves, also reassign shelf (swap product to target shelf)
+        if (fromSi !== toSi) {
+            const fromProd = obj.shelves[fromSi].products.find(p => p.id === fromProdId);
+            if (!fromProd) return;
+            const updated = obj.shelves.map((s, i) => {
+                if (i === fromSi) return { ...s, products: s.products.filter(p => p.id !== fromProdId) };
+                if (i === toSi) return { ...s, products: [...s.products, { ...fromProd, row: toRow }] };
+                return s;
+            });
+            onUpdate({ ...obj, shelves: updated });
+            return;
+        }
+        onUpdate({ ...obj, shelves });
+    }
+
+    const inp = { background: '#1e293b', border: '1px solid #334155', borderRadius: 5, padding: '3px 6px', color: 'white', fontSize: 11, width: '100%', boxSizing: 'border-box' as const };
+
+    return (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+            <div style={{ background: '#1e293b', borderRadius: 14, width: 'min(90vw, 860px)', maxHeight: '85vh', overflow: 'hidden', display: 'flex', flexDirection: 'column', border: '1px solid #334155', boxShadow: '0 20px 60px rgba(0,0,0,0.6)' }}>
+                {/* Header */}
+                <div style={{ padding: '14px 18px', borderBottom: '1px solid #334155', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+                    <span style={{ fontWeight: 700, color: '#e2e8f0', fontSize: 15 }}>⊞ {obj.name} — Shelf Detail</span>
+                    <button type="button" onClick={onClose} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>×</button>
+                </div>
+
+                {/* Body */}
+                <div style={{ overflowY: 'auto', padding: '16px 18px', flex: 1 }}>
+                    {obj.shelves.map((shelf, si) => {
+                        const depth = shelf.depth ?? 1;
+                        const rows: ShelfProduct[][] = Array.from({ length: depth }, (_, r) =>
+                            shelf.products.filter(p => (p.row ?? 0) === r)
+                        );
+                        const unassigned = shelf.products.filter(p => (p.row ?? 0) >= depth);
+
+                        return (
+                            <div key={shelf.id} style={{ marginBottom: 20 }}>
+                                <div style={{ color: '#93c5fd', fontWeight: 700, fontSize: 13, marginBottom: 10, letterSpacing: '0.03em' }}>
+                                    {shelf.label} <span style={{ color: '#475569', fontWeight: 400, fontSize: 11 }}>({depth} row{depth !== 1 ? 's' : ''} deep)</span>
+                                </div>
+
+                                {/* Depth rows grid */}
+                                {rows.map((rowProducts, rowIdx) => (
+                                    <div key={rowIdx} style={{ marginBottom: 6 }}>
+                                        <div style={{ color: '#64748b', fontSize: 10, marginBottom: 3 }}>
+                                            {rowIdx === 0 ? 'Front / Top' : rowIdx === depth - 1 ? 'Back / Bottom' : `Row ${rowIdx + 1}`}
+                                        </div>
+                                        <div
+                                            onDragOver={e => { e.preventDefault(); setDragOver({ shelfIdx: si, row: rowIdx, col: rowProducts.length }); }}
+                                            onDrop={e => {
+                                                e.preventDefault();
+                                                const data = e.dataTransfer.getData('text/plain');
+                                                if (data) {
+                                                    const { fromSi, prodId } = JSON.parse(data);
+                                                    moveProduct(fromSi, prodId, si, rowIdx);
+                                                }
+                                                setDragOver(null);
+                                                setDragging(null);
+                                            }}
+                                            onDragLeave={() => setDragOver(null)}
+                                            style={{
+                                                display: 'flex', flexWrap: 'wrap', gap: 6, minHeight: 44,
+                                                background: dragOver?.shelfIdx === si && dragOver?.row === rowIdx ? 'rgba(59,130,246,0.15)' : '#0f172a',
+                                                border: `1px dashed ${dragOver?.shelfIdx === si && dragOver?.row === rowIdx ? '#3b82f6' : '#1e3a5f'}`,
+                                                borderRadius: 8, padding: '6px 8px', transition: 'background 0.15s',
+                                            }}>
+                                            {rowProducts.length === 0 && (
+                                                <span style={{ color: '#334155', fontSize: 11, alignSelf: 'center' }}>Drop products here</span>
+                                            )}
+                                            {rowProducts.map((p) => {
+                                                const pi = shelf.products.findIndex(sp => sp.id === p.id);
+                                                return (
+                                                    <div key={p.id}
+                                                        draggable
+                                                        onDragStart={e => {
+                                                            e.dataTransfer.setData('text/plain', JSON.stringify({ fromSi: si, prodId: p.id }));
+                                                            setDragging({ shelfIdx: si, productId: p.id });
+                                                        }}
+                                                        onDragEnd={() => setDragging(null)}
+                                                        style={{
+                                                            background: dragging?.productId === p.id ? '#334155' : '#1e293b',
+                                                            border: '1px solid #334155', borderRadius: 8, padding: '5px 8px',
+                                                            cursor: 'grab', display: 'flex', alignItems: 'center', gap: 6,
+                                                            opacity: dragging?.productId === p.id ? 0.4 : 1,
+                                                            minWidth: 120, maxWidth: 200,
+                                                        }}>
+                                                        <span style={{ width: 10, height: 10, borderRadius: '50%', background: p.product_id ? productColor(p.product_name || '') : '#44403c', flexShrink: 0, display: 'inline-block' }} />
+                                                        {mode === 'edit' ? (
+                                                            <select title={`Slot product`} value={p.product_id ?? ''} onChange={e => {
+                                                                const pr = products.find(x => x.id === parseInt(e.target.value));
+                                                                assignProduct(si, pi, pr?.id ?? null, pr?.name ?? null);
+                                                            }} style={{ ...inp, width: 'auto', flex: 1 }}>
+                                                                <option value="">— empty —</option>
+                                                                {products.map(pr => <option key={pr.id} value={pr.id}>{pr.name}</option>)}
+                                                            </select>
+                                                        ) : (
+                                                            <span style={{ fontSize: 11, color: p.product_id ? '#e2e8f0' : '#475569', flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                                {p.product_name || '— empty —'}
+                                                            </span>
+                                                        )}
+                                                        {/* Row selector dots */}
+                                                        {mode === 'edit' && depth > 1 && (
+                                                            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                                                {Array.from({ length: depth }, (_, r) => (
+                                                                    <button type="button" key={r} title={`Move to row ${r + 1}`}
+                                                                        onClick={() => setProductRow(si, p.id, r)}
+                                                                        style={{ width: 8, height: 8, borderRadius: '50%', border: 'none', padding: 0, cursor: 'pointer', background: (p.row ?? 0) === r ? '#3b82f6' : '#334155' }} />
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                ))}
+
+                                {/* Unassigned products (row beyond depth) */}
+                                {unassigned.length > 0 && (
+                                    <div style={{ background: '#1a0f0f', borderRadius: 6, padding: '6px 8px', border: '1px solid #7f1d1d', fontSize: 11, color: '#fca5a5', marginTop: 4 }}>
+                                        ⚠ {unassigned.length} product{unassigned.length > 1 ? 's' : ''} assigned to rows beyond current depth — drag them to a valid row above.
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
+
+                <div style={{ padding: '10px 18px', borderTop: '1px solid #334155', display: 'flex', justifyContent: 'flex-end', flexShrink: 0 }}>
+                    <button type="button" onClick={onClose}
+                        style={{ background: '#1e3a5f', border: '1px solid #1e40af', borderRadius: 7, padding: '6px 18px', color: '#93c5fd', cursor: 'pointer', fontWeight: 600, fontSize: 13 }}>
+                        Done
+                    </button>
+                </div>
+            </div>
         </div>
     );
 }
@@ -1136,8 +1405,9 @@ function WelcomeScreen({ onBlank, onVoice, onPreset }: { onBlank: () => void; on
 
 // ─── Audit Panel ─────────────────────────────────────────────────────────────
 
-function AuditPanel({ objects, onAuditChange, onFinish, saving }: {
+function AuditPanel({ objects, inventoryQtys, onAuditChange, onFinish, saving }: {
     objects: MapObject[];
+    inventoryQtys: Record<number, number>;
     onAuditChange: (objId: string, shelfId: string, slotId: string, qty: number) => void;
     onFinish: () => void;
     saving: boolean;
@@ -1164,10 +1434,24 @@ function AuditPanel({ objects, onAuditChange, onFinish, saving }: {
 
     function renderEntry({ obj, shelf, product }: AuditEntry, isCounted: boolean) {
         const qty = product.quantity ?? 0;
+        const sysQty = product.product_id ? (inventoryQtys[product.product_id] ?? null) : null;
         const qtyColor = qty === 0 ? '#ef4444' : qty <= 2 ? '#f59e0b' : '#22c55e';
+        const diffFromSys = isCounted && sysQty !== null ? qty - sysQty : null;
         return (
             <div key={product.id} style={{ background: '#0f172a', borderRadius: 6, padding: '6px 8px', marginBottom: 4, borderLeft: `3px solid ${isCounted ? qtyColor : '#334155'}` }}>
-                <div style={{ color: '#475569', fontSize: 10, marginBottom: 2 }}>{obj.name} › {shelf.label}</div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
+                    <span style={{ color: '#475569', fontSize: 10 }}>{obj.name} › {shelf.label}</span>
+                    {sysQty !== null && (
+                        <span style={{ color: '#334155', fontSize: 10 }}>
+                            Sys: <span style={{ color: '#64748b' }}>{sysQty}</span>
+                            {diffFromSys !== null && diffFromSys !== 0 && (
+                                <span style={{ color: diffFromSys > 0 ? '#4ade80' : '#f87171', marginLeft: 3, fontWeight: 700 }}>
+                                    {diffFromSys > 0 ? '+' : ''}{diffFromSys}
+                                </span>
+                            )}
+                        </span>
+                    )}
+                </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                     {isCounted && <span style={{ color: '#22c55e', fontSize: 12, flexShrink: 0 }}>✓</span>}
                     <span style={{ width: 9, height: 9, borderRadius: '50%', background: productColor(product.product_name || ''), flexShrink: 0, display: 'inline-block' }} />
@@ -1280,6 +1564,11 @@ export default function BarMapClient({ initialMap, products }: { initialMap: Map
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const [selectedIds, setSelectedIds] = useState<string[]>([]);  // multi-select
     const [selectedProduct, setSelectedProduct] = useState<ShelfProduct | null>(null);
+    const [shelfDetailId, setShelfDetailId] = useState<string | null>(null);
+    const [inventoryQtys, setInventoryQtys] = useState<Record<number, number>>({});
+    const [showAuditConfirm, setShowAuditConfirm] = useState(false);
+    const [auditNote, setAuditNote] = useState('');
+    const [auditEmailReport, setAuditEmailReport] = useState(false);
     const [zoom, setZoom] = useState(1);
     const [pan, setPan] = useState<Pt>({ x: 40, y: 40 });
     const [pendingType, setPendingType] = useState<ObjType | null>(null);
@@ -1338,6 +1627,22 @@ export default function BarMapClient({ initialMap, products }: { initialMap: Map
         window.addEventListener('keyup', up);
         return () => { window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); };
     }, [selectedId, selectedIds, selectedSet, tool, mapData]);
+
+    // ── Load inventory quantities when entering audit mode ────────────────────
+
+    useEffect(() => {
+        if (mode !== 'audit') return;
+        fetch('/api/inventory?sort=name')
+            .then(r => r.json())
+            .then(data => {
+                if (data.items) {
+                    const qtys: Record<number, number> = {};
+                    data.items.forEach((item: any) => { qtys[item.id] = Number(item.quantity); });
+                    setInventoryQtys(qtys);
+                }
+            })
+            .catch(() => {});
+    }, [mode]);
 
     // ── Pointer events ───────────────────────────────────────────────────────
 
@@ -1463,7 +1768,7 @@ export default function BarMapClient({ initialMap, products }: { initialMap: Map
             y: rect.top + pan.y + (obj.y + obj.height / 2) * pxPerFt,
         };
         const startAngle = Math.atan2(e.clientY - centerPx.y, e.clientX - centerPx.x) * (180 / Math.PI);
-        dragRef.current = { type: 'rotate', id, centerPx, startAngle, startRotation: obj.rotation };
+        dragRef.current = { type: 'rotate', id, centerPx, startAngle, startRotation: obj.rotation, prevAngle: startAngle, accumulatedRot: obj.rotation };
         (e.currentTarget as Element).setPointerCapture(e.pointerId);
     }
 
@@ -1612,9 +1917,14 @@ export default function BarMapClient({ initialMap, products }: { initialMap: Map
 
             if (drag.type === 'rotate') {
                 const angle = Math.atan2(e.clientY - drag.centerPx.y, e.clientX - drag.centerPx.x) * (180 / Math.PI);
-                const delta = angle - drag.startAngle;
+                // Delta from previous frame — normalize to [-180,180] to avoid atan2 wraparound jump
+                let delta = angle - drag.prevAngle;
+                if (delta > 180) delta -= 360;
+                if (delta < -180) delta += 360;
+                drag.prevAngle = angle;
+                drag.accumulatedRot = (drag.accumulatedRot + delta + 360) % 360;
                 // Snap to 15° increments when within 3° of a multiple
-                let newRot = (drag.startRotation + delta + 360) % 360;
+                let newRot = drag.accumulatedRot;
                 const snap15 = Math.round(newRot / 15) * 15;
                 if (Math.abs(newRot - snap15) < 3) newRot = snap15 % 360;
                 setMapData(prev => prev ? { ...prev, objects: prev.objects.map(o => o.id === drag.id ? { ...o, rotation: Math.round(newRot) } : o) } : prev);
@@ -1696,6 +2006,68 @@ export default function BarMapClient({ initialMap, products }: { initialMap: Map
                 }),
             }),
         } : prev);
+    }
+
+    function getAuditChanges() {
+        if (!mapData) return [];
+        // Group by product_id, summing quantities across all shelf slots
+        const grouped: Record<number, { name: string; newQty: number }> = {};
+        for (const obj of mapData.objects) {
+            for (const shelf of obj.shelves) {
+                for (const p of shelf.products) {
+                    if (p.product_id && p.quantity !== undefined && p.quantity !== null) {
+                        if (!grouped[p.product_id]) {
+                            grouped[p.product_id] = { name: p.product_name || '', newQty: 0 };
+                        }
+                        grouped[p.product_id].newQty += p.quantity;
+                    }
+                }
+            }
+        }
+        return Object.entries(grouped).map(([idStr, { name, newQty }]) => {
+            const id = parseInt(idStr);
+            const oldQty = inventoryQtys[id] ?? 0;
+            return { id, name, oldQty, newQty, diff: newQty - oldQty };
+        });
+    }
+
+    function handleAuditFinish() {
+        const changes = getAuditChanges();
+        if (changes.length === 0) {
+            // Nothing counted yet — just save the map
+            doSave('Audit save');
+            return;
+        }
+        setShowAuditConfirm(true);
+    }
+
+    async function submitAudit() {
+        const changes = getAuditChanges();
+        setSaving(true);
+        try {
+            const res = await fetch('/api/admin/audit', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ changes, note: auditNote || 'Bar Map Audit', emailReport: auditEmailReport }),
+            });
+            if (!res.ok) throw new Error('Audit submit failed');
+            // Save the bar map so counted quantities are persisted
+            if (mapData) {
+                await fetch('/api/admin/bar-map', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: mapData.name, map_data: mapData, width_ft: mapData.width_ft, height_ft: mapData.height_ft, description: 'Audit save' }),
+                });
+            }
+            setShowAuditConfirm(false);
+            setAuditNote('');
+            setSavedToast(true);
+            setTimeout(() => setSavedToast(false), 2500);
+        } catch (e) {
+            console.error('[bar-map audit submit]', e);
+        } finally {
+            setSaving(false);
+        }
     }
 
     function addRoom() {
@@ -1895,19 +2267,19 @@ export default function BarMapClient({ initialMap, products }: { initialMap: Map
                         <defs>
                             {/* Dot pattern — small dot at every 0.5ft, larger at every 1ft */}
                             <pattern id="grid-dots-half" width={pxPerFt * SNAP} height={pxPerFt * SNAP} patternUnits="userSpaceOnUse" x={pan.x} y={pan.y}>
-                                <circle cx={0} cy={0} r={0.7} fill="#1a2744" />
+                                <circle cx={0} cy={0} r={1.2} fill="#253a6e" />
                             </pattern>
                             <pattern id="grid-dots" width={pxPerFt} height={pxPerFt} patternUnits="userSpaceOnUse" x={pan.x} y={pan.y}>
                                 <rect width={pxPerFt} height={pxPerFt} fill="url(#grid-dots-half)" />
-                                <circle cx={0} cy={0} r={1.3} fill="#1e2f52" />
+                                <circle cx={0} cy={0} r={2.5} fill="#2e4d8a" />
                             </pattern>
                             {/* Line pattern */}
                             <pattern id="grid-sm" width={pxPerFt * SNAP} height={pxPerFt * SNAP} patternUnits="userSpaceOnUse" x={pan.x} y={pan.y}>
-                                <path d={`M ${pxPerFt * SNAP} 0 L 0 0 0 ${pxPerFt * SNAP}`} fill="none" stroke="#0d1424" strokeWidth={0.5} />
+                                <path d={`M ${pxPerFt * SNAP} 0 L 0 0 0 ${pxPerFt * SNAP}`} fill="none" stroke="#1a2f55" strokeWidth={0.8} />
                             </pattern>
                             <pattern id="grid-lg" width={pxPerFt} height={pxPerFt} patternUnits="userSpaceOnUse" x={pan.x} y={pan.y}>
                                 <rect width={pxPerFt} height={pxPerFt} fill="url(#grid-sm)" />
-                                <path d={`M ${pxPerFt} 0 L 0 0 0 ${pxPerFt}`} fill="none" stroke="#141e33" strokeWidth={1} />
+                                <path d={`M ${pxPerFt} 0 L 0 0 0 ${pxPerFt}`} fill="none" stroke="#243d70" strokeWidth={1.5} />
                             </pattern>
                         </defs>
                         <rect x={0} y={0} width="100%" height="100%" fill={
@@ -1972,6 +2344,7 @@ export default function BarMapClient({ initialMap, products }: { initialMap: Map
                                     onPointerDown={handleObjPointerDown}
                                     onContextMenu={handleContextMenu}
                                     onSelectProduct={mode !== 'edit' ? p => setSelectedProduct(p) : undefined}
+                                    onOpenShelfDetail={id => setShelfDetailId(id)}
                                 />
                             ))}
 
@@ -2076,7 +2449,7 @@ export default function BarMapClient({ initialMap, products }: { initialMap: Map
                 {/* Right panel — audit list, object props, or room props */}
                 {mode === 'audit' ? (
                     <div style={{ width: 260, background: '#0f172a', borderLeft: '1px solid #1e293b', flexShrink: 0, display: 'flex', flexDirection: 'column' }}>
-                        <AuditPanel objects={mapData.objects} onAuditChange={handleAuditChange} onFinish={() => doSave('Audit save')} saving={saving} />
+                        <AuditPanel objects={mapData.objects} inventoryQtys={inventoryQtys} onAuditChange={handleAuditChange} onFinish={handleAuditFinish} saving={saving} />
                     </div>
                 ) : selectedProduct && mode === 'view' ? (
                     <div style={{ width: 252, background: '#0f172a', borderLeft: '1px solid #1e293b', flexShrink: 0 }}>
@@ -2122,9 +2495,95 @@ export default function BarMapClient({ initialMap, products }: { initialMap: Map
                 ) : null}
             </div>
 
+            {showAuditConfirm && (() => {
+                const changes = getAuditChanges();
+                const added = changes.filter(c => c.diff > 0);
+                const removed = changes.filter(c => c.diff < 0);
+                const same = changes.filter(c => c.diff === 0);
+                return (
+                    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 1200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+                        <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 14, width: 'min(96vw,640px)', maxHeight: '85vh', overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.6)' }}>
+                            <div style={{ padding: '14px 18px', borderBottom: '1px solid #334155', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+                                <div>
+                                    <div style={{ color: '#fbbf24', fontWeight: 700, fontSize: 15 }}>Confirm Bar Map Audit</div>
+                                    <div style={{ color: '#64748b', fontSize: 11, marginTop: 2 }}>
+                                        {changes.length} product{changes.length !== 1 ? 's' : ''} counted
+                                        {added.length > 0 && <span style={{ color: '#4ade80', marginLeft: 8 }}>+{added.length} above system</span>}
+                                        {removed.length > 0 && <span style={{ color: '#f87171', marginLeft: 8 }}>−{removed.length} below system</span>}
+                                        {same.length > 0 && <span style={{ color: '#64748b', marginLeft: 8 }}>{same.length} matched</span>}
+                                    </div>
+                                </div>
+                                <button type="button" onClick={() => setShowAuditConfirm(false)} style={{ background: 'none', border: 'none', color: '#64748b', fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>×</button>
+                            </div>
+
+                            <div style={{ overflowY: 'auto', flex: 1 }}>
+                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                                    <thead>
+                                        <tr style={{ background: '#0f172a', position: 'sticky', top: 0 }}>
+                                            <th style={{ textAlign: 'left', padding: '8px 14px', color: '#64748b', fontWeight: 600, fontSize: 11, textTransform: 'uppercase' }}>Product</th>
+                                            <th style={{ textAlign: 'right', padding: '8px 14px', color: '#64748b', fontWeight: 600, fontSize: 11, textTransform: 'uppercase' }}>System</th>
+                                            <th style={{ textAlign: 'right', padding: '8px 14px', color: '#64748b', fontWeight: 600, fontSize: 11, textTransform: 'uppercase' }}>Counted</th>
+                                            <th style={{ textAlign: 'right', padding: '8px 14px', color: '#64748b', fontWeight: 600, fontSize: 11, textTransform: 'uppercase' }}>Diff</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {changes.map(c => (
+                                            <tr key={c.id} style={{ borderBottom: '1px solid #0f172a' }}>
+                                                <td style={{ padding: '7px 14px', color: '#e2e8f0', fontWeight: 500 }}>{c.name}</td>
+                                                <td style={{ padding: '7px 14px', textAlign: 'right', color: '#64748b' }}>{Number(c.oldQty).toFixed(2)}</td>
+                                                <td style={{ padding: '7px 14px', textAlign: 'right', color: 'white', fontWeight: 600 }}>{Number(c.newQty).toFixed(2)}</td>
+                                                <td style={{ padding: '7px 14px', textAlign: 'right', fontWeight: 700, color: c.diff > 0 ? '#4ade80' : c.diff < 0 ? '#f87171' : '#475569' }}>
+                                                    {c.diff > 0 ? '+' : ''}{Number(c.diff).toFixed(2)}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <div style={{ padding: '12px 18px', borderTop: '1px solid #334155', flexShrink: 0 }}>
+                                <label style={{ color: '#94a3b8', fontSize: 11, display: 'block', marginBottom: 4 }}>Audit Note (optional)</label>
+                                <input
+                                    value={auditNote}
+                                    onChange={e => setAuditNote(e.target.value)}
+                                    placeholder="e.g. Saturday night close count"
+                                    style={{ width: '100%', background: '#0f172a', border: '1px solid #334155', borderRadius: 6, padding: '6px 10px', color: 'white', fontSize: 12, boxSizing: 'border-box', marginBottom: 10 }}
+                                />
+                                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', color: '#cbd5e1', fontSize: 12, marginBottom: 12 }}>
+                                    <input type="checkbox" checked={auditEmailReport} onChange={e => setAuditEmailReport(e.target.checked)} style={{ width: 14, height: 14 }} />
+                                    Email audit report to reporting recipients
+                                </label>
+                                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                                    <button type="button" onClick={() => setShowAuditConfirm(false)} disabled={saving}
+                                        style={{ background: 'transparent', border: '1px solid #334155', borderRadius: 7, padding: '7px 16px', color: '#94a3b8', cursor: 'pointer', fontSize: 13 }}>
+                                        Cancel
+                                    </button>
+                                    <button type="button" onClick={submitAudit} disabled={saving}
+                                        style={{ background: saving ? '#0f172a' : '#166534', border: `1px solid ${saving ? '#334155' : '#15803d'}`, borderRadius: 7, padding: '7px 18px', color: saving ? '#64748b' : '#86efac', cursor: saving ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: 13 }}>
+                                        {saving ? '⏳ Saving…' : '✓ Finalize Audit'}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            })()}
+
             {showHistory && <HistoryPanel onClose={() => setShowHistory(false)} onRestore={d => setMapData(d)} />}
             {showVoice && <VoiceDialog onClose={() => setShowVoice(false)} onGenerate={d => { setMapData(d); setMode('edit'); }} />}
             {showSave && <SaveModal onSave={doSave} onClose={() => setShowSave(false)} />}
+            {shelfDetailId && mapData && (() => {
+                const sdObj = mapData.objects.find(o => o.id === shelfDetailId);
+                return sdObj ? (
+                    <ShelfDetailModal
+                        obj={sdObj}
+                        products={products}
+                        mode={mode}
+                        onUpdate={updateObj}
+                        onClose={() => setShelfDetailId(null)}
+                    />
+                ) : null;
+            })()}
         </div>
     );
 }

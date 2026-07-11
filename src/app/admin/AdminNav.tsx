@@ -546,8 +546,7 @@ export default function AdminNav({ user, children }: { user: NavUser, children: 
                     done={checklistDone}
                     total={checklistSteps.length}
                     onClose={() => setShowChecklist(false)}
-                    onToggle={async (key: string, completed: boolean) => {
-                        await fetch('/api/admin/setup-checklist', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ step_key: key, completed }) });
+                    onRefresh={async () => {
                         const data = await fetch('/api/admin/setup-checklist').then(r => r.json());
                         if (data.steps) { setChecklistSteps(data.steps); setChecklistDone(data.done); }
                     }}
@@ -559,8 +558,8 @@ export default function AdminNav({ user, children }: { user: NavUser, children: 
 
 // ─── Setup Checklist Panel ────────────────────────────────────────────────────
 
-function SetupChecklistPanel({ steps, done, total, onClose, onToggle }: {
-    steps: any[]; done: number; total: number; onClose: () => void; onToggle: (key: string, completed: boolean) => void;
+function SetupChecklistPanel({ steps, done, total, onClose, onRefresh }: {
+    steps: any[]; done: number; total: number; onClose: () => void; onRefresh: () => void;
 }) {
     const percent = total > 0 ? Math.round((done / total) * 100) : 0;
     return (
@@ -574,7 +573,12 @@ function SetupChecklistPanel({ steps, done, total, onClose, onToggle }: {
                     <Typography sx={{ fontWeight: 700, fontSize: 15 }}>🚀 Setup Checklist</Typography>
                     <Typography variant="caption" color="text.secondary">{done} of {total} steps complete</Typography>
                 </Box>
-                <IconButton size="small" onClick={onClose} aria-label="close checklist"><span aria-hidden>×</span></IconButton>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <IconButton size="small" onClick={onRefresh} aria-label="refresh checklist" title="Refresh">
+                        <span aria-hidden style={{ fontSize: 14 }}>↻</span>
+                    </IconButton>
+                    <IconButton size="small" onClick={onClose} aria-label="close checklist"><span aria-hidden>×</span></IconButton>
+                </Box>
             </Box>
 
             {/* Progress bar */}
@@ -588,6 +592,9 @@ function SetupChecklistPanel({ steps, done, total, onClose, onToggle }: {
                         🎉 All steps complete! Your bar is fully set up.
                     </Typography>
                 )}
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5, px: 1 }}>
+                    Checkmarks fill automatically when each section is saved.
+                </Typography>
                 {steps.map((step, i) => (
                     <Box key={step.key} sx={{
                         display: 'flex', alignItems: 'flex-start', gap: 1.25, px: 1, py: 1,
@@ -595,21 +602,16 @@ function SetupChecklistPanel({ steps, done, total, onClose, onToggle }: {
                         bgcolor: step.completed ? 'rgba(34,197,94,0.06)' : 'transparent',
                         border: '1px solid', borderColor: step.completed ? 'rgba(34,197,94,0.2)' : 'transparent',
                     }}>
-                        <IconButton
-                            type="button"
-                            size="small"
-                            onClick={() => onToggle(step.key, !step.completed)}
-                            aria-label={step.completed ? 'Mark incomplete' : 'Mark complete'}
-                            sx={{
-                                flexShrink: 0, width: 22, height: 22, borderRadius: '50%', mt: 0.25,
-                                border: '2px solid', borderColor: step.completed ? 'success.main' : 'divider',
-                                bgcolor: step.completed ? 'success.main' : 'transparent',
-                                color: 'white', fontSize: 11, fontWeight: 700, p: 0,
-                                '&:hover': { bgcolor: step.completed ? 'success.dark' : 'action.hover' },
-                            }}
-                        >
+                        {/* Read-only status indicator — not a button */}
+                        <Box sx={{
+                            flexShrink: 0, width: 22, height: 22, borderRadius: '50%', mt: 0.25,
+                            border: '2px solid', borderColor: step.completed ? 'success.main' : 'divider',
+                            bgcolor: step.completed ? 'success.main' : 'transparent',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            color: 'white', fontSize: 11, fontWeight: 700,
+                        }}>
                             {step.completed ? '✓' : ''}
-                        </IconButton>
+                        </Box>
                         <Box sx={{ flex: 1 }}>
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
                                 <Typography component="span" sx={{ fontSize: 11, color: 'text.disabled', fontWeight: 600, minWidth: 16 }}>{i + 1}.</Typography>
@@ -619,11 +621,6 @@ function SetupChecklistPanel({ steps, done, total, onClose, onToggle }: {
                                 </Typography>
                             </Box>
                             <Typography sx={{ fontSize: 11, color: 'text.disabled', mt: 0.25, pl: 2.75 }}>{step.description}</Typography>
-                            {step.completed && step.completed_by_name && (
-                                <Typography sx={{ fontSize: 10, color: 'success.main', mt: 0.25, pl: 2.75 }}>
-                                    ✓ Done by {step.completed_by_name}
-                                </Typography>
-                            )}
                         </Box>
                     </Box>
                 ))}
