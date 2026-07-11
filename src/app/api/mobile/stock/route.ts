@@ -25,10 +25,12 @@ export async function GET(req: NextRequest) {
     try {
         // Read org-level settings
         let sharedInventoryCount = false;
+        let showItemsAtAllLocations = true;
         let globalLowStockThreshold: number | null = null;
         try {
             const orgRow = await db.one('SELECT settings FROM organizations WHERE id = $1', [session.organizationId]);
             if (orgRow?.settings?.shared_inventory_count === true) sharedInventoryCount = true;
+            if (orgRow?.settings?.show_items_at_all_locations === false) showItemsAtAllLocations = false;
         } catch { }
 
         try {
@@ -61,6 +63,7 @@ export async function GET(req: NextRequest) {
         }
 
         let rows: any[];
+        let locationName: string | null = null;
 
         if (sharedInventoryCount) {
             // Sum across all locations
@@ -79,13 +82,25 @@ export async function GET(req: NextRequest) {
                 [session.organizationId]
             );
         } else {
+            if (locationId) {
+                try {
+                    const locRow = await db.one(
+                        'SELECT name FROM locations WHERE id = $1 AND organization_id = $2',
+                        [locationId, session.organizationId]
+                    );
+                    if (locRow) locationName = locRow.name;
+                } catch { }
+            }
+
+            // show_items_at_all_locations=false: INNER JOIN hides items with no inventory here
+            const joinType = showItemsAtAllLocations ? 'LEFT JOIN' : 'JOIN';
             rows = await db.query(
                 `SELECT
                     i.id, i.name, i.type, i.secondary_type,
                     i.supplier, i.low_stock_threshold, i.order_size,
                     COALESCE(inv.quantity, 0) AS quantity
                  FROM items i
-                 LEFT JOIN inventory inv ON inv.item_id = i.id AND inv.location_id = $2
+                 ${joinType} inventory inv ON inv.item_id = i.id AND inv.location_id = $2
                  WHERE i.organization_id = $1
                    AND i.archived_at IS NULL
                  ORDER BY ${orderBy}`,
@@ -108,6 +123,7 @@ export async function GET(req: NextRequest) {
             items,
             total: items.length,
             location_id: locationId,
+            location_name: locationName,
             shared_inventory: sharedInventoryCount,
             out_of_stock: items.filter(i => i.quantity === 0).length,
             low_stock: items.filter(i => {

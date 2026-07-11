@@ -105,6 +105,12 @@ RESPONSE (200 OK):
     "subdomain": "your-bar",
     "subscription_plan": "pro"
   },
+  "org_settings": {
+    "shared_inventory_count": false,         ← true = single shared pool; false = per-location
+    "show_items_at_all_locations": true,     ← false = hide items with 0 qty at selected location
+    "stock_count_mode": "CATEGORY",          ← "CATEGORY" | "PRODUCT" — how stock view groups items
+    "stock_view_mode": "by_location"         ← derived: "by_location" | "shared" (use this to
+  },                                            set up location picker UI before the first stock call)
   "capabilities": {
     "can_add_stock": true,
     "can_subtract_stock": true,
@@ -442,8 +448,108 @@ RESPONSE (200 OK):
 
 
 ────────────────────────────────────────────────────────────────────────────────
-7. STOCK — Out-of-stock alerts and quantity adjustments
+7. STOCK — Full stock list, inventory details, alerts, and adjustments
 ────────────────────────────────────────────────────────────────────────────────
+
+── Determine stock view mode at startup ────────────────────────────────────────
+
+Before calling any stock endpoint, check org_settings.stock_view_mode from
+GET /api/mobile/auth/me (cached at login):
+
+  "by_location"  — quantities are per-location; show a location picker
+  "shared"       — quantities are summed org-wide; no location picker needed
+
+The per-fetch endpoints also return "shared_inventory" and "location_id" so
+the UI can stay in sync even if settings change between logins.
+
+── Get all stock items with quantities ─────────────────────────────────────────
+
+GET /api/mobile/stock
+
+Returns all non-archived items with current stock quantities. Respects the org's
+shared_inventory_count and show_items_at_all_locations settings.
+
+QUERY PARAMETERS (all optional):
+  ?location_id=2    Explicit location scope (per-location mode only)
+  ?sort=name        "name" | "quantity" (default: name)
+
+RESPONSE (200 OK):
+{
+  "items": [
+    {
+      "id": 88,
+      "name": "Tito's Vodka 750ml",
+      "type": "Liquor",
+      "secondary_type": "Vodka",
+      "supplier": "Southern Glazers",
+      "low_stock_threshold": 3,
+      "order_size": [{ "label": "Case", "amount": 12 }],
+      "quantity": 24
+    }
+  ],
+  "total": 142,
+  "location_id": 2,             ← null when shared_inventory = true
+  "location_name": "Main Bar",  ← null when shared_inventory = true
+  "shared_inventory": false,
+  "out_of_stock": 4,
+  "low_stock": 8
+}
+
+LOCATION RESOLUTION (per-location mode only):
+  1. Use explicit ?location_id param if provided
+  2. Fall back to the user's first assigned location
+  3. Fall back to the org's first location
+
+NOTES:
+- Use location_name to label the view ("Viewing: Main Bar") without a second lookup.
+- show_items_at_all_locations=false (from org_settings) hides items with no
+  inventory row at the selected location (quantity would be 0). When true (default),
+  all items appear with quantity=0 if not stocked at that location.
+- Use ?sort=quantity to sort most urgent first (restocking view).
+
+── Get full inventory list with threshold data ──────────────────────────────────
+
+GET /api/mobile/inventory
+
+Like GET /api/mobile/stock but includes per-item low-stock threshold details.
+Use this for management or audit screens; use /stock for a simpler stock view.
+
+QUERY PARAMETERS (all optional):
+  ?location_id=2    Explicit location scope (per-location mode only)
+  ?q=vodka          Search by name or type (case-insensitive)
+
+RESPONSE (200 OK):
+{
+  "items": [
+    {
+      "id": 88,
+      "name": "Tito's Vodka 750ml",
+      "type": "Liquor",
+      "secondary_type": "Vodka",
+      "supplier": "Southern Glazers",
+      "order_size": [{ "label": "Case", "amount": 12 }],
+      "quantity": 24,
+      "low_stock_threshold": 3,
+      "low_stock_threshold_type": "fixed",      ← "fixed" | "order_qty" | "stock_options"
+      "low_stock_threshold_factor": null,
+      "effective_low_stock_threshold": 3,       ← per-item threshold or org global fallback
+      "is_low_stock": false,
+      "is_out_of_stock": false
+    }
+  ],
+  "total": 142,
+  "out_of_stock": 4,
+  "low_stock": 8,
+  "global_low_stock_threshold": 5,  ← org-wide fallback threshold (null = not set)
+  "location_id": 2,
+  "location_name": "Main Bar",
+  "shared_inventory": false
+}
+
+NOTES:
+- effective_low_stock_threshold is the value you should use for low-stock UI.
+  It equals low_stock_threshold (per-item) when set; otherwise global_low_stock_threshold.
+- is_low_stock / is_out_of_stock are pre-computed for convenience.
 
 ── Get low/out-of-stock items ──────────────────────────────────────────────────
 
@@ -513,6 +619,9 @@ ERROR RESPONSES:
 NOTES:
 - Quantity is floored at 0 (will never go negative).
 - Each adjustment is written to the activity log (action: ADD_STOCK or SUBTRACT_STOCK).
+- When shared_inventory_count=true (org_settings.stock_view_mode = "shared"), the
+  write always targets a specific location (the user's assigned location). The server
+  broadcasts the change org-wide so all connected clients refresh their totals.
 - Do NOT call /api/v1/inventory/adjust from mobile — that endpoint requires an
   API key (tsk_live_...) and will reject JWT Bearer tokens with 401.
 
@@ -2757,7 +2866,7 @@ METHOD  PATH                                           AUTH    ROLE    DESCRIPTI
 ──────  ─────────────────────────────────────────────  ──────  ──────  ──────────────────────────────────────────
 ── Authentication ──────────────────────────────────────────────────────────────
 POST    /api/mobile/auth                               No      —       Login → get Bearer token
-GET     /api/mobile/auth/me                            Bearer  Any     Identity, role, permissions, capabilities
+GET     /api/mobile/auth/me                            Bearer  Any     Identity, role, permissions, capabilities, org_settings
 GET     /api/mobile/register?token=…                   No      —       Validate invite token
 POST    /api/mobile/register                           No      —       Complete registration
 POST    /api/mobile/device-token                       Bearer  Any     Register device for push notifications
@@ -2777,6 +2886,7 @@ POST    /api/mobile/barred                             Bearer  Perm    Add a bar
 GET     /api/mobile/incidents                          Bearer  Perm    List incident reports (add/review_incidents)
 POST    /api/mobile/incidents                          Bearer  Perm    File incident report (add_incident)
 ── Inventory ───────────────────────────────────────────────────────────────────
+GET     /api/mobile/stock                              Bearer  Any     All items with quantities (respects shared_inventory_count)
 GET     /api/mobile/inventory                          Bearer  Any     Inventory list (qty + thresholds per item)
 GET     /api/mobile/out-of-stock                       Bearer  Any     Low / out-of-stock items only
 POST    /api/mobile/stock/adjust                       Bearer  Perm    Add or subtract stock quantity (add_stock)

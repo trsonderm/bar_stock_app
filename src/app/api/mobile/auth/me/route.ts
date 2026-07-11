@@ -15,7 +15,8 @@ export async function GET(req: NextRequest) {
         const user = await db.one(
             `SELECT u.id, u.role, u.permissions, u.first_name, u.last_name, u.display_name,
                     u.profile_picture, u.position, u.phone, u.email,
-                    o.name AS org_name, o.subdomain, o.subscription_plan
+                    o.name AS org_name, o.subdomain, o.subscription_plan,
+                    o.settings AS org_settings_raw
              FROM users u
              JOIN organizations o ON o.id = u.organization_id
              WHERE u.id = $1 AND u.organization_id = $2`,
@@ -28,6 +29,13 @@ export async function GET(req: NextRequest) {
             permissions = typeof user.permissions === 'string'
                 ? JSON.parse(user.permissions)
                 : (user.permissions || []);
+        } catch { }
+
+        let orgSettings: Record<string, any> = {};
+        try {
+            orgSettings = typeof user.org_settings_raw === 'string'
+                ? JSON.parse(user.org_settings_raw)
+                : (user.org_settings_raw || {});
         } catch { }
 
         const isAdmin = user.role === 'admin';
@@ -50,6 +58,12 @@ export async function GET(req: NextRequest) {
                 name: user.org_name,
                 subdomain: user.subdomain,
                 subscription_plan: user.subscription_plan,
+            },
+            org_settings: {
+                shared_inventory_count: orgSettings.shared_inventory_count === true,
+                show_items_at_all_locations: orgSettings.show_items_at_all_locations !== false,
+                stock_count_mode: orgSettings.stock_count_mode || null,
+                stock_view_mode: orgSettings.shared_inventory_count === true ? 'shared' : 'by_location',
             },
             capabilities: {
                 // Stock

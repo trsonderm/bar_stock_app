@@ -30,6 +30,13 @@ export async function POST(req: NextRequest) {
     const numChange = Number(change);
     const isAdd = numChange > 0;
 
+    // Determine if org uses shared inventory so we can broadcast the change to all clients
+    let sharedInventoryCount = false;
+    try {
+        const orgRow = await db.one('SELECT settings FROM organizations WHERE id = $1', [session.organizationId]);
+        sharedInventoryCount = orgRow?.settings?.shared_inventory_count === true;
+    } catch { }
+
     // Check permission
     const perms: string[] = Array.isArray(session.permissions) ? session.permissions : [];
     const hasAll = perms.includes('all');
@@ -127,7 +134,8 @@ export async function POST(req: NextRequest) {
 
         await client.query('COMMIT');
 
-        markChanged(session.organizationId, targetLocationId ?? 0, 'inventory', 'stock');
+        // Shared mode: location_id=0 notifies all clients regardless of location
+        markChanged(session.organizationId, sharedInventoryCount ? 0 : (targetLocationId ?? 0), 'inventory', 'stock');
         return NextResponse.json({
             item_id: Number(item_id),
             item_name: item.name,
