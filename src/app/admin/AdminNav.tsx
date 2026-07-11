@@ -467,10 +467,10 @@ export default function AdminNav({ user, children }: { user: NavUser, children: 
                         </>
                     )}
 
-                    {isFullAdmin && (
+                    {isFullAdmin && checklistSteps.length > 0 && checklistDone < checklistSteps.length && (
                         <Tooltip title={`Setup Checklist (${checklistDone}/${checklistSteps.length} complete)`}>
-                            <IconButton onClick={() => setShowChecklist(s => !s)} sx={{ mr: 0.5, color: checklistDone === checklistSteps.length && checklistSteps.length > 0 ? 'success.main' : 'text.primary' }}>
-                                <Badge badgeContent={checklistSteps.length > 0 && checklistDone < checklistSteps.length ? checklistSteps.length - checklistDone : undefined} color="warning" max={99}>
+                            <IconButton onClick={() => setShowChecklist(s => !s)} sx={{ mr: 0.5 }}>
+                                <Badge badgeContent={checklistSteps.length - checklistDone} color="warning" max={99}>
                                     <PlaylistAddCheckIcon fontSize="small" />
                                 </Badge>
                             </IconButton>
