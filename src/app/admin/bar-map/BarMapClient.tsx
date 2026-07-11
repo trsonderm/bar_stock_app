@@ -13,6 +13,14 @@ export type ObjType =
     | 'pool_table' | 'jukebox' | 'atm';
 
 export interface Pt { x: number; y: number; }
+export interface OutlineVertex extends Pt { arcCtrl?: Pt; }
+
+export interface RoomArea {
+    id: string;
+    name: string;
+    color?: string;
+    outline: OutlineVertex[];
+}
 
 export interface ShelfProduct {
     id: string;
@@ -47,7 +55,8 @@ export interface MapData {
     width_ft: number;
     height_ft: number;
     grid_ft: number;
-    outline: Pt[];
+    outline: OutlineVertex[];
+    rooms?: RoomArea[];
     objects: MapObject[];
     iconLayout?: 'vertical' | 'horizontal';
 }
@@ -62,7 +71,8 @@ type DragState =
     | { type: 'rotate'; id: string; centerPx: Pt; startAngle: number; startRotation: number }
     | { type: 'pan'; startMouse: Pt; startPan: Pt }
     | { type: 'rubber'; startFt: Pt }
-    | { type: 'room-vertex'; idx: number; startMouse: Pt; startPt: Pt };
+    | { type: 'room-vertex'; roomId: string; idx: number; startMouse: Pt; startPt: Pt }
+    | { type: 'arc-ctrl'; roomId: string; vertIdx: number; startMouse: Pt };
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -113,15 +123,44 @@ function productColor(name: string) {
 const EMPTY_MAP: MapData = {
     name: 'My Bar', width_ft: 40, height_ft: 25, grid_ft: 1,
     outline: [{ x: 0, y: 0 }, { x: 40, y: 0 }, { x: 40, y: 25 }, { x: 0, y: 25 }],
-    objects: [],
+    rooms: [], objects: [],
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const s = (v: number) => Math.round(v / SNAP) * SNAP;
 const uid = () => 'o_' + Math.random().toString(36).slice(2, 8);
+const rid = () => 'r_' + Math.random().toString(36).slice(2, 8);
 const sid = () => 's_' + Math.random().toString(36).slice(2, 8);
 const pid = () => 'p_' + Math.random().toString(36).slice(2, 8);
+
+// Build an SVG path string from an outline, handling arc segments via quadratic bezier
+function outlineToPath(verts: OutlineVertex[], pxPerFt: number): string {
+    if (!verts.length) return '';
+    let d = `M ${verts[0].x * pxPerFt} ${verts[0].y * pxPerFt}`;
+    for (let i = 0; i < verts.length; i++) {
+        const curr = verts[i];
+        const next = verts[(i + 1) % verts.length];
+        if (curr.arcCtrl) {
+            d += ` Q ${curr.arcCtrl.x * pxPerFt} ${curr.arcCtrl.y * pxPerFt} ${next.x * pxPerFt} ${next.y * pxPerFt}`;
+        } else {
+            d += ` L ${next.x * pxPerFt} ${next.y * pxPerFt}`;
+        }
+    }
+    return d + ' Z';
+}
+
+// Midpoint of segment i (or midpoint of arc if control point exists)
+function arcHandlePt(verts: OutlineVertex[], i: number): Pt {
+    const A = verts[i], B = verts[(i + 1) % verts.length];
+    if (A.arcCtrl) {
+        return { x: (A.x + 2 * A.arcCtrl.x + B.x) / 4, y: (A.y + 2 * A.arcCtrl.y + B.y) / 4 };
+    }
+    return { x: (A.x + B.x) / 2, y: (A.y + B.y) / 2 };
+}
+
+const ROOM_COLORS = ['#1e3a5f', '#14532d', '#3b0764', '#7c2d12', '#164e63', '#422006'];
+function nextRoomColor(rooms: RoomArea[]) { return ROOM_COLORS[rooms.length % ROOM_COLORS.length]; }
 
 function makeShelves(n = 3): Shelf[] {
     const labels = ['Top Shelf', 'Middle Shelf', 'Bottom Shelf', 'Floor Level', 'Shelf 5'];
@@ -941,6 +980,45 @@ function AuditPanel({ objects, onAuditChange, onFinish, saving }: {
     );
 }
 
+// ─── Room Props Panel ─────────────────────────────────────────────────────────
+
+function RoomPropsPanel({ room, mode, onUpdate, onDelete }: {
+    room: RoomArea; mode: Mode;
+    onUpdate: (r: RoomArea) => void;
+    onDelete: (id: string) => void;
+}) {
+    const inp = { background: '#1e293b', border: '1px solid #334155', borderRadius: 6, padding: '5px 8px', color: 'white', fontSize: 12, width: '100%', boxSizing: 'border-box' as const };
+    return (
+        <div style={{ padding: 14, fontSize: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <span style={{ color: '#a78bfa', fontWeight: 700, fontSize: 13 }}>🏠 Sub-Room</span>
+                {mode === 'edit' && <button type="button" onClick={() => onDelete(room.id)} style={{ background: '#7f1d1d', border: 'none', borderRadius: 5, padding: '3px 8px', color: '#fca5a5', cursor: 'pointer', fontSize: 11 }}>Remove</button>}
+            </div>
+            {mode === 'edit' && (
+                <>
+                    <label style={{ color: '#94a3b8', display: 'block', marginBottom: 2 }}>Name</label>
+                    <input title="Room name" value={room.name} onChange={e => onUpdate({ ...room, name: e.target.value })} style={{ ...inp, marginBottom: 10 }} />
+                    <label style={{ color: '#94a3b8', display: 'block', marginBottom: 4 }}>Fill Color</label>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 10 }}>
+                        <input type="color" title="Room fill color" value={room.color ?? '#1e3a5f'} onChange={e => onUpdate({ ...room, color: e.target.value })}
+                            style={{ width: 36, height: 28, border: 'none', borderRadius: 4, cursor: 'pointer', background: 'none' }} />
+                        <button type="button" onClick={() => onUpdate({ ...room, color: undefined })}
+                            style={{ background: 'transparent', border: '1px solid #334155', borderRadius: 5, padding: '3px 8px', color: '#64748b', cursor: 'pointer', fontSize: 11 }}>Reset</button>
+                    </div>
+                    <div style={{ background: '#0f172a', borderRadius: 7, padding: '8px 10px', color: '#475569', fontSize: 11 }}>
+                        Click the room edge to show vertex handles. Drag purple dots to reshape.
+                        Drag the <span style={{ color: '#f59e0b' }}>amber arc handles</span> on each segment to curve walls.
+                        Double-drag back to center to straighten.
+                    </div>
+                </>
+            )}
+            {mode !== 'edit' && (
+                <div style={{ color: '#475569', fontSize: 11 }}>Switch to Edit mode to modify this room.</div>
+            )}
+        </div>
+    );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function BarMapClient({ initialMap, products }: { initialMap: MapData | null; products: { id: number; name: string; type: string }[] }) {
@@ -961,7 +1039,8 @@ export default function BarMapClient({ initialMap, products }: { initialMap: Map
     const [saving, setSaving] = useState(false);
     const [savedToast, setSavedToast] = useState(false);
     const [gridMode, setGridMode] = useState<'off' | 'dots' | 'lines'>('lines');
-    const [roomSelected, setRoomSelected] = useState(false);
+    // null = nothing, '__main__' = main outline, roomId = sub-room
+    const [roomSelected, setRoomSelected] = useState<string | null>(null);
 
     const svgRef = useRef<SVGSVGElement>(null);
     const dragRef = useRef<DragState | null>(null);
@@ -986,8 +1065,12 @@ export default function BarMapClient({ initialMap, products }: { initialMap: Map
             if (e.code === 'Space' && !(e.target instanceof HTMLInputElement) && !(e.target instanceof HTMLTextAreaElement)) {
                 e.preventDefault(); spaceRef.current = true;
             }
-            if (e.key === 'Escape') { setDrawingPts([]); setPendingType(null); setSelectedId(null); setSelectedIds([]); setRoomSelected(false); clickCycleRef.current = null; if (tool === 'draw') setTool('select'); }
+            if (e.key === 'Escape') { setDrawingPts([]); setPendingType(null); setSelectedId(null); setSelectedIds([]); setRoomSelected(null); clickCycleRef.current = null; if (tool === 'draw') setTool('select'); }
             if ((e.key === 'Delete' || e.key === 'Backspace') && document.activeElement === document.body) {
+                if (roomSelected && roomSelected !== '__main__') {
+                    setMapData(prev => prev ? { ...prev, rooms: (prev.rooms ?? []).filter(r => r.id !== roomSelected) } : prev);
+                    setRoomSelected(null); return;
+                }
                 if (selectedIds.length) { setMapData(prev => prev ? { ...prev, objects: prev.objects.filter(o => !selectedSet.has(o.id)) } : prev); setSelectedIds([]); setSelectedId(null); }
                 else if (selectedId) { setMapData(prev => prev ? { ...prev, objects: prev.objects.filter(o => o.id !== selectedId) } : prev); setSelectedId(null); }
                 if (tool === 'draw') setDrawingPts(prev => prev.slice(0, -1));
@@ -1018,7 +1101,7 @@ export default function BarMapClient({ initialMap, products }: { initialMap: Map
 
         if (mode !== 'edit') { setSelectedId(null); setSelectedIds([]); return; }
 
-        setRoomSelected(false);
+        setRoomSelected(null);
         clickCycleRef.current = null;
 
         // Draw outline mode
@@ -1067,7 +1150,7 @@ export default function BarMapClient({ initialMap, products }: { initialMap: Map
             return;
         }
 
-        setRoomSelected(false);
+        setRoomSelected(null);
 
         // Click-through: find every object under cursor (rotation-aware), cycle backward through stack
         const stack = getStackAt(mapData.objects, pt);
@@ -1143,11 +1226,19 @@ export default function BarMapClient({ initialMap, products }: { initialMap: Map
         setSelectedId(next.id); setSelectedIds([]);
     }
 
-    function handleRoomVertexDown(e: React.PointerEvent, idx: number) {
+    function handleRoomVertexDown(e: React.PointerEvent, roomId: string, idx: number) {
         if (mode !== 'edit' || !mapData) return;
         e.stopPropagation();
-        const pt = mapData.outline[idx];
-        dragRef.current = { type: 'room-vertex', idx, startMouse: toFt(e), startPt: { ...pt } };
+        const outline = roomId === '__main__' ? mapData.outline : (mapData.rooms ?? []).find(r => r.id === roomId)?.outline ?? [];
+        const pt = outline[idx];
+        dragRef.current = { type: 'room-vertex', roomId, idx, startMouse: toFt(e), startPt: { ...pt } };
+        (e.currentTarget as Element).setPointerCapture(e.pointerId);
+    }
+
+    function handleArcDown(e: React.PointerEvent, roomId: string, vertIdx: number) {
+        if (mode !== 'edit' || !mapData) return;
+        e.stopPropagation();
+        dragRef.current = { type: 'arc-ctrl', roomId, vertIdx, startMouse: toFt(e) };
         (e.currentTarget as Element).setPointerCapture(e.pointerId);
     }
 
@@ -1179,9 +1270,32 @@ export default function BarMapClient({ initialMap, products }: { initialMap: Map
                 const ny = s(drag.startPt.y + ftY - drag.startMouse.y);
                 setMapData(prev => {
                     if (!prev) return prev;
-                    const newOutline = prev.outline.map((p, i) => i === drag.idx ? { x: nx, y: ny } : p);
-                    const xs = newOutline.map(p => p.x), ys = newOutline.map(p => p.y);
-                    return { ...prev, outline: newOutline, width_ft: Math.max(...xs) - Math.min(...xs), height_ft: Math.max(...ys) - Math.min(...ys) };
+                    if (drag.roomId === '__main__') {
+                        const newOutline = prev.outline.map((p, i) => i === drag.idx ? { ...p, x: nx, y: ny } : p);
+                        const xs = newOutline.map(p => p.x), ys = newOutline.map(p => p.y);
+                        return { ...prev, outline: newOutline, width_ft: Math.max(...xs) - Math.min(...xs), height_ft: Math.max(...ys) - Math.min(...ys) };
+                    }
+                    return { ...prev, rooms: (prev.rooms ?? []).map(r => r.id !== drag.roomId ? r : { ...r, outline: r.outline.map((p, i) => i === drag.idx ? { ...p, x: nx, y: ny } : p) }) };
+                });
+                return;
+            }
+
+            if (drag.type === 'arc-ctrl') {
+                setMapData(prev => {
+                    if (!prev) return prev;
+                    const getOutline = (id: string) => id === '__main__' ? prev.outline : (prev.rooms ?? []).find(r => r.id === id)?.outline ?? [];
+                    const outline = getOutline(drag.roomId);
+                    const A = outline[drag.vertIdx], B = outline[(drag.vertIdx + 1) % outline.length];
+                    // Treat mouse position as the midpoint of the bezier curve, back-calculate control point
+                    const ctrl = { x: 2 * ftX - (A.x + B.x) / 2, y: 2 * ftY - (A.y + B.y) / 2 };
+                    // Snap ctrl to grid
+                    ctrl.x = s(ctrl.x); ctrl.y = s(ctrl.y);
+                    // If ctrl is very close to straight midpoint, remove arc (straighten)
+                    const straight = { x: (A.x + B.x) / 2, y: (A.y + B.y) / 2 };
+                    const newCtrl = Math.hypot(ctrl.x - straight.x, ctrl.y - straight.y) < 0.4 ? undefined : ctrl;
+                    const updateOutline = (ol: OutlineVertex[]) => ol.map((v, i) => i !== drag.vertIdx ? v : { ...v, arcCtrl: newCtrl });
+                    if (drag.roomId === '__main__') return { ...prev, outline: updateOutline(prev.outline) };
+                    return { ...prev, rooms: (prev.rooms ?? []).map(r => r.id !== drag.roomId ? r : { ...r, outline: updateOutline(r.outline) }) };
                 });
                 return;
             }
@@ -1331,6 +1445,33 @@ export default function BarMapClient({ initialMap, products }: { initialMap: Map
         } : prev);
     }
 
+    function addRoom() {
+        if (!mapData) return;
+        const cx = mapData.width_ft / 2, cy = mapData.height_ft / 2;
+        const w = 10, h = 8;
+        const rooms = mapData.rooms ?? [];
+        const newRoom: RoomArea = {
+            id: rid(), name: `Room ${rooms.length + 1}`,
+            color: nextRoomColor(rooms),
+            outline: [
+                { x: cx - w / 2, y: cy - h / 2 }, { x: cx + w / 2, y: cy - h / 2 },
+                { x: cx + w / 2, y: cy + h / 2 }, { x: cx - w / 2, y: cy + h / 2 },
+            ],
+        };
+        setMapData(prev => prev ? { ...prev, rooms: [...(prev.rooms ?? []), newRoom] } : prev);
+        setRoomSelected(newRoom.id);
+        setSelectedId(null); setSelectedIds([]);
+    }
+
+    function updateRoom(r: RoomArea) {
+        setMapData(prev => prev ? { ...prev, rooms: (prev.rooms ?? []).map(x => x.id === r.id ? r : x) } : prev);
+    }
+
+    function deleteRoom(id: string) {
+        setMapData(prev => prev ? { ...prev, rooms: (prev.rooms ?? []).filter(r => r.id !== id) } : prev);
+        setRoomSelected(null);
+    }
+
     async function doSave(desc: string) {
         if (!mapData) return;
         setSaving(true);
@@ -1341,7 +1482,7 @@ export default function BarMapClient({ initialMap, products }: { initialMap: Map
     function applyPreset(k: string) {
         const p = { sm: [25, 15], md: [40, 25], lg: [60, 35] }[k] || [40, 25];
         const [w, h] = p;
-        setMapData({ name: 'My Bar', width_ft: w, height_ft: h, grid_ft: 1, outline: [{ x: 0, y: 0 }, { x: w, y: 0 }, { x: w, y: h }, { x: 0, y: h }], objects: [] });
+        setMapData({ name: 'My Bar', width_ft: w, height_ft: h, grid_ft: 1, outline: [{ x: 0, y: 0 }, { x: w, y: 0 }, { x: w, y: h }, { x: 0, y: h }], rooms: [], objects: [] });
         setMode('edit');
     }
 
@@ -1359,7 +1500,8 @@ export default function BarMapClient({ initialMap, products }: { initialMap: Map
         );
     }
 
-    const outlinePts = mapData.outline.map(p => `${p.x * pxPerFt},${p.y * pxPerFt}`).join(' ');
+    const outlinePath = outlineToPath(mapData.outline, pxPerFt);
+    const selRoom = roomSelected && roomSelected !== '__main__' ? (mapData.rooms ?? []).find(r => r.id === roomSelected) ?? null : null;
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 120px)', userSelect: 'none' }}>
@@ -1400,6 +1542,10 @@ export default function BarMapClient({ initialMap, products }: { initialMap: Map
                         <button type="button" onClick={() => { setTool('draw'); setPendingType(null); }}
                             style={{ background: tool === 'draw' ? '#3b1d5f' : 'transparent', border: `1px solid ${tool === 'draw' ? '#7c3aed' : '#334155'}`, borderRadius: 6, padding: '4px 9px', color: tool === 'draw' ? '#c4b5fd' : '#64748b', fontSize: 12, cursor: 'pointer' }}>
                             ✏ Outline
+                        </button>
+                        <button type="button" onClick={addRoom} title="Add an enclosed sub-room area"
+                            style={{ background: 'transparent', border: '1px solid #334155', borderRadius: 6, padding: '4px 9px', color: '#a78bfa', fontSize: 12, cursor: 'pointer' }}>
+                            🏠 + Room
                         </button>
                         <button type="button" onClick={() => setShowVoice(true)} style={{ background: 'transparent', border: '1px solid #334155', borderRadius: 6, padding: '4px 9px', color: '#64748b', fontSize: 12, cursor: 'pointer' }}>🎤 AI</button>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -1515,13 +1661,36 @@ export default function BarMapClient({ initialMap, products }: { initialMap: Map
                         } />
 
                         <g transform={`translate(${pan.x},${pan.y})`}>
-                            {/* Room fills — below everything, no pointer events so clicks pass through */}
-                            <polygon points={outlinePts} fill="#0b1120" style={{ pointerEvents: 'none' }} />
-                            <polygon points={outlinePts} fill="rgba(30,58,138,0.1)"
-                                stroke={roomSelected ? '#7c3aed' : '#1e40af'}
-                                strokeWidth={roomSelected ? 3 : 2}
+                            {/* Main room fills — below everything */}
+                            <path d={outlinePath} fill="#0b1120" style={{ pointerEvents: 'none' }} />
+                            <path d={outlinePath} fill="rgba(30,58,138,0.1)"
+                                stroke={roomSelected === '__main__' ? '#7c3aed' : '#1e40af'}
+                                strokeWidth={roomSelected === '__main__' ? 3 : 2}
                                 strokeDasharray={mode === 'edit' && !roomSelected ? '8 4' : '0'}
                                 style={{ pointerEvents: 'none' }} />
+
+                            {/* Sub-rooms — above floor, below objects */}
+                            {(mapData.rooms ?? []).map(room => {
+                                const rPath = outlineToPath(room.outline, pxPerFt);
+                                const rColor = room.color ?? '#1e3a5f';
+                                const rSel = roomSelected === room.id;
+                                return (
+                                    <g key={room.id}>
+                                        <path d={rPath} fill={rColor} fillOpacity={0.28} style={{ pointerEvents: 'none' }} />
+                                        <path d={rPath} fill="none"
+                                            stroke={rSel ? '#a78bfa' : rColor} strokeWidth={rSel ? 2.5 : 1.5}
+                                            strokeDasharray={rSel ? '0' : '7 3'}
+                                            style={{ pointerEvents: 'none' }} />
+                                        <text x={(room.outline.reduce((a, p) => a + p.x, 0) / room.outline.length) * pxPerFt}
+                                            y={(room.outline.reduce((a, p) => a + p.y, 0) / room.outline.length) * pxPerFt}
+                                            textAnchor="middle" dominantBaseline="middle"
+                                            fill="rgba(255,255,255,0.35)" fontSize={Math.max(8, pxPerFt * 0.4)}
+                                            style={{ pointerEvents: 'none' }}>
+                                            {room.name}
+                                        </text>
+                                    </g>
+                                );
+                            })}
 
                             {/* Rulers */}
                             {mapData.outline.map((pt, i) => {
@@ -1554,22 +1723,60 @@ export default function BarMapClient({ initialMap, products }: { initialMap: Map
                                 <ResizeHandles obj={selObj} pxPerFt={pxPerFt} onHandleDown={handleResizePointerDown} onRotateDown={handleRotatePointerDown} />
                             )}
 
-                            {/* Room edge hit polygon — rendered after objects so it's always on top */}
+                            {/* Main room edge hit area — after objects so always on top */}
                             {mode === 'edit' && (
-                                <polygon points={outlinePts} fill="none"
+                                <path d={outlinePath} fill="none"
                                     stroke="rgba(0,0,0,0.01)" strokeWidth={16}
                                     style={{ cursor: 'pointer', pointerEvents: 'stroke' }}
-                                    onPointerDown={e => { e.stopPropagation(); setRoomSelected(true); setSelectedId(null); setSelectedIds([]); clickCycleRef.current = null; }}
+                                    onPointerDown={e => { e.stopPropagation(); setRoomSelected('__main__'); setSelectedId(null); setSelectedIds([]); clickCycleRef.current = null; }}
                                 />
                             )}
-                            {/* Room vertex drag handles — after objects so always clickable */}
-                            {roomSelected && mode === 'edit' && mapData.outline.map((vpt, i) => (
-                                <circle key={i} cx={vpt.x * pxPerFt} cy={vpt.y * pxPerFt} r={9}
-                                    fill="#7c3aed" stroke="white" strokeWidth={2}
-                                    style={{ cursor: 'grab' }}
-                                    onPointerDown={e => handleRoomVertexDown(e, i)}
+                            {/* Sub-room edge hit areas */}
+                            {mode === 'edit' && (mapData.rooms ?? []).map(room => (
+                                <path key={`hit-${room.id}`} d={outlineToPath(room.outline, pxPerFt)} fill="none"
+                                    stroke="rgba(0,0,0,0.01)" strokeWidth={16}
+                                    style={{ cursor: 'pointer', pointerEvents: 'stroke' }}
+                                    onPointerDown={e => { e.stopPropagation(); setRoomSelected(room.id); setSelectedId(null); setSelectedIds([]); clickCycleRef.current = null; }}
                                 />
                             ))}
+                            {/* Vertex + arc handles for selected room/outline */}
+                            {roomSelected && mode === 'edit' && (() => {
+                                const isMain = roomSelected === '__main__';
+                                const outline = isMain ? mapData.outline : (mapData.rooms ?? []).find(r => r.id === roomSelected)?.outline ?? [];
+                                const dotColor = isMain ? '#7c3aed' : '#a78bfa';
+                                return (
+                                    <>
+                                        {outline.map((vpt, i) => (
+                                            <circle key={`v${i}`} cx={vpt.x * pxPerFt} cy={vpt.y * pxPerFt} r={9}
+                                                fill={dotColor} stroke="white" strokeWidth={2}
+                                                style={{ cursor: 'grab' }}
+                                                onPointerDown={e => handleRoomVertexDown(e, roomSelected, i)}
+                                            />
+                                        ))}
+                                        {outline.map((vpt, i) => {
+                                            const hpt = arcHandlePt(outline, i);
+                                            const hasArc = !!vpt.arcCtrl;
+                                            return (
+                                                <g key={`arc${i}`} onPointerDown={e => handleArcDown(e, roomSelected, i)}>
+                                                    {/* Bow icon — small arc shape centered on hpt */}
+                                                    <circle cx={hpt.x * pxPerFt} cy={hpt.y * pxPerFt} r={hasArc ? 7 : 5}
+                                                        fill={hasArc ? '#f59e0b' : '#1e293b'}
+                                                        stroke={hasArc ? '#fbbf24' : '#475569'}
+                                                        strokeWidth={1.5}
+                                                        style={{ cursor: 'crosshair' }}
+                                                    />
+                                                    {/* Arc symbol inside */}
+                                                    <path
+                                                        d={`M ${hpt.x * pxPerFt - 3.5} ${hpt.y * pxPerFt + 1.5} Q ${hpt.x * pxPerFt} ${hpt.y * pxPerFt - 3.5} ${hpt.x * pxPerFt + 3.5} ${hpt.y * pxPerFt + 1.5}`}
+                                                        fill="none" stroke={hasArc ? 'white' : '#64748b'} strokeWidth={1.5} strokeLinecap="round"
+                                                        style={{ pointerEvents: 'none' }}
+                                                    />
+                                                </g>
+                                            );
+                                        })}
+                                    </>
+                                );
+                            })()}
 
                             {/* Draw outline preview */}
                             {tool === 'draw' && drawingPts.length > 0 && (
@@ -1609,10 +1816,14 @@ export default function BarMapClient({ initialMap, products }: { initialMap: Map
                     </svg>
                 </div>
 
-                {/* Right panel — audit list or properties */}
+                {/* Right panel — audit list, object props, or room props */}
                 {mode === 'audit' ? (
                     <div style={{ width: 260, background: '#0f172a', borderLeft: '1px solid #1e293b', flexShrink: 0, display: 'flex', flexDirection: 'column' }}>
                         <AuditPanel objects={mapData.objects} onAuditChange={handleAuditChange} onFinish={() => doSave('Audit save')} saving={saving} />
+                    </div>
+                ) : selRoom ? (
+                    <div style={{ width: 252, background: '#0f172a', borderLeft: '1px solid #1e293b', overflowY: 'auto', flexShrink: 0 }}>
+                        <RoomPropsPanel room={selRoom} mode={mode} onUpdate={updateRoom} onDelete={deleteRoom} />
                     </div>
                 ) : selObj ? (
                     <div style={{ width: 252, background: '#0f172a', borderLeft: '1px solid #1e293b', overflowY: 'auto', flexShrink: 0 }}>
