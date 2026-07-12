@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import styles from '../admin.module.css';
-import { ChevronLeft, ChevronRight, Plus, Calendar, User, Clock, Trash2, Printer, X, Mail, Pencil, ArrowLeftRight, Replace, Check, Palette } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, Calendar, User, Clock, Trash2, Printer, X, Mail, Pencil, ArrowLeftRight, Replace, Check, Palette, AlertTriangle } from 'lucide-react';
 import ShiftManager from './ShiftManager';
 import MonthScheduler from './MonthScheduler';
 
@@ -111,6 +111,10 @@ export default function UserSchedulerClient() {
     // Color panel & shift color picker
     const [colorPanelOpen, setColorPanelOpen] = useState(false);
     const [shiftColorPickerId, setShiftColorPickerId] = useState<number | null>(null);
+
+    // Timeline row density and gap-coverage banner
+    const [timelineDensity, setTimelineDensity] = useState<'compact' | 'comfortable' | 'expanded'>('comfortable');
+    const [gapBannerDismissed, setGapBannerDismissed] = useState(false);
 
     // Location state
     const [myLocations, setMyLocations] = useState<{ id: number, name: string }[]>([]);
@@ -715,6 +719,34 @@ export default function UserSchedulerClient() {
         weekDays.push(d);
     }
 
+    // Gap coverage warnings — unfilled shifts for today-and-forward days of the viewed week
+    const gapWarnings = useMemo(() => {
+        if (shifts.length === 0) return [];
+        const todayStr = formatLocalDate(new Date());
+        const result: { shift: Shift; missingDays: string[] }[] = [];
+        for (const shift of shifts) {
+            const missing: string[] = [];
+            for (const day of weekDays) {
+                const dateStr = formatLocalDate(day);
+                if (dateStr < todayStr) continue;
+                if (!schedules.some(s => s.shift_id === shift.id && s.date.split('T')[0] === dateStr)) {
+                    missing.push(day.toLocaleDateString('en-US', { weekday: 'short', month: 'numeric', day: 'numeric' }));
+                }
+            }
+            if (missing.length > 0) result.push({ shift, missingDays: missing });
+        }
+        return result;
+    }, [weekDays, shifts, schedules]);
+
+    // Reset gap banner whenever the viewed week changes
+    useEffect(() => { setGapBannerDismissed(false); }, [weekStart]);
+
+    // Timeline density geometry (row height, bar height, min canvas width)
+    const tlRowH = timelineDensity === 'expanded' ? 112 : timelineDensity === 'compact' ? 64 : 88;
+    const tlBarH = Math.round(tlRowH * 0.72);
+    const tlBarTop = Math.round((tlRowH - tlBarH) / 2);
+    const tlMinW = timelineDensity === 'expanded' ? 1900 : timelineDensity === 'compact' ? 1100 : 1500;
+
     // Styles for Print
     const printStyles = `
         @media print {
@@ -1042,8 +1074,43 @@ export default function UserSchedulerClient() {
                                 <Palette size={13} />
                                 Colors
                             </button>
+                            {viewMode === 'timeline' && (
+                                <div className="flex items-center overflow-hidden rounded border border-gray-700 text-xs">
+                                    {(['compact', 'comfortable', 'expanded'] as const).map(d => (
+                                        <button key={d} type="button"
+                                            onClick={() => setTimelineDensity(d)}
+                                            className={`px-2.5 py-1 transition-colors ${timelineDensity === d ? 'bg-blue-700 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`}
+                                        >
+                                            {d === 'compact' ? 'S' : d === 'comfortable' ? 'M' : 'L'}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     </div>
+
+                    {/* Coverage gap banner */}
+                    {!gapBannerDismissed && gapWarnings.length > 0 && (
+                        <div className="bg-amber-950/60 border-l border-r border-b border-amber-800/60 px-4 py-2.5 flex items-start gap-3 no-print" style={{ borderBottomLeftRadius: viewMode !== 'timeline' ? 0 : 0, borderBottomRightRadius: 0 }}>
+                            <AlertTriangle size={15} className="text-amber-400 flex-shrink-0 mt-0.5" />
+                            <div className="flex-1 min-w-0">
+                                <span className="text-amber-300 font-semibold text-xs uppercase tracking-wide mr-3">Coverage gaps this week</span>
+                                <span className="text-xs text-amber-200/60">The following shifts have no one assigned for upcoming days:</span>
+                                <div className="flex flex-wrap gap-x-5 gap-y-1 mt-1.5">
+                                    {gapWarnings.map(({ shift, missingDays }) => (
+                                        <div key={shift.id} className="flex items-center gap-1.5 text-xs">
+                                            <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: shift.color }} />
+                                            <span className="text-amber-200 font-medium">{shift.label}:</span>
+                                            <span className="text-amber-400/70">{missingDays.join(', ')}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                            <button type="button" title="Dismiss" onClick={() => setGapBannerDismissed(true)} className="text-amber-700 hover:text-amber-400 flex-shrink-0 transition-colors">
+                                <X size={14} />
+                            </button>
+                        </div>
+                    )}
 
                     {viewMode !== 'timeline' && (
                     <>
@@ -1311,7 +1378,7 @@ export default function UserSchedulerClient() {
                     {viewMode === 'timeline' && (
                         <div className="overflow-x-auto border border-gray-700 rounded-b-lg bg-gray-900">
                             {/* Day header row */}
-                            <div className="flex" style={{ minWidth: '1000px' }}>
+                            <div className="flex" style={{ minWidth: `${tlMinW}px` }}>
                                 <div className="flex-shrink-0 bg-gray-800 border-r border-b border-gray-700" style={{ width: '180px' }} />
                                 {weekDays.map((day, i) => {
                                     const isToday = formatLocalDate(day) === formatLocalDate(new Date());
@@ -1348,11 +1415,11 @@ export default function UserSchedulerClient() {
                                 <div className="text-center text-gray-500 py-10 text-sm">No employees found for this location.</div>
                             ) : (
                                 users.map(user => (
-                                    <div key={user.id} className="flex border-b border-gray-800/80 hover:bg-white/[0.02] transition-colors" style={{ minWidth: '1000px', height: '76px' }}>
+                                    <div key={user.id} className="flex border-b border-gray-800/80 hover:bg-white/[0.02] transition-colors" style={{ minWidth: `${tlMinW}px`, height: `${tlRowH}px` }}>
                                         {/* Name column — fixed, vertically centred, click to change color */}
                                         <div
                                             className="flex-shrink-0 border-r border-gray-800 flex items-center group cursor-pointer hover:bg-white/5 transition-colors relative overflow-hidden"
-                                            style={{ width: '180px', height: '76px' }}
+                                            style={{ width: '180px', height: `${tlRowH}px` }}
                                             onClick={() => setColorPickerUserId(colorPickerUserId === user.id ? null : user.id)}
                                             title="Click to change employee color"
                                         >
@@ -1379,15 +1446,15 @@ export default function UserSchedulerClient() {
                                                 return (sh * 60 + sm) > (eh * 60 + em);
                                             });
 
-                                            // Fixed bar geometry — all bars are the same height regardless of row content
-                                            const BAR_TOP = 12;   // px from top of 76px row
-                                            const BAR_H   = 52;   // px — leaves 12px bottom gap
+                                            // Bar geometry driven by timeline density
+                                            const BAR_TOP = tlBarTop;
+                                            const BAR_H   = tlBarH;
 
                                             return (
                                                 <div
                                                     key={di}
                                                     className={`flex-1 border-r border-gray-800/60 relative ${isToday ? 'bg-blue-950/20' : ''}`}
-                                                    style={{ height: '76px', overflow: 'visible' }}
+                                                    style={{ height: `${tlRowH}px`, overflow: 'visible' }}
                                                     onDragOver={(e) => handleDragOver(e, dateStr, user.id)}
                                                     onDragLeave={handleDragLeave}
                                                     onDrop={(e) => handleDrop(e, dateStr, user.id)}
@@ -1462,15 +1529,15 @@ export default function UserSchedulerClient() {
                                                             : Math.max(((isOvernight ? 24 * 60 : endTotal) - startTotal) / (24 * 60) * 100, 3.5);
 
                                                         // Text tier based on bar width:
-                                                        //  < 3%  → no text
-                                                        //  3–8%  → start time only (short format)
-                                                        //  8–15% → "start–end" on one line
-                                                        //  ≥ 15% → shift name + time on two lines
+                                                        //  < 2%  → no text
+                                                        //  2–6%  → start time only (short format)
+                                                        //  6–11% → "start–end" on one line
+                                                        //  ≥ 11% → shift name + time on two lines
                                                         const fmtShort = (h: number, m: number) =>
                                                             `${h % 12 || 12}:${String(m).padStart(2,'0')}${h >= 12 ? 'p' : 'a'}`;
                                                         const startShort = fmtShort(startH, startM);
                                                         const endShort   = fmtShort(endH, endM);
-                                                        const tier = widthPct < 3 ? 0 : widthPct < 8 ? 1 : widthPct < 15 ? 2 : 3;
+                                                        const tier = widthPct < 2 ? 0 : widthPct < 6 ? 1 : widthPct < 11 ? 2 : 3;
 
                                                         return (
                                                             <div
@@ -1537,7 +1604,7 @@ export default function UserSchedulerClient() {
                             )}
 
                             {/* Time scale footer */}
-                            <div className="flex border-t border-gray-700" style={{ minWidth: '1000px' }}>
+                            <div className="flex border-t border-gray-700" style={{ minWidth: `${tlMinW}px` }}>
                                 <div className="flex-shrink-0" style={{ width: '180px' }} />
                                 {weekDays.map((_, i) => (
                                     <div key={i} className="flex-1 relative" style={{ height: '22px', overflow: 'visible' }}>
@@ -2177,9 +2244,9 @@ export default function UserSchedulerClient() {
                 if (!shiftObj) return null;
                 const currentColor = shiftObj.color || '#3b82f6';
                 const PALETTE = [
-                    '#ef4444','#f97316','#eab308','#22c55e',
+                    '#ef4444','#f97316','#b45309','#22c55e',
                     '#06b6d4','#3b82f6','#8b5cf6','#ec4899',
-                    '#14b8a6','#84cc16','#6366f1','#a855f7',
+                    '#14b8a6','#16a34a','#6366f1','#a855f7',
                     '#f43f5e','#64748b','#0ea5e9','#10b981',
                 ];
                 return (
@@ -2230,9 +2297,9 @@ export default function UserSchedulerClient() {
                 const currentColor = getUserColor(colorPickerUserId, colorUser.first_name);
                 const hasCustomColor = !!userColors[colorPickerUserId];
                 const PALETTE = [
-                    '#ef4444','#f97316','#eab308','#22c55e',
+                    '#ef4444','#f97316','#b45309','#22c55e',
                     '#06b6d4','#3b82f6','#8b5cf6','#ec4899',
-                    '#14b8a6','#84cc16','#6366f1','#a855f7',
+                    '#14b8a6','#16a34a','#6366f1','#a855f7',
                     '#f43f5e','#64748b','#0ea5e9','#10b981',
                 ];
                 return (
