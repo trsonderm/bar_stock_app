@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { AlertTriangle, Trash2, Plus, X, User, ArchiveRestore, Clock, Edit2, ChevronDown, ChevronUp } from 'lucide-react';
+import { AlertTriangle, Trash2, Plus, X, User, ArchiveRestore, Clock, Edit2, ChevronDown, ChevronUp, Download } from 'lucide-react';
 
 interface BarredPerson {
     id: number;
@@ -156,6 +156,199 @@ function formatIncidentDate(date: string | null, time: string | null): string {
     const timePart = time ? ' at ' + d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) : '';
     return datePart + timePart;
 }
+
+// ── Incident export helpers ────────────────────────────────────────────────
+
+const _crc32Table = (() => {
+    const t = new Uint32Array(256);
+    for (let i = 0; i < 256; i++) {
+        let c = i;
+        for (let j = 0; j < 8; j++) c = (c & 1) ? 0xEDB88320 ^ (c >>> 1) : c >>> 1;
+        t[i] = c;
+    }
+    return t;
+})();
+
+function _crc32(data: Uint8Array): number {
+    let crc = 0xFFFFFFFF;
+    for (const b of data) crc = _crc32Table[(crc ^ b) & 0xFF] ^ (crc >>> 8);
+    return (crc ^ 0xFFFFFFFF) >>> 0;
+}
+
+function _buildZip(entries: { name: string; data: Uint8Array }[]): Uint8Array {
+    const enc = new TextEncoder();
+    const localParts: Uint8Array[] = [];
+    const cdParts: Uint8Array[] = [];
+    let offset = 0;
+
+    for (const entry of entries) {
+        const nameBytes = enc.encode(entry.name);
+        const crc = _crc32(entry.data);
+        const size = entry.data.length;
+
+        const local = new Uint8Array(30 + nameBytes.length);
+        const lv = new DataView(local.buffer);
+        lv.setUint32(0, 0x04034B50, true);
+        lv.setUint16(4, 20, true);
+        lv.setUint32(14, crc, true);
+        lv.setUint32(18, size, true);
+        lv.setUint32(22, size, true);
+        lv.setUint16(26, nameBytes.length, true);
+        local.set(nameBytes, 30);
+
+        const cd = new Uint8Array(46 + nameBytes.length);
+        const cv = new DataView(cd.buffer);
+        cv.setUint32(0, 0x02014B50, true);
+        cv.setUint16(4, 20, true);
+        cv.setUint16(6, 20, true);
+        cv.setUint32(16, crc, true);
+        cv.setUint32(20, size, true);
+        cv.setUint32(24, size, true);
+        cv.setUint16(28, nameBytes.length, true);
+        cv.setUint32(42, offset, true);
+        cd.set(nameBytes, 46);
+
+        localParts.push(local, entry.data);
+        cdParts.push(cd);
+        offset += local.length + size;
+    }
+
+    const cdStart = offset;
+    const cdSize = cdParts.reduce((s, b) => s + b.length, 0);
+    const eocd = new Uint8Array(22);
+    const ev = new DataView(eocd.buffer);
+    ev.setUint32(0, 0x06054B50, true);
+    ev.setUint16(8, entries.length, true);
+    ev.setUint16(10, entries.length, true);
+    ev.setUint32(12, cdSize, true);
+    ev.setUint32(16, cdStart, true);
+
+    const all = [...localParts, ...cdParts, eocd];
+    const total = all.reduce((s, b) => s + b.length, 0);
+    const out = new Uint8Array(new ArrayBuffer(total));
+    let pos = 0;
+    for (const p of all) { out.set(p, pos); pos += p.length; }
+    return out;
+}
+
+function _parseDataUri(uri: string): { bytes: Uint8Array; mime: string } | null {
+    const m = uri.match(/^data:([^;]+);base64,([\s\S]+)$/);
+    if (!m) return null;
+    const bin = atob(m[2]);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return { mime: m[1], bytes };
+}
+
+function _mimeToExt(mime: string): string {
+    return ({ 'image/jpeg': 'jpg', 'image/jpg': 'jpg', 'image/png': 'png', 'image/gif': 'gif',
+              'image/webp': 'webp', 'video/mp4': 'mp4', 'video/webm': 'webm',
+              'video/quicktime': 'mov', 'video/x-msvideo': 'avi' } as Record<string, string>)[mime] || 'bin';
+}
+
+function exportIncident(inc: Incident) {
+    // Build filename: Incident_[P1LastOrFirst]_[P2LastOrFirst]_YYYY_MM_DD_HHmmss.zip
+    const getName = (p: IncidentPerson | undefined) =>
+        (p?.last_name || p?.first_name || '').replace(/[^a-zA-Z0-9]/g, '');
+    const name1 = getName(inc.persons?.[0]);
+    const name2 = getName(inc.persons?.[1]);
+    const incDate = inc.incident_date || new Date(inc.created_at).toISOString().split('T')[0];
+    const dateTag = incDate.replace(/-/g, '_');
+    const tsTag = new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14);
+    const filename = ['Incident', name1, name2, dateTag, tsTag].filter(Boolean).join('_') + '.zip';
+
+    // Collect media files from incident + persons
+    const mediaEntries: { name: string; data: Uint8Array }[] = [];
+    let mIdx = 1;
+    const addMedia = (items: MediaItem[], prefix: string) => {
+        for (const m of items) {
+            const p = _parseDataUri(m.data);
+            if (!p) continue;
+            mediaEntries.push({ name: `${prefix}_${mIdx++}.${_mimeToExt(p.mime)}`, data: p.bytes });
+        }
+    };
+    addMedia(inc.media || [], 'incident_media');
+    (inc.persons || []).forEach((p, pi) => addMedia(p.media || [], `person${pi + 1}_media`));
+
+    // Build printable HTML report
+    const escHtml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+    const personsHtml = (inc.persons || []).map((p, i) => {
+        const fullName = [p.first_name, p.last_name].filter((x): x is string => !!x).map(escHtml).join(' ') || 'Unknown';
+        const attrs = [p.race && `Race: ${p.race}`, p.height && `Height: ${p.height}`,
+            p.weight && `Weight: ${p.weight}`, p.hair_color && `Hair: ${p.hair_color}`]
+            .filter((x): x is string => !!x).map(escHtml).join(' &nbsp;|&nbsp; ');
+        const imgs = (p.media || []).filter(m => m.type === 'image')
+            .map(m => `<img src="${m.data}" alt="" style="max-width:200px;max-height:180px;object-fit:cover;border-radius:4px;border:1px solid #ccc;margin:3px;" />`).join('');
+        const vids = (p.media || []).filter(m => m.type === 'video').length;
+        return `<div style="border:1px solid #ccc;border-radius:6px;padding:14px;margin-bottom:12px;break-inside:avoid;">
+            <div style="font-size:14px;font-weight:700;margin-bottom:6px;">Person ${i + 1}: ${fullName}</div>
+            ${attrs ? `<div style="font-size:12px;color:#555;margin-bottom:4px;">${attrs}</div>` : ''}
+            ${p.aliases?.length ? `<div style="font-size:12px;margin-bottom:4px;">AKA: ${escHtml(p.aliases.join(', '))}</div>` : ''}
+            ${p.clothing_description ? `<div style="font-size:12px;margin-bottom:4px;">Clothing: ${escHtml(p.clothing_description)}</div>` : ''}
+            ${p.description ? `<div style="font-size:12px;margin-bottom:4px;white-space:pre-wrap;">${escHtml(p.description)}</div>` : ''}
+            ${imgs ? `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:8px;">${imgs}</div>` : ''}
+            ${vids ? `<div style="font-size:11px;color:#888;margin-top:4px;">${vids} video file(s) included in ZIP</div>` : ''}
+        </div>`;
+    }).join('');
+
+    const timelineHtml = (inc.timeline || []).map(t => {
+        const ts = [t.segment_date ? new Date(t.segment_date + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '', t.segment_time || ''].filter(Boolean).join(' · ');
+        return `<div style="border-left:3px solid #d97706;padding-left:14px;margin-bottom:14px;break-inside:avoid;">
+            ${ts ? `<div style="font-size:11px;font-weight:700;color:#b45309;margin-bottom:4px;">${escHtml(ts)}</div>` : ''}
+            <div style="font-size:13px;white-space:pre-wrap;line-height:1.6;">${escHtml(t.description)}</div>
+        </div>`;
+    }).join('');
+
+    const incImgsHtml = (inc.media || []).filter(m => m.type === 'image')
+        .map(m => `<img src="${m.data}" alt="" style="max-width:280px;max-height:220px;object-fit:cover;border-radius:4px;border:1px solid #ccc;margin:3px;" />`).join('');
+    const incVidCount = (inc.media || []).filter(m => m.type === 'video').length;
+
+    const dateStr = formatIncidentDate(inc.incident_date, inc.incident_time);
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Incident Report — ${dateStr || new Date(inc.created_at).toLocaleDateString()}</title>
+<style>
+  @page { margin: 1.2cm; }
+  @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+  body { font-family: Georgia, 'Times New Roman', serif; max-width: 800px; margin: 0 auto; padding: 32px; color: #111; font-size: 14px; }
+  h1 { font-size: 22px; border-bottom: 2px solid #111; padding-bottom: 8px; margin: 0 0 8px; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.07em; color: #555; margin: 28px 0 12px; border-bottom: 1px solid #ddd; padding-bottom: 4px; }
+  .meta { font-size: 12px; color: #555; margin-bottom: 24px; line-height: 1.8; }
+  .footer { margin-top: 40px; padding-top: 12px; border-top: 1px solid #ccc; font-size: 10px; color: #999; }
+</style>
+</head>
+<body>
+<h1>Incident Report</h1>
+<div class="meta">
+  ${dateStr ? `<strong>Date / Time:</strong> ${escHtml(dateStr)}<br>` : ''}
+  ${inc.reported_by_name ? `<strong>Reported By:</strong> ${escHtml(inc.reported_by_name)}<br>` : ''}
+  <strong>Filed By:</strong> ${escHtml(inc.submitted_by_name)}<br>
+  <strong>Filed At:</strong> ${new Date(inc.created_at).toLocaleString()}
+</div>
+
+${inc.persons?.length ? `<h2>Persons Involved</h2>${personsHtml}` : ''}
+${inc.timeline?.length ? `<h2>Incident Description</h2>${timelineHtml}` : ''}
+${!inc.timeline?.length && inc.description ? `<h2>Description</h2><p style="white-space:pre-wrap;">${escHtml(inc.description)}</p>` : ''}
+${incImgsHtml ? `<h2>Incident Media</h2><div style="display:flex;flex-wrap:wrap;gap:6px;">${incImgsHtml}</div>` : ''}
+${incVidCount ? `<p style="font-size:12px;color:#888;">${incVidCount} video file(s) included in ZIP alongside this report.</p>` : ''}
+
+<div class="footer">Generated: ${new Date().toLocaleString()} &nbsp;·&nbsp; Incident ID: #${inc.id}</div>
+</body>
+</html>`;
+
+    const htmlBytes = new TextEncoder().encode(html);
+    const zipBytes = _buildZip([{ name: 'report.html', data: htmlBytes }, ...mediaEntries]);
+    const url = URL.createObjectURL(new Blob([zipBytes.buffer.slice(0) as ArrayBuffer], { type: 'application/zip' }));
+    const a = document.createElement('a');
+    a.href = url; a.download = filename; a.click();
+    URL.revokeObjectURL(url);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 function DurationPicker({ value, onChange, customDate, onCustomDate }: {
     value: Duration; onChange: (d: Duration) => void; customDate: string; onCustomDate: (v: string) => void;
@@ -791,6 +984,10 @@ export default function SecurityClient({
                                                 style={{ background: 'none', border: '1px solid #374151', color: '#9ca3af', cursor: 'pointer', padding: '4px 8px', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '3px', fontSize: '0.75rem' }}>
                                                 {isExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
                                                 {isExpanded ? 'Collapse' : 'View'}
+                                            </button>
+                                            <button onClick={() => exportIncident(inc)} title="Export ZIP (report + media)"
+                                                style={{ background: 'none', border: '1px solid #374151', color: '#60a5fa', cursor: 'pointer', padding: '4px 7px', borderRadius: '6px', display: 'flex', alignItems: 'center' }}>
+                                                <Download size={13} />
                                             </button>
                                             {canAddIncident && (
                                                 <button onClick={() => deleteIncident(inc.id)} style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', padding: '4px' }}><Trash2 size={15} /></button>
