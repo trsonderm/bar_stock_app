@@ -251,12 +251,22 @@ function snapToEdges(obj: MapObject, others: MapObject[], excludeIds: Set<string
     };
 }
 
-// Returns all object ids under the given point, ordered bottom→top (array order)
+// Returns object ids under the given point.
+// Sorted largest-area-first so the SMALLEST object ends up at the tail and is
+// chosen as the default selection on the first click — this ensures small
+// equipment objects placed inside large background objects (bar counters, rooms)
+// are immediately selectable without needing to click-cycle.
 function getStackAt(objects: MapObject[], pt: Pt): string[] {
-    return objects.filter(o => {
-        const { x, y, vw, vh } = objVisual(o);
-        return pt.x >= x && pt.x <= x + vw && pt.y >= y && pt.y <= y + vh;
-    }).map(o => o.id);
+    return objects
+        .filter(o => {
+            const { x, y, vw, vh } = objVisual(o);
+            return pt.x >= x && pt.x <= x + vw && pt.y >= y && pt.y <= y + vh;
+        })
+        .sort((a, b) => {
+            const va = objVisual(a), vb = objVisual(b);
+            return (vb.vw * vb.vh) - (va.vw * va.vh); // largest first → smallest is last
+        })
+        .map(o => o.id);
 }
 
 // ─── Bottle Icon (top-down) ───────────────────────────────────────────────────
@@ -865,11 +875,28 @@ function PropsPanel({ obj, products, mode, allObjects, onUpdate, onDelete, onAud
 
     return (
         <div style={{ padding: 14, overflowY: 'auto', height: '100%', fontSize: 12 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: parentObj ? 6 : 12 }}>
                 <span style={{ color: '#fbbf24', fontWeight: 700, fontSize: 13 }}>{m.emoji} {m.label}</span>
                 {mode === 'edit' && <button type="button" onClick={() => onDelete(obj.id)}
                     style={{ background: '#7f1d1d', border: 'none', borderRadius: 5, padding: '3px 8px', color: '#fca5a5', cursor: 'pointer', fontSize: 11 }}>Remove</button>}
             </div>
+
+            {/* Attachment banner — shown prominently at top when object is attached */}
+            {parentObj && (
+                <div style={{ background: 'rgba(59,130,246,0.1)', border: '1px solid #1e40af', borderRadius: 8, padding: '7px 10px', marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+                    <div>
+                        <div style={{ color: '#93c5fd', fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Attached to</div>
+                        <div style={{ color: '#bfdbfe', fontSize: 12, fontWeight: 600, marginTop: 1 }}>📎 {parentObj.name}</div>
+                        <div style={{ color: '#64748b', fontSize: 10, marginTop: 1 }}>Moves with parent · resize/reposition available</div>
+                    </div>
+                    {mode === 'edit' && (
+                        <button type="button" onClick={() => onDetach(obj.id)}
+                            style={{ background: '#1e3a5f', border: '1px solid #1e40af', borderRadius: 6, padding: '5px 10px', color: '#93c5fd', cursor: 'pointer', fontSize: 11, fontWeight: 600, flexShrink: 0 }}>
+                            Detach
+                        </button>
+                    )}
+                </div>
+            )}
 
             {mode === 'edit' && (
                 <>
@@ -955,29 +982,18 @@ function PropsPanel({ obj, products, mode, allObjects, onUpdate, onDelete, onAud
                         </>
                     )}
 
-                    {/* Attachment */}
-                    <div style={{ background: '#0f172a', borderRadius: 8, padding: '8px 10px', marginBottom: 10 }}>
-                        <div style={{ color: '#94a3b8', marginBottom: 5, fontWeight: 600 }}>Attachment</div>
-                        {parentObj ? (
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <span style={{ color: '#60a5fa', fontSize: 11 }}>📎 {parentObj.name}</span>
-                                <button type="button" onClick={() => onDetach(obj.id)}
-                                    style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 5, padding: '2px 8px', color: '#94a3b8', cursor: 'pointer', fontSize: 11 }}>Detach</button>
-                            </div>
-                        ) : nearbyAttachable.length > 0 ? (
-                            <div>
-                                <div style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>Attach to nearby:</div>
-                                {nearbyAttachable.map(o => (
-                                    <button type="button" key={o.id} onClick={() => onAttach(obj.id, o.id)}
-                                        style={{ display: 'block', width: '100%', background: '#1e293b', border: '1px solid #334155', borderRadius: 5, padding: '3px 8px', color: '#60a5fa', cursor: 'pointer', fontSize: 11, marginBottom: 3, textAlign: 'left' }}>
-                                        🔗 {o.name}
-                                    </button>
-                                ))}
-                            </div>
-                        ) : (
-                            <span style={{ color: '#334155', fontSize: 11 }}>Move near another object to attach</span>
-                        )}
-                    </div>
+                    {/* Attach to nearby (only when not already attached) */}
+                    {!parentObj && nearbyAttachable.length > 0 && (
+                        <div style={{ background: '#0f172a', borderRadius: 8, padding: '8px 10px', marginBottom: 10 }}>
+                            <div style={{ color: '#94a3b8', marginBottom: 5, fontWeight: 600, fontSize: 11 }}>Attach to nearby:</div>
+                            {nearbyAttachable.map(o => (
+                                <button type="button" key={o.id} onClick={() => onAttach(obj.id, o.id)}
+                                    style={{ display: 'block', width: '100%', background: '#1e293b', border: '1px solid #334155', borderRadius: 5, padding: '3px 8px', color: '#60a5fa', cursor: 'pointer', fontSize: 11, marginBottom: 3, textAlign: 'left' }}>
+                                    🔗 {o.name}
+                                </button>
+                            ))}
+                        </div>
+                    )}
                 </>
             )}
 
@@ -1569,6 +1585,8 @@ export default function BarMapClient({ initialMap, products }: { initialMap: Map
     const [showAuditConfirm, setShowAuditConfirm] = useState(false);
     const [auditNote, setAuditNote] = useState('');
     const [auditEmailReport, setAuditEmailReport] = useState(false);
+    // Tracks how many objects are stacked at the last clicked point for the cycle hint badge
+    const [cycleStack, setCycleStack] = useState<{ total: number; idx: number } | null>(null);
     const [zoom, setZoom] = useState(1);
     const [pan, setPan] = useState<Pt>({ x: 40, y: 40 });
     const [pendingType, setPendingType] = useState<ObjType | null>(null);
@@ -1607,7 +1625,7 @@ export default function BarMapClient({ initialMap, products }: { initialMap: Map
             if (e.code === 'Space' && !(e.target instanceof HTMLInputElement) && !(e.target instanceof HTMLTextAreaElement)) {
                 e.preventDefault(); spaceRef.current = true;
             }
-            if (e.key === 'Escape') { setDrawingPts([]); setPendingType(null); setSelectedId(null); setSelectedIds([]); setSelectedProduct(null); setRoomSelected(null); clickCycleRef.current = null; if (tool === 'draw') setTool('select'); }
+            if (e.key === 'Escape') { setDrawingPts([]); setPendingType(null); setSelectedId(null); setSelectedIds([]); setSelectedProduct(null); setRoomSelected(null); clickCycleRef.current = null; setCycleStack(null); if (tool === 'draw') setTool('select'); }
             if ((e.key === 'Delete' || e.key === 'Backspace') && document.activeElement === document.body) {
                 if (roomSelected && roomSelected !== '__main__') {
                     setMapData(prev => prev ? { ...prev, rooms: (prev.rooms ?? []).filter(r => r.id !== roomSelected) } : prev);
@@ -1657,10 +1675,11 @@ export default function BarMapClient({ initialMap, products }: { initialMap: Map
             return;
         }
 
-        if (mode !== 'edit') { setSelectedId(null); setSelectedIds([]); setSelectedProduct(null); return; }
+        if (mode !== 'edit') { setSelectedId(null); setSelectedIds([]); setSelectedProduct(null); setCycleStack(null); return; }
 
         setRoomSelected(null);
         clickCycleRef.current = null;
+        setCycleStack(null);
 
         // Draw outline mode
         if (tool === 'draw') {
@@ -1710,7 +1729,8 @@ export default function BarMapClient({ initialMap, products }: { initialMap: Map
 
         setRoomSelected(null);
 
-        // Click-through: find every object under cursor (rotation-aware), cycle backward through stack
+        // Click-through: stack is sorted largest→smallest, so first click always picks
+        // the smallest object (most specific), subsequent clicks cycle to larger ones beneath.
         const stack = getStackAt(mapData.objects, pt);
 
         if (stack.length > 1) {
@@ -1718,7 +1738,8 @@ export default function BarMapClient({ initialMap, products }: { initialMap: Map
             const samePt = prev && Math.hypot(pt.x - prev.pt.x, pt.y - prev.pt.y) < 1.5;
             const sameStack = samePt && prev && prev.stack.length === stack.length && prev.stack.every((s2, i) => s2 === stack[i]);
 
-            // First click: select topmost (last in array). Subsequent clicks at same spot: cycle backward.
+            // First click at this point: select the smallest object (last in sorted stack).
+            // Repeated clicks: cycle backward through larger objects.
             const idx = sameStack && prev
                 ? (prev.idx - 1 + stack.length) % stack.length
                 : stack.length - 1;
@@ -1727,6 +1748,7 @@ export default function BarMapClient({ initialMap, products }: { initialMap: Map
             clickCycleRef.current = { pt, stack, idx };
             setSelectedId(targetId);
             setSelectedIds([]);
+            setCycleStack({ total: stack.length, idx: stack.length - 1 - idx }); // 0 = smallest (first)
 
             const obj = mapData.objects.find(o => o.id === targetId)!;
             dragRef.current = { type: 'move', ids: [targetId], startMouse: pt, startPositions: { [targetId]: { x: obj.x, y: obj.y } } };
@@ -1735,6 +1757,7 @@ export default function BarMapClient({ initialMap, products }: { initialMap: Map
         }
 
         clickCycleRef.current = null;
+        setCycleStack(null);
 
         // No overlap — normal single-object selection and drag
         const idsToMove = selectedIds.includes(id) ? selectedIds : [id];
@@ -2251,6 +2274,11 @@ export default function BarMapClient({ initialMap, products }: { initialMap: Map
                     {mode === 'audit' && (
                         <div style={{ position: 'absolute', top: 8, left: 8, background: 'rgba(234,179,8,0.12)', border: '1px solid #854d0e', borderRadius: 7, padding: '4px 10px', fontSize: 11, color: '#fbbf24', zIndex: 5 }}>
                             📋 Audit Mode — select an object and use the panel →
+                        </div>
+                    )}
+                    {cycleStack && cycleStack.total > 1 && mode === 'edit' && (
+                        <div style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(15,23,42,0.9)', border: '1px solid #334155', borderRadius: 7, padding: '4px 10px', fontSize: 11, color: '#94a3b8', zIndex: 5, pointerEvents: 'none' }}>
+                            {cycleStack.idx + 1} of {cycleStack.total} — click again to reach object underneath
                         </div>
                     )}
                     {savedToast && (
