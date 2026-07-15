@@ -564,9 +564,11 @@ export default function SecurityClient({
     ) => {
         if (file.size > 50 * 1024 * 1024) { alert(`${file.name} exceeds 50MB`); return; }
         const reader = new FileReader();
-        reader.onload = ev => {
-            const data = ev.target?.result as string;
+        reader.onload = async ev => {
+            let data = ev.target?.result as string;
             const type: 'image' | 'video' = file.type.startsWith('video/') ? 'video' : 'image';
+            // Compress images before storing — keeps payloads well under server limits
+            if (type === 'image') data = await compressImage(data, 1400, 0.85);
             setter(prev => {
                 if (cropTrigger && type === 'image') {
                     cropTrigger(data, prev.length, prev.length);
@@ -779,9 +781,10 @@ export default function SecurityClient({
         Array.from(e.target.files || []).forEach(file => {
             if (file.size > 50 * 1024 * 1024) { alert(`${file.name} exceeds 50MB`); return; }
             const reader = new FileReader();
-            reader.onload = ev => {
-                const data = ev.target?.result as string;
+            reader.onload = async ev => {
+                let data = ev.target?.result as string;
                 const type: 'image' | 'video' = file.type.startsWith('video/') ? 'video' : 'image';
+                if (type === 'image') data = await compressImage(data, 1400, 0.85);
                 setICurrentPerson(prev => ({ ...prev, media: [...prev.media, { type, data, name: file.name }] }));
             };
             reader.readAsDataURL(file);
