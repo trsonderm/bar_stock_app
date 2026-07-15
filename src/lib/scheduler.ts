@@ -4,6 +4,7 @@ import { runAutoDisable } from './billing-auto-disable';
 import { exec } from 'child_process';
 import path from 'path';
 import fs from 'fs';
+import { runAllPOSSync } from './pos-sync';
 
 // Tasks whose minute-field is '*' can have a configurable run interval (in minutes).
 // Key = task name, value = minutes between runs (1 = every minute).
@@ -29,6 +30,7 @@ class Scheduler {
             { name: 'Report Schedules', cron: '* * * * *', run: () => this.runDueReportSchedules() },
             { name: 'Low Stock Alerts', cron: '* * * * *', run: () => this.runDueLowStockAlerts() },
             { name: 'Shift Report Emails', cron: '* * * * *', run: () => this.runShiftReportEmails() },
+            { name: 'POS Sync', cron: '0 * * * *', run: () => this.runPOSSync() },
         ];
     }
 
@@ -467,6 +469,14 @@ class Scheduler {
             await runShiftReportSchedule();
         } catch (e) {
             console.error('[Scheduler] Shift report email error:', e);
+        }
+    }
+
+    private async runPOSSync() {
+        try {
+            await runAllPOSSync();
+        } catch (e) {
+            console.error('[Scheduler] POS sync error:', e);
         }
     }
 

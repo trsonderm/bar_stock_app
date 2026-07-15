@@ -1275,4 +1275,139 @@ CREATE TABLE IF NOT EXISTS data_sync (
 );
 CREATE INDEX IF NOT EXISTS idx_data_sync_org_loc ON data_sync(organization_id, location_id);
 
+-- =========================================================
+-- 76. Organization POS and Bar Map feature flags.
+--     bar_map_enabled: super admin grants bar map access per org.
+--     toast_pos_enabled / clover_pos_enabled: per-org POS toggles.
+-- =========================================================
+DO $$ BEGIN
+  ALTER TABLE organizations ADD COLUMN bar_map_enabled BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE organizations ADD COLUMN toast_pos_enabled BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE organizations ADD COLUMN clover_pos_enabled BOOLEAN DEFAULT FALSE;
+EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
+-- =========================================================
+-- 77. POS Sync Settings — per-org API credentials and config
+--     for Toast and Clover integrations.
+-- =========================================================
+CREATE TABLE IF NOT EXISTS pos_sync_settings (
+    id               SERIAL PRIMARY KEY,
+    organization_id  INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    pos_type         VARCHAR(20) NOT NULL CHECK (pos_type IN ('toast', 'clover')),
+    sync_enabled     BOOLEAN DEFAULT TRUE,
+    sync_frequency   VARCHAR(20) DEFAULT 'hourly',
+    credentials      JSONB DEFAULT '{}',
+    config           JSONB DEFAULT '{}',
+    last_synced_at   TIMESTAMPTZ,
+    created_at       TIMESTAMPTZ DEFAULT NOW(),
+    updated_at       TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(organization_id, pos_type)
+);
+CREATE INDEX IF NOT EXISTS pos_sync_settings_org_idx ON pos_sync_settings(organization_id);
+
+-- =========================================================
+-- 78. POS Transactions — downloaded transaction records.
+-- =========================================================
+CREATE TABLE IF NOT EXISTS pos_transactions (
+    id               SERIAL PRIMARY KEY,
+    organization_id  INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    location_id      INTEGER REFERENCES locations(id) ON DELETE SET NULL,
+    pos_type         VARCHAR(20) NOT NULL,
+    external_id      TEXT NOT NULL,
+    transaction_at   TIMESTAMPTZ NOT NULL,
+    total_amount     NUMERIC(10,2),
+    tax_amount       NUMERIC(10,2),
+    tip_amount       NUMERIC(10,2),
+    payment_type     TEXT,
+    status           TEXT DEFAULT 'CLOSED',
+    raw_data         JSONB DEFAULT '{}',
+    created_at       TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(organization_id, pos_type, external_id)
+);
+CREATE INDEX IF NOT EXISTS pos_transactions_org_idx ON pos_transactions(organization_id);
+CREATE INDEX IF NOT EXISTS pos_transactions_at_idx ON pos_transactions(transaction_at DESC);
+
+-- =========================================================
+-- 79. POS Transaction Items — line items per transaction.
+-- =========================================================
+CREATE TABLE IF NOT EXISTS pos_transaction_items (
+    id               SERIAL PRIMARY KEY,
+    transaction_id   INTEGER NOT NULL REFERENCES pos_transactions(id) ON DELETE CASCADE,
+    organization_id  INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    pos_item_id      TEXT,
+    pos_item_name    TEXT NOT NULL,
+    category_name    TEXT,
+    quantity         NUMERIC(10,3) NOT NULL DEFAULT 1,
+    unit_price       NUMERIC(10,2),
+    modifiers        JSONB DEFAULT '[]',
+    created_at       TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS pos_tx_items_tx_idx ON pos_transaction_items(transaction_id);
+CREATE INDEX IF NOT EXISTS pos_tx_items_org_idx ON pos_transaction_items(organization_id);
+CREATE INDEX IF NOT EXISTS pos_tx_items_name_idx ON pos_transaction_items(organization_id, pos_item_name);
+
+-- =========================================================
+-- 80. POS Item Mappings — link POS items to inventory items.
+-- =========================================================
+CREATE TABLE IF NOT EXISTS pos_item_mappings (
+    id                SERIAL PRIMARY KEY,
+    organization_id   INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    pos_type          VARCHAR(20) NOT NULL,
+    pos_item_id       TEXT,
+    pos_item_name     TEXT NOT NULL,
+    inventory_item_id INTEGER REFERENCES items(id) ON DELETE SET NULL,
+    oz_per_serving    NUMERIC(6,3) DEFAULT 1.5,
+    servings_per_item NUMERIC(6,3) DEFAULT 1,
+    notes             TEXT,
+    created_at        TIMESTAMPTZ DEFAULT NOW(),
+    updated_at        TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(organization_id, pos_type, pos_item_name)
+);
+CREATE INDEX IF NOT EXISTS pos_item_mappings_org_idx ON pos_item_mappings(organization_id);
+CREATE INDEX IF NOT EXISTS pos_item_mappings_inv_idx ON pos_item_mappings(inventory_item_id);
+
+-- =========================================================
+-- 81. POS Sync Logs — audit log of every sync operation.
+-- =========================================================
+CREATE TABLE IF NOT EXISTS pos_sync_logs (
+    id               SERIAL PRIMARY KEY,
+    organization_id  INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    location_id      INTEGER REFERENCES locations(id) ON DELETE SET NULL,
+    pos_type         VARCHAR(20) NOT NULL,
+    started_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    completed_at     TIMESTAMPTZ,
+    status           VARCHAR(20) DEFAULT 'running',
+    records_fetched  INTEGER DEFAULT 0,
+    records_inserted INTEGER DEFAULT 0,
+    error_message    TEXT,
+    triggered_by     TEXT DEFAULT 'cron',
+    created_at       TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS pos_sync_logs_org_idx ON pos_sync_logs(organization_id);
+CREATE INDEX IF NOT EXISTS pos_sync_logs_started_idx ON pos_sync_logs(started_at DESC);
+
+-- =========================================================
+-- 82. POS Model Settings — per-org anomaly detection config.
+--     sensitivity: 0.00–1.00 (higher = catches more anomalies).
+--     padding_pct: buffer % added to expected usage estimates.
+--     oz_per_shot: default oz per serving for unmapped items.
+-- =========================================================
+CREATE TABLE IF NOT EXISTS pos_model_settings (
+    id               SERIAL PRIMARY KEY,
+    organization_id  INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    sensitivity      NUMERIC(3,2) DEFAULT 0.50,
+    padding_pct      NUMERIC(5,2) DEFAULT 5.00,
+    oz_per_shot      NUMERIC(4,2) DEFAULT 1.50,
+    default_view     VARCHAR(10) DEFAULT 'weekly',
+    custom_rules     JSONB DEFAULT '{}',
+    updated_at       TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(organization_id)
+);
+
 COMMIT;

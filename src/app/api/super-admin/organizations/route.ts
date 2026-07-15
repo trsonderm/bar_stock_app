@@ -11,7 +11,11 @@ export async function GET(req: NextRequest) {
     }
 
     try {
-        const orgs = await db.query('SELECT id, name, billing_status, sms_enabled, subscription_plan, settings, created_at, disabled_at, disable_reason FROM organizations ORDER BY created_at DESC');
+        const orgs = await db.query(
+            `SELECT id, name, billing_status, sms_enabled, subscription_plan, settings, created_at, disabled_at, disable_reason,
+                    bar_map_enabled, toast_pos_enabled, clover_pos_enabled
+             FROM organizations ORDER BY created_at DESC`
+        );
         return NextResponse.json({ organizations: orgs });
     } catch (e) {
         return NextResponse.json({ error: 'Internal Error' }, { status: 500 });
@@ -23,7 +27,7 @@ export async function POST(req: NextRequest) {
     if (!session || !session.isSuperAdmin) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     try {
-        const { id, billing_status, sms_enabled, subscription_plan, default_theme } = await req.json();
+        const { id, billing_status, sms_enabled, subscription_plan, default_theme, bar_map_enabled, toast_pos_enabled, clover_pos_enabled } = await req.json();
 
         if (id) {
             // Update
@@ -47,7 +51,18 @@ export async function POST(req: NextRequest) {
                 updates.push(`settings = COALESCE(settings, '{}'::jsonb) || $${pIdx++}::jsonb`);
                 params.push(JSON.stringify({ default_theme }));
             }
-
+            if (bar_map_enabled !== undefined) {
+                updates.push(`bar_map_enabled = $${pIdx++}`);
+                params.push(!!bar_map_enabled);
+            }
+            if (toast_pos_enabled !== undefined) {
+                updates.push(`toast_pos_enabled = $${pIdx++}`);
+                params.push(!!toast_pos_enabled);
+            }
+            if (clover_pos_enabled !== undefined) {
+                updates.push(`clover_pos_enabled = $${pIdx++}`);
+                params.push(!!clover_pos_enabled);
+            }
 
             if (updates.length > 0) {
                 params.push(id);

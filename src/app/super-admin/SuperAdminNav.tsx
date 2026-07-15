@@ -26,6 +26,8 @@ import {
     ShieldCheck,
     BookOpen,
     KeyRound,
+    Receipt,
+    ScrollText,
 } from 'lucide-react';
 
 export default function SuperAdminNav() {
@@ -62,6 +64,11 @@ export default function SuperAdminNav() {
         { name: 'Cron Analyzer', href: '/super-admin/cron-analyzer', icon: Activity },
         { name: 'API Management', href: '/super-admin/api-management', icon: Globe },
         { name: 'Device Tokens', href: '/super-admin/devices', icon: Smartphone },
+        { name: '─── POS Integration ───', href: '#pos', icon: Receipt, isSectionHeader: true },
+        { name: 'POS Overview', href: '/super-admin/pos', icon: Receipt },
+        { name: 'Toast POS', href: '/super-admin/pos/toast', icon: Receipt },
+        { name: 'Clover POS', href: '/super-admin/pos/clover', icon: Receipt },
+        { name: 'POS Sync Logs', href: '/super-admin/pos/logs', icon: ScrollText, },
     ];
 
     return (
@@ -82,7 +89,14 @@ export default function SuperAdminNav() {
             {/* Navigation Links */}
             <div className="flex-1 overflow-y-auto py-6 px-3 space-y-1">
                 {links.map((link) => {
-                    const isActive = pathname === link.href;
+                    if ((link as any).isSectionHeader) {
+                        return (
+                            <div key={link.href} className="px-3 pt-4 pb-1">
+                                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">POS Integration</p>
+                            </div>
+                        );
+                    }
+                    const isActive = pathname === link.href || (link.href !== '/super-admin' && pathname.startsWith(link.href));
                     const Icon = link.icon;
                     return (
                         <Link

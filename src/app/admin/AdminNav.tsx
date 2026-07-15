@@ -58,6 +58,9 @@ import MenuBookIcon from '@mui/icons-material/MenuBook';
 import RestoreIcon from '@mui/icons-material/Restore';
 import MapIcon from '@mui/icons-material/Map';
 import PlaylistAddCheckIcon from '@mui/icons-material/PlaylistAddCheck';
+import PointOfSaleIcon from '@mui/icons-material/PointOfSale';
+import LinkIcon from '@mui/icons-material/Link';
+import SyncIcon from '@mui/icons-material/Sync';
 
 const drawerWidth = 260;
 
@@ -66,6 +69,8 @@ interface NavUser {
     permissions: string[];
     subscriptionPlan?: string;
     first_name?: string;
+    barMapEnabled?: boolean;
+    posEnabled?: boolean;
 }
 
 export default function AdminNav({ user, children }: { user: NavUser, children: React.ReactNode }) {
@@ -79,6 +84,7 @@ export default function AdminNav({ user, children }: { user: NavUser, children: 
     const [orderOpen, setOrderOpen] = useState(false);
     const [settingsOpen, setSettingsOpen] = useState(false);
     const [reportingOpen, setReportingOpen] = useState(false);
+    const [posOpen, setPosOpen] = useState(false);
 
     useEffect(() => {
         if (pathname.startsWith('/admin/reports') || pathname.startsWith('/admin/reporting') || pathname.startsWith('/admin/shift-reports')) {
@@ -93,6 +99,9 @@ export default function AdminNav({ user, children }: { user: NavUser, children: 
         }
         if (pathname.startsWith('/admin/settings') || pathname.startsWith('/admin/categories') || pathname.startsWith('/admin/users') || pathname.startsWith('/admin/billing') || pathname.startsWith('/admin/suppliers') || pathname.startsWith('/admin/recipes') || pathname.startsWith('/admin/mobile-api') || pathname.startsWith('/admin/developer')) {
             setSettingsOpen(true);
+        }
+        if (pathname.startsWith('/admin/pos-dashboard')) {
+            setPosOpen(true);
         }
     }, [pathname]);
 
@@ -313,7 +322,7 @@ export default function AdminNav({ user, children }: { user: NavUser, children: 
 
                 {(isFullAdmin || canViewReports || canAudit) && <DrawerItem text="Activity Search" icon={<SearchIcon />} href="/admin/query" />}
                 {canStock && <DrawerItem text="Stock View" icon={<StoreIcon />} href="/inventory" />}
-                {isFullAdmin && <DrawerItem text="Bar Map" icon={<MapIcon />} href="/admin/bar-map" />}
+                {isFullAdmin && user?.barMapEnabled && <DrawerItem text="Bar Map" icon={<MapIcon />} href="/admin/bar-map" />}
                 {canSecurity && <DrawerItem text="Security" icon={<SecurityIcon />} href="/admin/security" />}
 
                 {/* ORDER FOLDER */}
@@ -355,6 +364,26 @@ export default function AdminNav({ user, children }: { user: NavUser, children: 
                   <ProLockedItem text="Insights" icon={<AutoGraphIcon />} />
                 )}
 
+                {/* POS DASHBOARD FOLDER (only when POS is enabled for this org) */}
+                {user?.posEnabled && isFullAdmin && (
+                    <>
+                        <ListItem disablePadding sx={{ display: 'block' }}>
+                            <ListItemButton onClick={() => setPosOpen(!posOpen)} sx={{ minHeight: 48, pl: 2 }}>
+                                <ListItemIcon sx={{ minWidth: 40 }}><PointOfSaleIcon /></ListItemIcon>
+                                <ListItemText primary="POS Analysis" primaryTypographyProps={{ fontSize: '0.9rem' }} />
+                                {posOpen ? <ExpandLess /> : <ExpandMore />}
+                            </ListItemButton>
+                        </ListItem>
+                        <Collapse in={posOpen} timeout="auto" unmountOnExit>
+                            <List component="div" disablePadding>
+                                <DrawerItem text="Dashboard" icon={<AutoGraphIcon fontSize="small" />} href="/admin/pos-dashboard" isSub />
+                                <DrawerItem text="Item Linking" icon={<LinkIcon fontSize="small" />} href="/admin/pos-dashboard/item-linking" isSub />
+                                <DrawerItem text="Model Settings" icon={<SettingsIcon fontSize="small" />} href="/admin/pos-dashboard/settings" isSub />
+                            </List>
+                        </Collapse>
+                    </>
+                )}
+
                 {/* SHIFT CLOSE */}
                 {isFullAdmin && <DrawerItem text="Shift Close" icon={<ReceiptLongIcon />} href="/admin/shift-reports" />}
 
@@ -391,6 +420,7 @@ export default function AdminNav({ user, children }: { user: NavUser, children: 
                                 {isFullAdmin && <DrawerItem text="Developer API" icon={<ApiIcon fontSize="small" />} href="/admin/developer" isSub />}
                                 {isFullAdmin && <DrawerItem text="Recipes" icon={<MenuBookIcon fontSize="small" />} href="/admin/recipes" isSub />}
                                 {isFullAdmin && <DrawerItem text="Data Restore" icon={<RestoreIcon fontSize="small" />} href="/admin/settings/restore" isSub />}
+                                {isFullAdmin && user?.posEnabled && <DrawerItem text="Sync POS" icon={<SyncIcon fontSize="small" />} href="/admin/settings/sync-pos" isSub />}
                             </List>
                         </Collapse>
                     </>
