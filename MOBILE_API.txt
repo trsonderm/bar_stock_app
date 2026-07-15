@@ -1444,54 +1444,21 @@ ERROR RESPONSES:
 14. INCIDENT REPORTS — File and review security incidents
 ────────────────────────────────────────────────────────────────────────────────
 
+⚠ This section contains a legacy summary only.
+  See Section 20 (SECURITY — INCIDENTS & BARRED LIST) for the full, current
+  API reference including all fields, persons, timeline entries, photo/video
+  download endpoints, and the mobile form field guide.
+
+  Endpoints:
+    GET  /api/mobile/incidents                              — list all incidents
+    POST /api/mobile/incidents                              — file a new incident
+    GET  /api/mobile/incidents/<id>                         — single incident detail
+    GET  /api/mobile/incidents/<id>/media/<index>           — download incident photo/video
+    GET  /api/mobile/incidents/<id>/persons/<pid>/media/<i> — download person photo/video
+
 Required permissions:
   GET  → add_incident OR review_incidents OR admin
   POST → add_incident OR admin
-
-── List incident reports ────────────────────────────────────────────────────────
-
-GET /api/mobile/incidents
-
-Returns up to 50 most recent incidents for the org, newest first.
-
-RESPONSE (200 OK):
-{
-  "incidents": [
-    {
-      "id": 1,
-      "person_name": "John Doe",
-      "barred_person_name": null,     ← linked barred record name, if any
-      "description": "Altercation at the bar around 11pm.",
-      "submitted_by_name": "Alex Smith",
-      "created_at": "2026-05-14T23:05:00Z"
-    }
-  ]
-}
-
-── File a new incident report ───────────────────────────────────────────────────
-
-POST /api/mobile/incidents
-
-REQUEST BODY:
-{
-  "person_name": "John Doe",          ← optional — name or description of person involved
-  "description": "Describe the incident..."   ← required
-}
-
-RESPONSE (200 OK):
-{
-  "incident": {
-    "id": 2,
-    "person_name": "John Doe",
-    "description": "Describe the incident...",
-    "submitted_by_name": "Alex Smith",
-    "created_at": "2026-05-15T01:20:00Z"
-  }
-}
-
-ERROR RESPONSES:
-  400 { "error": "Description is required" }
-  403 { "error": "Permission denied" }
 
 
 ────────────────────────────────────────────────────────────────────────────────
@@ -2404,6 +2371,125 @@ RESPONSE 200:
 { "ok": true, "id": 42 }
 
 RESPONSE 400: Neither a timeline entry nor a person was provided
+
+
+────────────────────────────────────────────────────────────────────────────────
+GET /api/mobile/incidents/<id>
+────────────────────────────────────────────────────────────────────────────────
+
+Returns a single incident report by ID with all fields, persons, and timeline.
+Same permission requirement as GET /api/mobile/incidents.
+
+RESPONSE 200:
+{
+  "incident": {
+    "id":                   42,
+    "incident_date":        "2026-07-09",
+    "incident_time":        "23:45:00",
+    "description":          "Legacy plain-text description.",   ← nullable; present on older records
+    "person_name":          "John Doe",                        ← nullable; legacy plain-text person
+    "barred_person_id":     null,                              ← nullable; integer if linked to barred list
+    "barred_person_name":   null,                              ← linked barred person name (nullable)
+    "barred_person_photo":  null,                              ← linked barred person photo (nullable)
+    "media":                [ ... ],                           ← MediaItem[] for whole-incident media
+    "reported_by_name":     "Jane Smith",                      ← nullable
+    "reported_by_user_id":  5,                                 ← nullable
+    "submitted_by_name":    "John Doe",
+    "submitted_by_user_id": 42,                                ← nullable
+    "created_at":           "2026-07-09T23:55:00Z",
+    "persons":              [ ...same as list response... ],
+    "timeline":             [ ...same as list response... ]
+  }
+}
+
+ERROR RESPONSES:
+  400 { "error": "Invalid id" }
+  403 { "error": "Permission denied" }
+  404 { "error": "Incident not found" }
+
+
+────────────────────────────────────────────────────────────────────────────────
+GET /api/mobile/incidents/<id>/media/<index>
+────────────────────────────────────────────────────────────────────────────────
+
+Downloads a single incident-level media item as a binary file stream.
+Works for both photos and videos.
+
+  <id>     — security_incidents.id
+  <index>  — zero-based position in the incident's "media" array
+
+Use this URL instead of decoding the base64 payload on-device when handling
+large video files. For photos, you can display the data-URI from the list
+response directly if it is already in memory.
+
+RESPONSE (200 OK):
+  Binary file stream.
+  Headers:
+    Content-Type:        image/jpeg  (or image/png, video/mp4, etc. — auto-detected)
+    Content-Disposition: attachment; filename="incident-42-media-0.jpg"
+    Content-Length:      <bytes>
+
+ERROR RESPONSES:
+  400 { "error": "Invalid parameters" }
+  403 { "error": "Permission denied" }
+  404 { "error": "Incident not found" }
+  404 { "error": "Media item not found" }
+
+USAGE PATTERN — deciding how to display each media item:
+
+  const incident = ...; // from GET /api/mobile/incidents/:id
+  incident.media.forEach((item, index) => {
+    if (item.type === "video") {
+      // Offer a download button — stream binary via this endpoint
+      const url = `/api/mobile/incidents/${incident.id}/media/${index}`;
+      // downloadFile(url, authHeaders) or open in a native video player
+    } else {
+      // Photo — display inline from the base64 data-URI already returned
+      // <Image source={{ uri: item.data }} />
+    }
+  });
+
+
+────────────────────────────────────────────────────────────────────────────────
+GET /api/mobile/incidents/<id>/persons/<personId>/media/<index>
+────────────────────────────────────────────────────────────────────────────────
+
+Downloads a specific photo or video belonging to a person on the incident.
+
+  <id>        — security_incidents.id
+  <personId>  — incident_persons.id
+  <index>     — zero-based position in that person's "media" array
+
+RESPONSE (200 OK):
+  Binary file stream.
+  Headers:
+    Content-Type:        image/jpeg  (or image/png, video/mp4, etc.)
+    Content-Disposition: attachment; filename="incident-42-person-101-media-0.jpg"
+    Content-Length:      <bytes>
+
+ERROR RESPONSES:
+  400 { "error": "Invalid parameters" }
+  403 { "error": "Permission denied" }
+  404 { "error": "Incident not found" }
+  404 { "error": "Person not found" }
+  404 { "error": "Media item not found" }
+
+USAGE PATTERN:
+
+  const person = incident.persons[i];
+  person.media.forEach((item, index) => {
+    const downloadUrl =
+      `/api/mobile/incidents/${incident.id}/persons/${person.id}/media/${index}`;
+    if (item.type === "video") {
+      // stream or download via downloadUrl + auth header
+    } else {
+      // <Image source={{ uri: item.data }} />  — or use downloadUrl if needed
+    }
+  });
+
+NOTE: All media download endpoints require the Authorization: Bearer <token>
+header. They cannot be used as plain <img src="..."> or <video src="...">
+without a custom fetch + Blob URL workaround on the client.
 
 
 ────────────────────────────────────────────────────────────────────────────────
