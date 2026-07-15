@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Save, RefreshCw, CheckCircle, XCircle, Clock, ChevronDown, ChevronUp, Play } from 'lucide-react';
+import { useSearchParams } from 'next/navigation';
+import { Save, RefreshCw, CheckCircle, XCircle, Clock, ChevronDown, ChevronUp, Play, Link } from 'lucide-react';
 
 interface SyncLog {
     pos_type: string;
@@ -29,12 +30,29 @@ export default function SyncPOSClient({ toastEnabled, cloverEnabled }: { toastEn
     const [saving, setSaving] = useState(false);
     const [syncing, setSyncing] = useState(false);
     const [msg, setMsg] = useState('');
+    const [msgType, setMsgType] = useState<'success' | 'error'>('success');
     const [showGuide, setShowGuide] = useState<Record<string, boolean>>({});
+    const searchParams = useSearchParams();
 
     const [toast, setToast] = useState({ restaurant_guid: '', sync_enabled: true, sync_frequency: 'hourly' });
     const [clover, setClover] = useState({ merchant_id: '', access_token: '', sync_enabled: true, sync_frequency: 'hourly' });
 
-    useEffect(() => { load(); }, []);
+    useEffect(() => {
+        load();
+        // Handle OAuth callback result query params
+        const connected = searchParams.get('clover_connected');
+        const error = searchParams.get('clover_error');
+        if (connected) {
+            setMsg('Clover connected successfully! Merchant ID and access token have been saved.');
+            setMsgType('success');
+            setActiveTab('clover');
+        } else if (error) {
+            setMsg(`Clover connection failed: ${error}`);
+            setMsgType('error');
+            setActiveTab('clover');
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     async function load() {
         const [settingsRes, logsRes] = await Promise.all([
@@ -122,7 +140,11 @@ export default function SyncPOSClient({ toastEnabled, cloverEnabled }: { toastEn
                 <p className="text-gray-400 text-sm mt-1">Configure your Point of Sale integration to automatically import transaction data</p>
             </div>
 
-            {msg && <div className="px-4 py-3 bg-green-900/30 border border-green-700/50 text-green-300 rounded-lg text-sm">{msg}</div>}
+            {msg && (
+                <div className={`px-4 py-3 rounded-lg text-sm border ${msgType === 'error' ? 'bg-red-900/30 border-red-700/50 text-red-300' : 'bg-green-900/30 border-green-700/50 text-green-300'}`}>
+                    {msg}
+                </div>
+            )}
 
             {/* Tab selector */}
             <div className="flex gap-2 bg-gray-900 p-1 rounded-xl w-fit border border-gray-700">
@@ -231,6 +253,25 @@ export default function SyncPOSClient({ toastEnabled, cloverEnabled }: { toastEn
                         <div className="flex items-center justify-between">
                             <h2 className="text-white font-semibold">Clover Settings</h2>
                             <span className="text-gray-400 text-xs">Last sync: {lastSync('clover')}</span>
+                        </div>
+
+                        {/* OAuth connect */}
+                        <div className="bg-green-950/40 border border-green-800/50 rounded-lg p-4">
+                            <p className="text-green-300 text-sm font-medium mb-1">Connect via OAuth (recommended)</p>
+                            <p className="text-gray-400 text-xs mb-3">Click below to authorize TopShelf on your Clover account. Your Merchant ID and access token will be saved automatically.</p>
+                            <a
+                                href="/api/admin/pos/clover/connect"
+                                className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-500 text-white rounded-lg text-sm font-medium transition-colors"
+                            >
+                                <Link className="w-4 h-4" />
+                                Connect with Clover
+                            </a>
+                        </div>
+
+                        <div className="relative flex items-center gap-3">
+                            <div className="flex-1 h-px bg-gray-700" />
+                            <span className="text-gray-500 text-xs">or enter manually</span>
+                            <div className="flex-1 h-px bg-gray-700" />
                         </div>
 
                         <Field label="Merchant ID" value={clover.merchant_id}

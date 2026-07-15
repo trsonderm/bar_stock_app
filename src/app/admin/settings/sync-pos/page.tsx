@@ -1,3 +1,4 @@
+import { Suspense } from 'react';
 import { getSession } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { redirect } from 'next/navigation';
@@ -18,5 +19,12 @@ export default async function SyncPOSPage() {
 
     if (!posEnabled) redirect('/admin/settings');
 
-    return <SyncPOSClient toastEnabled={!!org?.toast_pos_enabled || globalRow?.value === 'true'} cloverEnabled={!!org?.clover_pos_enabled || globalRow?.value === 'true'} />;
+    return (
+        <Suspense>
+            <SyncPOSClient
+                toastEnabled={!!org?.toast_pos_enabled || globalRow?.value === 'true'}
+                cloverEnabled={!!org?.clover_pos_enabled || globalRow?.value === 'true'}
+            />
+        </Suspense>
+    );
 }
