@@ -28,6 +28,7 @@ import {
     KeyRound,
     Receipt,
     ScrollText,
+    Eraser,
 } from 'lucide-react';
 
 export default function SuperAdminNav() {
@@ -43,6 +44,7 @@ export default function SuperAdminNav() {
         { name: 'Audit Logs', href: '/super-admin/logs', icon: FileBarChart },
         { name: 'Database Explorer', href: '/super-admin/database', icon: Database },
         { name: 'DB Maintenance Tools', href: '/super-admin/maintenance', icon: Database },
+        { name: 'DB Smart Delete', href: '/super-admin/db-cleanup', icon: Eraser },
         { name: 'Database Backups', href: '/super-admin/backups', icon: Database },
         { name: 'Authentication', href: '/super-admin/authentication', icon: KeyRound },
         { name: 'Site Settings', href: '/super-admin/settings', icon: Settings },
