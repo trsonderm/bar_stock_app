@@ -151,7 +151,9 @@ function timeAgo(iso: string) {
 
 function formatIncidentDate(date: string | null, time: string | null): string {
     if (!date) return '';
-    const d = new Date(date + (time ? `T${time}` : 'T00:00:00'));
+    const dateOnly = date.split('T')[0]; // pg DATE columns arrive as ISO timestamps after JSON.stringify
+    const d = new Date(dateOnly + (time ? `T${time}` : 'T00:00:00'));
+    if (isNaN(d.getTime())) return '';
     const datePart = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
     const timePart = time ? ' at ' + d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) : '';
     return datePart + timePart;
@@ -293,7 +295,7 @@ function exportIncident(inc: Incident) {
     }).join('');
 
     const timelineHtml = (inc.timeline || []).map(t => {
-        const ts = [t.segment_date ? new Date(t.segment_date + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '', t.segment_time || ''].filter(Boolean).join(' · ');
+        const ts = [t.segment_date ? new Date(t.segment_date.split('T')[0] + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '', t.segment_time || ''].filter(Boolean).join(' · ');
         return `<div style="border-left:3px solid #d97706;padding-left:14px;margin-bottom:14px;break-inside:avoid;">
             ${ts ? `<div style="font-size:11px;font-weight:700;color:#b45309;margin-bottom:4px;">${escHtml(ts)}</div>` : ''}
             <div style="font-size:13px;white-space:pre-wrap;line-height:1.6;">${escHtml(t.description)}</div>
@@ -1067,7 +1069,7 @@ export default function SecurityClient({
                                                     <div key={ti}>
                                                         {(t.segment_date || t.segment_time) && (
                                                             <div style={{ color: '#f59e0b', fontSize: '0.75rem', fontWeight: 700, marginBottom: '0.2rem' }}>
-                                                                {t.segment_date && new Date(t.segment_date + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                                                                {t.segment_date && new Date(t.segment_date.split('T')[0] + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
                                                                 {t.segment_time && ' · ' + t.segment_time}
                                                             </div>
                                                         )}
