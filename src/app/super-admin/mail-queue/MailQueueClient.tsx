@@ -113,7 +113,10 @@ function StatusBadge({ status }: { status: string }) {
 
 export default function MailQueueClient() {
     const [mainTab, setMainTab] = useState<'schedule' | 'history' | 'diagnostics'>('schedule');
-    const [period, setPeriod] = useState<'today' | 'week' | 'month'>('today');
+    const [period, setPeriod] = useState<'today' | 'week' | 'month' | 'date_range' | 'specific_date'>('today');
+    const [rangeStart, setRangeStart] = useState(() => new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10));
+    const [rangeEnd, setRangeEnd] = useState(() => new Date().toISOString().slice(0, 10));
+    const [specificDate, setSpecificDate] = useState(() => new Date().toISOString().slice(0, 10));
 
     // Schedule state
     const [scheduled, setScheduled] = useState<ScheduledItem[]>([]);
@@ -143,16 +146,21 @@ export default function MailQueueClient() {
     const loadSchedule = useCallback(async () => {
         setSchedLoading(true);
         try {
-            const res = await fetch(`/api/super-admin/email-log?view=schedule&period=${period}`);
+            const params = new URLSearchParams({ view: 'schedule', period });
+            if (period === 'date_range') { params.set('start', rangeStart); params.set('end', rangeEnd); }
+            if (period === 'specific_date') params.set('date', specificDate);
+            const res = await fetch(`/api/super-admin/email-log?${params}`);
             const data = await res.json();
             if (data.scheduled) setScheduled(data.scheduled);
         } catch (e) { console.error(e); } finally { setSchedLoading(false); }
-    }, [period]);
+    }, [period, rangeStart, rangeEnd, specificDate]);
 
     const loadHistory = useCallback(async () => {
         setHistLoading(true);
         try {
             const params = new URLSearchParams({ view: 'history', period, page: String(histPage) });
+            if (period === 'date_range') { params.set('start', rangeStart); params.set('end', rangeEnd); }
+            if (period === 'specific_date') params.set('date', specificDate);
             if (filterType) params.set('emailType', filterType);
             if (filterStatus) params.set('status', filterStatus);
             if (filterOrg) params.set('orgId', filterOrg);
@@ -160,7 +168,7 @@ export default function MailQueueClient() {
             const data = await res.json();
             if (data.rows) { setHistory(data.rows); setHistTotal(data.total); }
         } catch (e) { console.error(e); } finally { setHistLoading(false); }
-    }, [period, histPage, filterType, filterStatus, filterOrg]);
+    }, [period, rangeStart, rangeEnd, specificDate, histPage, filterType, filterStatus, filterOrg]);
 
     const loadDiagnostics = useCallback(async () => {
         setDiagLoading(true);
@@ -260,18 +268,70 @@ export default function MailQueueClient() {
             </div>
 
             {/* Period pills */}
-            <div style={{ display: 'flex', gap: 8, marginBottom: '1.25rem', alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: 8, marginBottom: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
                 <span style={{ color: '#6b7280', fontSize: '0.82rem' }}>Period:</span>
-                {(['today', 'week', 'month'] as const).map(p => (
-                    <button key={p} style={periodBtn(p)} onClick={() => { setPeriod(p); setHistPage(1); }}>
-                        {p === 'today' ? 'Today' : p === 'week' ? 'This Week' : 'This Month'}
+                {([
+                    { value: 'today', label: 'Day' },
+                    { value: 'week', label: 'Week' },
+                    { value: 'month', label: 'Month' },
+                    { value: 'date_range', label: 'Date Range' },
+                    { value: 'specific_date', label: 'Specific Date' },
+                ] as const).map(({ value, label }) => (
+                    <button key={value} style={periodBtn(value)} onClick={() => { setPeriod(value); setHistPage(1); }}>
+                        {label}
                     </button>
                 ))}
             </div>
+            {period === 'date_range' && (
+                <div style={{ display: 'flex', gap: 8, marginBottom: '0.75rem', alignItems: 'center' }}>
+                    <span style={{ color: '#6b7280', fontSize: '0.82rem' }}>From:</span>
+                    <input type="date" aria-label="Range start date" value={rangeStart} onChange={e => { setRangeStart(e.target.value); setHistPage(1); }}
+                        style={{ background: '#1f2937', color: '#d1d5db', border: '1px solid #374151', borderRadius: 6, padding: '4px 8px', fontSize: '0.82rem' }} />
+                    <span style={{ color: '#6b7280', fontSize: '0.82rem' }}>To:</span>
+                    <input type="date" aria-label="Range end date" value={rangeEnd} onChange={e => { setRangeEnd(e.target.value); setHistPage(1); }}
+                        style={{ background: '#1f2937', color: '#d1d5db', border: '1px solid #374151', borderRadius: 6, padding: '4px 8px', fontSize: '0.82rem' }} />
+                    <button onClick={() => { loadSchedule(); loadHistory(); }}
+                        style={{ background: '#1d4ed8', color: 'white', border: 'none', borderRadius: 6, padding: '4px 12px', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600 }}>
+                        Apply
+                    </button>
+                </div>
+            )}
+            {period === 'specific_date' && (
+                <div style={{ display: 'flex', gap: 8, marginBottom: '0.75rem', alignItems: 'center' }}>
+                    <span style={{ color: '#6b7280', fontSize: '0.82rem' }}>Date:</span>
+                    <input type="date" aria-label="Specific date" value={specificDate} onChange={e => { setSpecificDate(e.target.value); setHistPage(1); }}
+                        style={{ background: '#1f2937', color: '#d1d5db', border: '1px solid #374151', borderRadius: 6, padding: '4px 8px', fontSize: '0.82rem' }} />
+                    <button onClick={() => { loadSchedule(); loadHistory(); }}
+                        style={{ background: '#1d4ed8', color: 'white', border: 'none', borderRadius: 6, padding: '4px 12px', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600 }}>
+                        Apply
+                    </button>
+                </div>
+            )}
 
             {/* ── SCHEDULE TAB ── */}
             {mainTab === 'schedule' && (
                 <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                        <span style={{ color: '#9ca3af', fontSize: '0.85rem' }}>
+                            {scheduled.length > 0 ? `${scheduled.length} scheduled email${scheduled.length !== 1 ? 's' : ''}` : ''}
+                        </span>
+                        <button
+                            disabled={triggering !== null}
+                            onClick={() => triggerTask('all')}
+                            style={{ background: triggering !== null ? '#374151' : '#059669', color: 'white', border: 'none', borderRadius: 7, padding: '7px 18px', cursor: triggering !== null ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '0.85rem', opacity: triggering !== null ? 0.6 : 1 }}
+                        >
+                            {triggering !== null ? '⏳ Running…' : '▶ Send Email Schedule Now'}
+                        </button>
+                    </div>
+                    {triggerResults && mainTab === 'schedule' && (
+                        <div style={{ marginBottom: '1rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                            {triggerResults.map((r, i) => (
+                                <div key={i} style={{ background: r.status === 'queued' ? '#064e3b' : '#1c1917', border: `1px solid ${r.status === 'queued' ? '#065f46' : '#292524'}`, borderRadius: 7, padding: '0.5rem 0.9rem', fontSize: '0.82rem', color: r.status === 'queued' ? '#6ee7b7' : '#a8a29e' }}>
+                                    {r.status === 'queued' ? '✅' : '⚠️'} <strong>{r.task}</strong> — {r.detail}
+                                </div>
+                            ))}
+                        </div>
+                    )}
                     {schedLoading && <p style={{ color: '#9ca3af' }}>Loading schedule…</p>}
                     {!schedLoading && scheduled.length === 0 && (
                         <div style={{ background: '#111827', border: '1px solid #1f2937', borderRadius: 10, padding: '2rem', textAlign: 'center', color: '#6b7280' }}>

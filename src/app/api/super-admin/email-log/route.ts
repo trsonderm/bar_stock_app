@@ -10,7 +10,10 @@ export async function GET(req: NextRequest) {
 
     const { searchParams } = req.nextUrl;
     const view = searchParams.get('view') || 'history'; // 'history' | 'schedule'
-    const period = searchParams.get('period') || 'today'; // 'today' | 'week' | 'month'
+    const period = searchParams.get('period') || 'today'; // 'today' | 'week' | 'month' | 'date_range' | 'specific_date'
+    const qStart = searchParams.get('start');
+    const qEnd = searchParams.get('end');
+    const qDate = searchParams.get('date');
     const orgId = searchParams.get('orgId');
     const emailType = searchParams.get('emailType');
     const status = searchParams.get('status');
@@ -22,6 +25,7 @@ export async function GET(req: NextRequest) {
         if (view === 'history') {
             // Date range from period
             let since: string;
+            let until: string | null = null;
             const now = new Date();
             if (period === 'today') {
                 const start = new Date(now); start.setHours(0, 0, 0, 0);
@@ -30,12 +34,22 @@ export async function GET(req: NextRequest) {
                 since = new Date(now.getTime() - 7 * 86400000).toISOString();
             } else if (period === 'month') {
                 since = new Date(now.getTime() - 30 * 86400000).toISOString();
+            } else if (period === 'date_range' && qStart) {
+                const s = new Date(qStart); s.setHours(0, 0, 0, 0);
+                since = s.toISOString();
+                if (qEnd) { const e = new Date(qEnd); e.setHours(23, 59, 59, 999); until = e.toISOString(); }
+            } else if (period === 'specific_date' && qDate) {
+                const s = new Date(qDate); s.setHours(0, 0, 0, 0);
+                since = s.toISOString();
+                const e = new Date(qDate); e.setHours(23, 59, 59, 999); until = e.toISOString();
             } else {
                 since = new Date(now.getTime() - 90 * 86400000).toISOString();
             }
 
             // Always include pending items regardless of period, or filter by sent_at for others
-            const conditions: string[] = [`(el.status = 'pending' OR el.sent_at >= $1)`];
+            const conditions: string[] = [until
+                ? `(el.status = 'pending' OR (el.sent_at >= $1 AND el.sent_at <= '${until}'))`
+                : `(el.status = 'pending' OR el.sent_at >= $1)`];
             const params: any[] = [since];
             let pIdx = 2;
 
@@ -89,11 +103,23 @@ export async function GET(req: NextRequest) {
         if (view === 'schedule') {
             // Build upcoming schedule from report_schedules + org settings
             const now = new Date();
+            let windowStart = now;
             let windowEnd: Date;
             if (period === 'today') {
                 windowEnd = new Date(now); windowEnd.setHours(23, 59, 59, 999);
             } else if (period === 'week') {
                 windowEnd = new Date(now.getTime() + 7 * 86400000);
+            } else if (period === 'date_range' && qStart) {
+                const s = new Date(qStart); s.setHours(0, 0, 0, 0);
+                windowStart = s < now ? now : s;
+                const e = qEnd ? new Date(qEnd) : new Date(now.getTime() + 7 * 86400000);
+                e.setHours(23, 59, 59, 999);
+                windowEnd = e;
+            } else if (period === 'specific_date' && qDate) {
+                const s = new Date(qDate); s.setHours(0, 0, 0, 0);
+                windowStart = s < now ? now : s;
+                const e = new Date(qDate); e.setHours(23, 59, 59, 999);
+                windowEnd = e;
             } else {
                 windowEnd = new Date(now.getTime() + 30 * 86400000);
             }
@@ -109,7 +135,7 @@ export async function GET(req: NextRequest) {
                 WHERE rs.active = TRUE
                   AND rs.next_run_at BETWEEN $1 AND $2
                 ORDER BY rs.next_run_at ASC
-            `, [now, windowEnd]);
+            `, [windowStart, windowEnd]);
 
             // 2. Low stock alerts — fire daily at configured time
             const lowStockSettings = await db.query(`
@@ -151,9 +177,9 @@ export async function GET(req: NextRequest) {
                 } catch { timeStr = s.alert_schedule || s.alert_time_legacy || '14:00'; }
 
                 const [hh, mm] = timeStr.split(':').map(Number);
-                const cursor = new Date(now);
+                const cursor = new Date(windowStart);
                 cursor.setHours(hh, mm, 0, 0);
-                if (cursor < now) cursor.setDate(cursor.getDate() + 1);
+                if (cursor < windowStart) cursor.setDate(cursor.getDate() + 1);
 
                 while (cursor <= windowEnd) {
                     upcomingLowStock.push({
@@ -177,9 +203,9 @@ export async function GET(req: NextRequest) {
                 if (!schedule.frequency || schedule.frequency === 'per_shift') continue;
 
                 const [hh, mm] = (schedule.time || '08:00').split(':').map(Number);
-                const cursor = new Date(now);
+                const cursor = new Date(windowStart);
                 cursor.setHours(hh, mm, 0, 0);
-                if (cursor < now) cursor.setDate(cursor.getDate() + 1);
+                if (cursor < windowStart) cursor.setDate(cursor.getDate() + 1);
 
                 const stepDays = schedule.frequency === 'weekly' ? 7 : schedule.frequency === 'monthly' ? 30 : 1;
                 while (cursor <= windowEnd) {

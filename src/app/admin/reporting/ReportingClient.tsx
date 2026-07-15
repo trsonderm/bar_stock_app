@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import styles from '../admin.module.css';
 import { Plus, Trash2, Edit, FileText, Save, BarChart2, Calendar, Settings, AlertTriangle, Activity, UserCheck, Printer } from 'lucide-react';
+import RecipientSelector from '@/components/RecipientSelector';
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LabelList } from 'recharts';
 
 interface ReportSection {
@@ -144,13 +145,13 @@ export default function ReportingClient() {
         runTime: '08:00',
         runDay: 'monday',
         runDate: '',
-        recipients: '',
-        cc: '',
-        bcc: '',
         subject: 'Report',
         lookbackPeriod: '1_month', // Default for usage trends
         locationId: '' // Default 'All Locations'
     });
+    const [reportRecipients, setReportRecipients] = useState<{ to: string[]; cc: string[]; bcc: string[] }>({ to: [], cc: [], bcc: [] });
+    const [sendingReport, setSendingReport] = useState(false);
+    const [reportResult, setReportResult] = useState<{ ok: boolean; text: string } | null>(null);
 
 
     // Initial Load
@@ -647,24 +648,25 @@ export default function ReportingClient() {
 
 
     const handleSaveConfig = async () => {
-        if (typeof selectedReportId !== 'number') {
-            alert('Select a saved report to configure its schedule.');
-            return;
-        }
+        if (typeof selectedReportId !== 'number') return;
         try {
-            const recipients = reportConfig.recipients.split(',').map(s => s.trim()).filter(Boolean).join(',');
+            const allRecipients = [
+                ...reportRecipients.to,
+                ...reportRecipients.cc,
+                ...reportRecipients.bcc,
+            ].filter(Boolean).join(',');
             const res = await fetch('/api/admin/reporting/schedules', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     reportId: selectedReportId,
                     frequency: reportConfig.frequency,
-                    recipients,
+                    recipients: allRecipients,
                     active: reportConfig.enabled,
                 }),
             });
             if (res.ok) {
-                alert('Schedule saved! It will appear in the email queue.');
+                alert('Schedule saved! It will appear in the Super Admin email queue.');
                 setConfigExpanded(false);
             } else {
                 const d = await res.json();
@@ -672,6 +674,25 @@ export default function ReportingClient() {
             }
         } catch {
             alert('Error saving schedule');
+        }
+    };
+
+    const handleSendReportNow = async (reportType: string) => {
+        setSendingReport(true);
+        setReportResult(null);
+        try {
+            const res = await fetch('/api/admin/reporting/email-now', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ reportType }),
+            });
+            const data = await res.json();
+            setReportResult({ ok: res.ok, text: res.ok ? (data.message || 'Report sent!') : (data.error || 'Failed to send.') });
+        } catch {
+            setReportResult({ ok: false, text: 'Network error.' });
+        } finally {
+            setSendingReport(false);
+            setTimeout(() => setReportResult(null), 6000);
         }
     };
 
@@ -687,8 +708,10 @@ export default function ReportingClient() {
                         ...prev,
                         enabled: s.active ?? false,
                         frequency: s.frequency || 'weekly',
-                        recipients: s.recipients || '',
                     }));
+                    // Populate recipients into selector
+                    const emails = (s.recipients || '').split(',').map((e: string) => e.trim()).filter(Boolean);
+                    setReportRecipients({ to: emails, cc: [], bcc: [] });
                 }
             })
             .catch(() => {});
@@ -803,23 +826,17 @@ export default function ReportingClient() {
 
                         <hr style={{ borderColor: '#374151', margin: '1rem 0' }} />
 
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                            <div style={{ gridColumn: 'span 2' }}>
-                                <label style={{ display: 'block', color: '#9ca3af', fontSize: '0.75rem', marginBottom: '0.25rem' }}>To (Emails)</label>
-                                <input className={styles.input} placeholder="x@gm.com, y@gm.com" value={reportConfig.recipients} onChange={e => setReportConfig({ ...reportConfig, recipients: e.target.value })} />
-                            </div>
-                            <div>
-                                <label style={{ display: 'block', color: '#9ca3af', fontSize: '0.75rem', marginBottom: '0.25rem' }}>CC</label>
-                                <input className={styles.input} placeholder="Optional" value={reportConfig.cc} onChange={e => setReportConfig({ ...reportConfig, cc: e.target.value })} />
-                            </div>
-                            <div>
-                                <label style={{ display: 'block', color: '#9ca3af', fontSize: '0.75rem', marginBottom: '0.25rem' }}>BCC</label>
-                                <input className={styles.input} placeholder="Optional" value={reportConfig.bcc} onChange={e => setReportConfig({ ...reportConfig, bcc: e.target.value })} />
-                            </div>
-                            <div style={{ gridColumn: 'span 2' }}>
-                                <label style={{ display: 'block', color: '#9ca3af', fontSize: '0.75rem', marginBottom: '0.25rem' }}>Subject Line</label>
-                                <input className={styles.input} value={reportConfig.subject} onChange={e => setReportConfig({ ...reportConfig, subject: e.target.value })} />
-                            </div>
+                        <div style={{ marginBottom: '1rem' }}>
+                            <label style={{ display: 'block', color: '#9ca3af', fontSize: '0.75rem', marginBottom: '0.5rem' }}>Recipients</label>
+                            <RecipientSelector
+                                users={users}
+                                value={reportRecipients}
+                                onChange={setReportRecipients}
+                            />
+                        </div>
+                        <div>
+                            <label style={{ display: 'block', color: '#9ca3af', fontSize: '0.75rem', marginBottom: '0.25rem' }}>Subject Line</label>
+                            <input className={styles.input} placeholder="e.g. Weekly Inventory Report" value={reportConfig.subject} onChange={e => setReportConfig({ ...reportConfig, subject: e.target.value })} />
                         </div>
 
                         {/* USAGE TRENDS SPECIFIC: Lookback Period */}
@@ -843,9 +860,26 @@ export default function ReportingClient() {
                             </div>
                         )}
 
-                        <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'flex-end' }}>
-                            <button onClick={handleSaveConfig} style={{ background: '#059669', color: 'white', padding: '0.5rem 1rem', borderRadius: '0.25rem', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}>
+                        {reportResult && (
+                            <div style={{ marginTop: '0.75rem', padding: '0.5rem 1rem', borderRadius: '0.25rem', fontSize: '0.875rem', background: reportResult.ok ? '#064e3b' : '#7f1d1d', color: reportResult.ok ? '#6ee7b7' : '#fca5a5', border: `1px solid ${reportResult.ok ? '#065f46' : '#991b1b'}` }}>
+                                {reportResult.text}
+                            </div>
+                        )}
+                        <div style={{ marginTop: '1rem', display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                            <button
+                                type="button"
+                                onClick={handleSaveConfig}
+                                style={{ background: '#059669', color: 'white', padding: '0.5rem 1rem', borderRadius: '0.25rem', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}
+                            >
                                 Save Configuration
+                            </button>
+                            <button
+                                type="button"
+                                disabled={sendingReport}
+                                onClick={() => handleSendReportNow('daily')}
+                                style={{ background: '#1d4ed8', color: 'white', padding: '0.5rem 1rem', borderRadius: '0.25rem', border: 'none', cursor: sendingReport ? 'not-allowed' : 'pointer', fontWeight: 'bold', opacity: sendingReport ? 0.7 : 1 }}
+                            >
+                                {sendingReport ? 'Sending…' : '📧 Send Report Now'}
                             </button>
                         </div>
                     </div>
@@ -993,9 +1027,42 @@ export default function ReportingClient() {
             </div>
 
             {/* Config Panel & Filters */}
-            {selectedReportId && typeof selectedReportId !== 'number' && selectedReportId !== 'builder' && (
+            {selectedReportId && selectedReportId !== 'builder' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                    {renderReportConfigPanel()}
+                    {/* Custom report: full schedule config */}
+                    {typeof selectedReportId === 'number' && renderReportConfigPanel()}
+
+                    {/* System report: send-now actions + link to settings */}
+                    {typeof selectedReportId === 'string' && (
+                        <div style={{ background: '#111827', border: '1px solid #374151', borderRadius: '0.5rem', padding: '0.875rem 1rem', display: 'flex', flexWrap: 'wrap', gap: '0.75rem', alignItems: 'center' }}>
+                            <span style={{ color: '#9ca3af', fontSize: '0.85rem', flex: 1 }}>
+                                Email schedule for system reports is configured in{' '}
+                                <a href="/admin/settings/reporting" style={{ color: '#60a5fa', textDecoration: 'underline' }}>Settings → Reporting</a>.
+                            </span>
+                            {reportResult && (
+                                <span style={{ fontSize: '0.85rem', color: reportResult.ok ? '#6ee7b7' : '#fca5a5' }}>{reportResult.text}</span>
+                            )}
+                            {(selectedReportId === 'daily_report') && (
+                                <button type="button" disabled={sendingReport} onClick={() => handleSendReportNow('daily')}
+                                    style={{ background: '#1d4ed8', color: 'white', border: 'none', borderRadius: '0.375rem', padding: '0.5rem 1rem', cursor: sendingReport ? 'not-allowed' : 'pointer', fontWeight: 600, fontSize: '0.85rem', opacity: sendingReport ? 0.7 : 1 }}>
+                                    {sendingReport ? 'Sending…' : '📧 Send Report Now'}
+                                </button>
+                            )}
+                            {(selectedReportId === 'low_stock') && (
+                                <button type="button" disabled={sendingReport} onClick={() => handleSendReportNow('smart-order')}
+                                    style={{ background: '#d97706', color: 'white', border: 'none', borderRadius: '0.375rem', padding: '0.5rem 1rem', cursor: sendingReport ? 'not-allowed' : 'pointer', fontWeight: 600, fontSize: '0.85rem', opacity: sendingReport ? 0.7 : 1 }}>
+                                    {sendingReport ? 'Sending…' : '📧 Send Low Stock Alert Now'}
+                                </button>
+                            )}
+                            {(selectedReportId === 'bottle_levels') && (
+                                <button type="button" disabled={sendingReport} onClick={() => handleSendReportNow('bottle-levels')}
+                                    style={{ background: '#7c3aed', color: 'white', border: 'none', borderRadius: '0.375rem', padding: '0.5rem 1rem', cursor: sendingReport ? 'not-allowed' : 'pointer', fontWeight: 600, fontSize: '0.85rem', opacity: sendingReport ? 0.7 : 1 }}>
+                                    {sendingReport ? 'Sending…' : '📧 Send Bottle Levels Now'}
+                                </button>
+                            )}
+                        </div>
+                    )}
+
                     {renderUsageFilters()}
                     <DateFilterBar />
                     {/* Item Filter Dropdown (Only for relevant reports) */}
@@ -1009,25 +1076,18 @@ export default function ReportingClient() {
                     {/* Employee Usage Filters */}
                     {selectedReportId === 'employee_usage' && (
                         <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap' }}>
-                            {/* Shift Selector */}
                             <div>
                                 <label style={{ color: '#9ca3af', fontSize: '0.8rem', marginRight: '0.5rem' }}>Filter by Shift:</label>
                                 <select
                                     className={styles.input}
+                                    title="Filter by shift"
                                     value={empFilters.shiftId}
-                                    onChange={e => {
-                                        const sid = e.target.value;
-                                        setEmpFilters(p => ({ ...p, shiftId: sid }));
-                                        // Auto-Select Users assigned to this shift? (Optional UX, maybe just let backend handle if userIds empty)
-                                        // Creating a better UX: If shift selected, show "Shift Defaults" or let user override.
-                                    }}
+                                    onChange={e => setEmpFilters(p => ({ ...p, shiftId: e.target.value }))}
                                 >
                                     <option value="">All Shifts / No Shift</option>
                                     {shifts.map(s => <option key={s.id} value={s.id}>{s.label} ({s.start_time}-{s.end_time})</option>)}
                                 </select>
                             </div>
-
-                            {/* User Multi Select (Simple for now) */}
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                 <span style={{ color: '#9ca3af', fontSize: '0.8rem' }}>Filter Users:</span>
                                 <div style={{ display: 'flex', gap: '0.5rem', background: '#111827', padding: '0.5rem', borderRadius: '0.25rem', border: '1px solid #374151' }}>
