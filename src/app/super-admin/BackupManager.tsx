@@ -82,7 +82,7 @@ export default function BackupManager() {
             </div>
             <p className="mt-4 text-xs text-gray-500">
                 Backups are stored in <code>/backups</code> volume.
-                Automated backups run daily at 4:00 AM UTC.
+                Org snapshots run daily at 3:00 AM UTC. Retention: 7 daily → 1/week for 3 months → 1/month for 12 months.
             </p>
         </div>
     );

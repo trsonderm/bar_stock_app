@@ -27,6 +27,7 @@ class Scheduler {
             { name: 'Billing Check', cron: '0 5 * * *', run: () => this.checkBilling() },
             { name: 'Auto Disable Past Due', cron: '0 6 * * *', run: () => this.runAutoDisablePastDue() },
             { name: 'Auto Backup', cron: '0 * * * *', run: () => this.checkAutoBackup() },
+            { name: 'Daily Org Backup', cron: '0 3 * * *', run: () => this.runDailyOrgBackup() },
             { name: 'Report Schedules', cron: '* * * * *', run: () => this.runDueReportSchedules() },
             { name: 'Low Stock Alerts', cron: '* * * * *', run: () => this.runDueLowStockAlerts() },
             { name: 'Shift Report Emails', cron: '* * * * *', run: () => this.runShiftReportEmails() },
@@ -608,6 +609,97 @@ class Scheduler {
                 console.log(`[Backup] Org snapshot written: ${snapFilename}`);
             } catch (e) {
                 console.error(`[Backup] Failed snapshot for org ${org.id}:`, e);
+            }
+        }
+    }
+
+    private static getISOWeek(date: Date): string {
+        const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+        const dayNum = d.getUTCDay() || 7;
+        d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+        const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+        const weekNo = Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+        return `${d.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`;
+    }
+
+    private async runDailyOrgBackup(): Promise<void> {
+        try {
+            const backupDir = Scheduler.BACKUP_DIR;
+            if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir, { recursive: true });
+
+            // Skip if a snapshot for today already exists (handles server restarts)
+            const today = new Date().toISOString().slice(0, 10);
+            const alreadyRan = fs.readdirSync(backupDir).some(
+                f => f.startsWith(`backup-${today}`) && /-org\d+\.json$/.test(f)
+            );
+            if (alreadyRan) {
+                console.log('[Backup] Daily org backup already ran today, skipping.');
+                return;
+            }
+
+            const timestamp = `backup-${new Date().toISOString().replace(/[:.]/g, '-')}`;
+            console.log(`[Backup] Running daily org snapshots (${timestamp})`);
+            await this.runOrgSnapshots(timestamp);
+            this.pruneOrgSnapshots();
+        } catch (e) {
+            console.error('[Backup] runDailyOrgBackup error:', e);
+        }
+    }
+
+    private pruneOrgSnapshots(): void {
+        const backupDir = Scheduler.BACKUP_DIR;
+        if (!fs.existsSync(backupDir)) return;
+
+        const now = Date.now();
+        const dayMs = 86_400_000;
+
+        const files = fs.readdirSync(backupDir)
+            .filter(f => f.endsWith('.json') && f.startsWith('backup-') && /-org\d+\.json$/.test(f))
+            .map(f => {
+                const stat = fs.statSync(path.join(backupDir, f));
+                const match = f.match(/-org(\d+)\.json$/);
+                return { name: f, orgId: match ? parseInt(match[1]) : 0, mtime: stat.mtime };
+            })
+            .sort((a, b) => b.mtime.getTime() - a.mtime.getTime()); // newest first
+
+        // Group by org
+        const byOrg: Record<number, typeof files> = {};
+        for (const f of files) {
+            (byOrg[f.orgId] ??= []).push(f);
+        }
+
+        for (const orgFiles of Object.values(byOrg)) {
+            const keep = new Set<string>();
+            const keptDay = new Set<string>();   // YYYY-MM-DD
+            const keptWeek = new Set<string>();  // YYYY-Www (ISO)
+            const keptMonth = new Set<string>(); // YYYY-MM
+
+            for (const f of orgFiles) {
+                const ageDays = (now - f.mtime.getTime()) / dayMs;
+
+                if (ageDays > 365) {
+                    // older than 1 year — prune
+                } else if (ageDays <= 7) {
+                    const key = f.mtime.toISOString().slice(0, 10);
+                    if (!keptDay.has(key)) { keptDay.add(key); keep.add(f.name); }
+                } else if (ageDays <= 90) {
+                    const key = Scheduler.getISOWeek(f.mtime);
+                    if (!keptWeek.has(key)) { keptWeek.add(key); keep.add(f.name); }
+                } else {
+                    const key = f.mtime.toISOString().slice(0, 7);
+                    if (!keptMonth.has(key)) { keptMonth.add(key); keep.add(f.name); }
+                }
+            }
+
+            for (const f of orgFiles) {
+                if (!keep.has(f.name)) {
+                    try {
+                        fs.unlinkSync(path.join(backupDir, f.name));
+                        console.log(`[Backup] Pruned snapshot: ${f.name}`);
+                    } catch (e) {
+                        console.error(`[Backup] Failed to prune ${f.name}:`, e);
+                    }
+                }
             }
         }
     }
