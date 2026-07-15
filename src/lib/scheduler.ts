@@ -738,4 +738,10 @@ class Scheduler {
     }
 }
 
-export const scheduler = new Scheduler();
+// Anchor to globalThis so instrumentation.ts and API routes share the same instance
+// even when Next.js evaluates this module in separate compilation chunks.
+const g = globalThis as typeof globalThis & { __topshelf_scheduler?: Scheduler };
+if (!g.__topshelf_scheduler) {
+    g.__topshelf_scheduler = new Scheduler();
+}
+export const scheduler: Scheduler = g.__topshelf_scheduler;
