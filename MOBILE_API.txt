@@ -2268,6 +2268,8 @@ RESPONSE 200:
       "id":                  42,               ← integer ID
       "incident_date":       "2026-07-09",     ← date of incident (nullable)
       "incident_time":       "23:45:00",       ← time of incident (nullable)
+      "case_number":         "2026-0042",      ← police/case reference number (nullable)
+      "office_name":         "Metro PD",       ← reporting office or agency (nullable)
       "media":               [ ... ],          ← incident-level media (see MediaItem below)
       "reported_by_name":    "Jane Smith",     ← who reported it (nullable)
       "submitted_by_name":   "John Doe",       ← who filed it in the system
@@ -2331,6 +2333,8 @@ REQUEST BODY:
 {
   "incident_date":       "2026-07-09",      ← date string (YYYY-MM-DD), optional but recommended
   "incident_time":       "23:45",           ← time string (HH:MM or HH:MM:SS), optional
+  "case_number":         "2026-0042",       ← optional; police/agency case reference number
+  "office_name":         "Metro PD",        ← optional; reporting office or agency name
   "media":               [ ... ],           ← MediaItem[] for whole-incident photos/videos
   "persons": [                              ← array of persons involved (can be empty [])
     {
@@ -2386,6 +2390,8 @@ RESPONSE 200:
     "id":                   42,
     "incident_date":        "2026-07-09",
     "incident_time":        "23:45:00",
+    "case_number":          "2026-0042",                       ← nullable; case/police reference number
+    "office_name":          "Metro PD",                        ← nullable; reporting office or agency
     "description":          "Legacy plain-text description.",   ← nullable; present on older records
     "person_name":          "John Doe",                        ← nullable; legacy plain-text person
     "barred_person_id":     null,                              ← nullable; integer if linked to barred list
@@ -2499,9 +2505,11 @@ INCIDENT FORM — UI FIELD GUIDE
 The mobile incident form should be presented as a scrollable single-screen form
 (or a wizard) with these sections in order:
 
-SECTION 1 — DATE & TIME
+SECTION 1 — DATE, TIME & CASE DETAILS
   incident_date    Date picker         Auto-populate with today's date; user can change
   incident_time    Time picker         Auto-populate with current time; user can change
+  case_number      Text input          Optional; police/agency case reference number
+  office_name      Text input          Optional; reporting office or agency name
 
 SECTION 2 — INCIDENT MEDIA
   media            Multi-file picker   Photos and videos for the whole incident

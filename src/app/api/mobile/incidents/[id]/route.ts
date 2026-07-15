@@ -66,6 +66,8 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
                 barred_person_id: i.barred_person_id || null,
                 barred_person_name: i.barred_person_name,
                 barred_person_photo: i.barred_person_photo,
+                case_number: i.case_number || null,
+                office_name: i.office_name || null,
                 media: i.media || [],
                 reported_by_name: i.reported_by_name,
                 reported_by_user_id: i.reported_by_user_id || null,

@@ -69,6 +69,7 @@ export async function POST(req: NextRequest) {
         persons,
         timeline,
         reported_by_user_id, reported_by_name,
+        case_number, office_name,
         // legacy compat
         barred_person_id, person_name, description,
     } = body;
@@ -82,8 +83,9 @@ export async function POST(req: NextRequest) {
             `INSERT INTO security_incidents
                 (organization_id, barred_person_id, person_name, description,
                  submitted_by_user_id, submitted_by_name, media,
-                 incident_date, incident_time, reported_by_user_id, reported_by_name)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+                 incident_date, incident_time, reported_by_user_id, reported_by_name,
+                 case_number, office_name)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
             [
                 session.organizationId,
                 barred_person_id || null,
@@ -96,6 +98,8 @@ export async function POST(req: NextRequest) {
                 incident_time || null,
                 reported_by_user_id || null,
                 reported_by_name?.trim() || null,
+                case_number?.trim() || null,
+                office_name?.trim() || null,
             ]
         );
         const incidentId = incRes.rows[0].id;

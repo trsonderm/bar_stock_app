@@ -78,6 +78,8 @@ export async function GET(req: NextRequest) {
                 description: i.description || null,
                 person_name: i.person_name || null,
                 barred_person_id: i.barred_person_id || null,
+                case_number: i.case_number || null,
+                office_name: i.office_name || null,
                 media: i.media || [],
                 reported_by_name: i.reported_by_name,
                 reported_by_user_id: i.reported_by_user_id || null,
@@ -113,6 +115,8 @@ export async function POST(req: NextRequest) {
             timeline,
             reported_by_user_id,
             reported_by_name,
+            case_number,
+            office_name,
         } = body;
 
         if (
@@ -134,8 +138,9 @@ export async function POST(req: NextRequest) {
             const incRes = await client.query(
                 `INSERT INTO security_incidents
                     (organization_id, submitted_by_user_id, submitted_by_name, media,
-                     incident_date, incident_time, reported_by_user_id, reported_by_name)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
+                     incident_date, incident_time, reported_by_user_id, reported_by_name,
+                     case_number, office_name)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
                 [
                     session.organizationId,
                     session.id,
@@ -145,6 +150,8 @@ export async function POST(req: NextRequest) {
                     incident_time || null,
                     reported_by_user_id || null,
                     reported_by_name?.trim() || null,
+                    case_number?.trim() || null,
+                    office_name?.trim() || null,
                 ]
             );
             const incidentId = incRes.rows[0].id;

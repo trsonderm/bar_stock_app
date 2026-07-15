@@ -1410,4 +1410,11 @@ CREATE TABLE IF NOT EXISTS pos_model_settings (
     UNIQUE(organization_id)
 );
 
+-- =========================================================
+-- 83. Incident reports — case number and reporting office.
+-- Both fields are optional; null means not provided.
+-- =========================================================
+ALTER TABLE security_incidents ADD COLUMN IF NOT EXISTS case_number TEXT;
+ALTER TABLE security_incidents ADD COLUMN IF NOT EXISTS office_name TEXT;
+
 COMMIT;

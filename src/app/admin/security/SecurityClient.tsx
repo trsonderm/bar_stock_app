@@ -59,6 +59,8 @@ interface Incident {
     incident_date: string | null;
     incident_time: string | null;
     reported_by_name: string | null;
+    case_number: string | null;
+    office_name: string | null;
     created_at: string;
     persons: IncidentPerson[];
     timeline: IncidentTimeline[];
@@ -327,6 +329,8 @@ function exportIncident(inc: Incident) {
 <h1>Incident Report</h1>
 <div class="meta">
   ${dateStr ? `<strong>Date / Time:</strong> ${escHtml(dateStr)}<br>` : ''}
+  ${inc.case_number ? `<strong>Case #:</strong> ${escHtml(inc.case_number)}<br>` : ''}
+  ${inc.office_name ? `<strong>Reporting Office:</strong> ${escHtml(inc.office_name)}<br>` : ''}
   ${inc.reported_by_name ? `<strong>Reported By:</strong> ${escHtml(inc.reported_by_name)}<br>` : ''}
   <strong>Filed By:</strong> ${escHtml(inc.submitted_by_name)}<br>
   <strong>Filed At:</strong> ${new Date(inc.created_at).toLocaleString()}
@@ -553,6 +557,10 @@ export default function SecurityClient({
     const [iReporterUserId, setIReporterUserId] = useState<string>('');
     const [iReporterName, setIReporterName] = useState('');
 
+    // Case details
+    const [iCaseNumber, setICaseNumber] = useState('');
+    const [iOfficeName, setIOfficeName] = useState('');
+
     const [iSaving, setISaving] = useState(false);
 
     // Trespass notification banner
@@ -771,6 +779,7 @@ export default function SecurityClient({
         setICurrentPerson(blankPerson());
         setITimeline([{ _key: makeDraftKey(), segment_date: now.toISOString().split('T')[0], segment_time: now.toTimeString().slice(0, 5), description: '' }]);
         setIReporterUserId(String(myUserId)); setIReporterName(myName);
+        setICaseNumber(''); setIOfficeName('');
         setShowAddIncident(true);
     };
 
@@ -834,6 +843,8 @@ export default function SecurityClient({
                 timeline: iTimeline.filter(t => t.description.trim()).map(({ _key, ...rest }) => rest),
                 reported_by_user_id: iReporterUserId ? parseInt(iReporterUserId) : null,
                 reported_by_name: reporterName,
+                case_number: iCaseNumber.trim() || null,
+                office_name: iOfficeName.trim() || null,
             }),
         });
         setISaving(false);
@@ -983,6 +994,7 @@ export default function SecurityClient({
                                             {dateStr && <span style={{ color: '#f59e0b', fontWeight: 700, fontSize: '0.9rem' }}>📅 {dateStr}</span>}
                                             {personCount > 0 && <span style={{ background: '#1e3a5f', color: '#60a5fa', fontSize: '0.72rem', padding: '2px 8px', borderRadius: '999px' }}>{personCount} person{personCount !== 1 ? 's' : ''} involved</span>}
                                             {timelineCount > 0 && <span style={{ background: '#1f2937', color: '#9ca3af', fontSize: '0.72rem', padding: '2px 8px', borderRadius: '999px' }}>{timelineCount} entry{timelineCount !== 1 ? 'ies' : 'y'}</span>}
+                                            {inc.case_number && <span style={{ background: '#1c2d3a', color: '#67e8f9', fontSize: '0.72rem', padding: '2px 8px', borderRadius: '999px' }}>Case #{inc.case_number}</span>}
                                         </div>
                                         <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center', flexShrink: 0 }}>
                                             <button onClick={() => setExpandedInc(prev => { const next = new Set(prev); isExpanded ? next.delete(inc.id) : next.add(inc.id); return next; })}
@@ -1090,6 +1102,12 @@ export default function SecurityClient({
 
                                     {/* Footer */}
                                     <div style={{ color: '#6b7280', fontSize: '0.75rem', borderTop: '1px solid #1f2937', paddingTop: '0.6rem' }}>
+                                        {(inc.case_number || inc.office_name) && (
+                                            <div style={{ marginBottom: '0.3rem' }}>
+                                                {inc.case_number && <><strong style={{ color: '#67e8f9' }}>Case #{inc.case_number}</strong>{inc.office_name && <span style={{ color: '#9ca3af' }}> · {inc.office_name}</span>}</>}
+                                                {!inc.case_number && inc.office_name && <span style={{ color: '#9ca3af' }}>{inc.office_name}</span>}
+                                            </div>
+                                        )}
                                         {inc.reported_by_name && <>Reported by <strong style={{ color: '#9ca3af' }}>{inc.reported_by_name}</strong> · </>}
                                         Filed by {inc.submitted_by_name} · {timeAgo(inc.created_at)}
                                     </div>
@@ -1281,6 +1299,21 @@ export default function SecurityClient({
                                     <div style={{ flex: 1 }}>
                                         <label style={lbl}>Time</label>
                                         <input type="time" value={iTime} onChange={e => setITime(e.target.value)} style={inp} />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* ── Case Details ── */}
+                            <div>
+                                <p style={sectionHead}>Case Details (Optional)</p>
+                                <div style={{ display: 'flex', gap: '0.75rem' }}>
+                                    <div style={{ flex: 1 }}>
+                                        <label style={lbl}>Case Number</label>
+                                        <input type="text" value={iCaseNumber} onChange={e => setICaseNumber(e.target.value)} style={inp} placeholder="e.g. 2026-0042" />
+                                    </div>
+                                    <div style={{ flex: 1 }}>
+                                        <label style={lbl}>Office / Agency</label>
+                                        <input type="text" value={iOfficeName} onChange={e => setIOfficeName(e.target.value)} style={inp} placeholder="e.g. Metro PD" />
                                     </div>
                                 </div>
                             </div>

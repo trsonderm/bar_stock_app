@@ -417,6 +417,8 @@ CREATE TABLE IF NOT EXISTS security_incidents (
     incident_time TIME,
     reported_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
     reported_by_name TEXT,
+    case_number TEXT,
+    office_name TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS security_incidents_org_idx ON security_incidents(organization_id, created_at DESC);
