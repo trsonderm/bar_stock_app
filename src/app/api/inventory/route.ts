@@ -17,6 +17,8 @@ async function ensureDisplayColumns() {
     await db.execute(`ALTER TABLE items ADD COLUMN IF NOT EXISTS package_prices JSONB DEFAULT '{}'::jsonb`).catch(() => {});
     await db.execute(`ALTER TABLE items ADD COLUMN IF NOT EXISTS package_band_prices JSONB DEFAULT '{}'::jsonb`).catch(() => {});
     await db.execute(`ALTER TABLE items ADD COLUMN IF NOT EXISTS is_alcohol BOOLEAN DEFAULT TRUE`).catch(() => {});
+    await db.execute(`ALTER TABLE items ADD COLUMN IF NOT EXISTS shift_begin_audit BOOLEAN DEFAULT FALSE`).catch(() => {});
+    await db.execute(`ALTER TABLE items ADD COLUMN IF NOT EXISTS shift_end_audit BOOLEAN DEFAULT FALSE`).catch(() => {});
     // Deduplicate inventory rows before creating unique index — keeps the highest-quantity row
     // for each (item_id, location_id) pair so no stock data is silently lost.
     await db.execute(`
@@ -111,6 +113,8 @@ export async function GET(req: NextRequest) {
         COALESCE(i.aliases, '[]'::jsonb) as aliases,
         COALESCE(i.stock_options, '[]') as stock_options,
         COALESCE(i.include_in_audit, true) as include_in_audit,
+        COALESCE(i.shift_begin_audit, false) as shift_begin_audit,
+        COALESCE(i.shift_end_audit, false) as shift_end_audit,
         COALESCE(i.include_in_low_stock_alerts, true) as include_in_low_stock_alerts,
         COALESCE(i.exclude_from_smart_order, false) as exclude_from_smart_order,
         COALESCE(i.stock_unit_label, 'unit') as stock_unit_label,
@@ -170,6 +174,8 @@ export async function GET(req: NextRequest) {
                 '[]'::jsonb as aliases,
                 COALESCE(i.stock_options, '[]') as stock_options,
                 COALESCE(i.include_in_audit, true) as include_in_audit,
+        COALESCE(i.shift_begin_audit, false) as shift_begin_audit,
+        COALESCE(i.shift_end_audit, false) as shift_end_audit,
                 true as include_in_low_stock_alerts,
                 false as exclude_from_smart_order,
                 COALESCE(i.stock_unit_label, 'unit') as stock_unit_label,
@@ -345,7 +351,7 @@ export async function PUT(req: NextRequest) {
 
         if (!canEdit && !canStock) return NextResponse.json({ error: 'Permission denied' }, { status: 403 });
 
-        const { id, unit_cost, sale_price, package_price, package_sale_enabled, size_prices, package_prices, package_band_prices, name, type, quantity, secondary_type, supplier, supplier_id, low_stock_threshold, low_stock_threshold_type, low_stock_threshold_factor, order_size, stock_options, include_in_audit, include_in_low_stock_alerts, exclude_from_smart_order, assignedLocations, stock_unit_label, stock_unit_size, order_unit_label, order_unit_size, use_category_qty_defaults, stock_display_mode, inventory_display_mode, location_supplier_id, location_sale_price, locationId: bodyLocationId, barcodes, aliases, abv, bottle_size, bottle_size_amount, bottle_size_unit, is_alcohol } = await req.json();
+        const { id, unit_cost, sale_price, package_price, package_sale_enabled, size_prices, package_prices, package_band_prices, name, type, quantity, secondary_type, supplier, supplier_id, low_stock_threshold, low_stock_threshold_type, low_stock_threshold_factor, order_size, stock_options, include_in_audit, include_in_low_stock_alerts, exclude_from_smart_order, assignedLocations, stock_unit_label, stock_unit_size, order_unit_label, order_unit_size, use_category_qty_defaults, stock_display_mode, inventory_display_mode, location_supplier_id, location_sale_price, locationId: bodyLocationId, barcodes, aliases, abv, bottle_size, bottle_size_amount, bottle_size_unit, is_alcohol, shift_begin_audit, shift_end_audit } = await req.json();
 
         if (!id) return NextResponse.json({ error: 'Missing ID' }, { status: 400 });
 
@@ -454,6 +460,14 @@ export async function PUT(req: NextRequest) {
             if (include_in_audit !== undefined) {
                 updates.push(`include_in_audit = $${pIdx++} `);
                 params.push(include_in_audit);
+            }
+            if (shift_begin_audit !== undefined) {
+                updates.push(`shift_begin_audit = $${pIdx++} `);
+                params.push(Boolean(shift_begin_audit));
+            }
+            if (shift_end_audit !== undefined) {
+                updates.push(`shift_end_audit = $${pIdx++} `);
+                params.push(Boolean(shift_end_audit));
             }
             if (barcodes !== undefined) {
                 updates.push(`barcodes = $${pIdx++} `);

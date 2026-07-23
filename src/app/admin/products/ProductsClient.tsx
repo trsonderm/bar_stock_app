@@ -31,6 +31,8 @@ interface Item {
     order_size?: OrderSizeOption[] | number[] | number;
     stock_options?: number[];
     include_in_audit?: boolean;
+    shift_begin_audit?: boolean;
+    shift_end_audit?: boolean;
     assigned_locations?: number[];
     stock_unit_label?: string;
     stock_unit_size?: number;
@@ -128,6 +130,8 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
         bottle_size_unit: '',
         package_sale_enabled: false,
         is_alcohol: true,
+        shift_begin_audit: false,
+        shift_end_audit: false,
     });
 
     // Temp input for stock options
@@ -320,6 +324,8 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
             bottle_size_unit: '',
             package_sale_enabled: false,
             is_alcohol: true,
+            shift_begin_audit: false,
+            shift_end_audit: false,
         });
         setTempOptionInput('');
         setTempOrderLabel('Pack');
@@ -489,6 +495,8 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
             bottle_size_unit: item.bottle_size_unit || '',
             package_sale_enabled: item.package_sale_enabled === true,
             is_alcohol: item.is_alcohol !== false,
+            shift_begin_audit: item.shift_begin_audit === true,
+            shift_end_audit: item.shift_end_audit === true,
         });
 
         // Distribute existing qty across order sizes
@@ -561,6 +569,8 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
             bottle_size_unit: item.bottle_size_unit || '',
             package_sale_enabled: item.package_sale_enabled === true,
             is_alcohol: item.is_alcohol !== false,
+            shift_begin_audit: item.shift_begin_audit === true,
+            shift_end_audit: item.shift_end_audit === true,
         });
         setQtyInputValues({});
         setTempOrderLabel('Pack');
@@ -720,6 +730,8 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                 bottle_size_unit: formData.bottle_size_unit || null,
                 package_sale_enabled: formData.package_sale_enabled,
                 is_alcohol: formData.is_alcohol,
+                shift_begin_audit: formData.shift_begin_audit,
+                shift_end_audit: formData.shift_end_audit,
                 ...(!editingId && globalProductId ? { global_product_id: globalProductId } : {}),
             };
 
@@ -1696,6 +1708,29 @@ export default function ProductsClient({ overrideOrgId }: { overrideOrgId?: numb
                                     <div style={{ color: '#6b7280', fontSize: '0.78rem', marginTop: '2px' }}>Show this item in audit/counts. Uncheck to hide low-importance items.</div>
                                 </div>
                             </label>
+
+                            {/* Shift Audit Flags */}
+                            <div style={{ background: '#1a1f2e', border: '1px solid #1e3a5f', borderRadius: '8px', padding: '0.875rem', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                                <div style={{ color: '#93c5fd', fontWeight: 600, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Shift Audits</div>
+                                <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', cursor: 'pointer' }}>
+                                    <input type="checkbox" checked={!!formData.shift_begin_audit}
+                                        onChange={e => setFormData({ ...formData, shift_begin_audit: e.target.checked })}
+                                        style={{ width: '18px', height: '18px', marginTop: '2px', flexShrink: 0, accentColor: '#3b82f6' }} />
+                                    <div>
+                                        <div style={{ color: 'white', fontWeight: 600, fontSize: '0.875rem' }}>Include in Shift Begin Audit</div>
+                                        <div style={{ color: '#6b7280', fontSize: '0.78rem', marginTop: '1px' }}>This item appears in the Begin Shift Audit checklist (when enabled for the location).</div>
+                                    </div>
+                                </label>
+                                <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', cursor: 'pointer' }}>
+                                    <input type="checkbox" checked={!!formData.shift_end_audit}
+                                        onChange={e => setFormData({ ...formData, shift_end_audit: e.target.checked })}
+                                        style={{ width: '18px', height: '18px', marginTop: '2px', flexShrink: 0, accentColor: '#f59e0b' }} />
+                                    <div>
+                                        <div style={{ color: 'white', fontWeight: 600, fontSize: '0.875rem' }}>Include in Shift End Audit</div>
+                                        <div style={{ color: '#6b7280', fontSize: '0.78rem', marginTop: '1px' }}>This item appears in the End Shift Audit checklist (when enabled for the location).</div>
+                                    </div>
+                                </label>
+                            </div>
 
                             {/* Display Mode — stock view + inventory */}
                             <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: '8px', padding: '0.875rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>

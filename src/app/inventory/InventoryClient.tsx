@@ -80,9 +80,10 @@ interface InventoryClientProps {
     bottleOptions: any[];
     orgLocations?: OrgLocation[];
     organizationMode?: string;
+    locationAuditSettings?: Record<number, Record<string, any>>;
 }
 
-export default function InventoryClient({ user, trackBottleLevels: initialTrack, bottleOptions: initialOptions, orgLocations = [], organizationMode = 'bar_and_food' }: InventoryClientProps) {
+export default function InventoryClient({ user, trackBottleLevels: initialTrack, bottleOptions: initialOptions, orgLocations = [], organizationMode = 'bar_and_food', locationAuditSettings = {} }: InventoryClientProps) {
     const [items, setItems] = useState<Item[]>([]);
     const [myActivity, setMyActivity] = useState<ActivityLog[]>([]);
     const [sort, setSort] = useState<'usage' | 'name'>('usage');
@@ -95,6 +96,15 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
 
     const [showModal, setShowModal] = useState(false);
     const [showActivityModal, setShowActivityModal] = useState(false);
+
+    // ── Shift Audit modal ──
+    const [auditModal, setAuditModal] = useState<{ type: 'begin' | 'end' } | null>(null);
+    const [auditItems, setAuditItems] = useState<any[]>([]);
+    const [auditCounts, setAuditCounts] = useState<Record<number, string>>({});
+    const [auditNotes, setAuditNotes] = useState('');
+    const [auditLoading, setAuditLoading] = useState(false);
+    const [auditSubmitting, setAuditSubmitting] = useState(false);
+    const [auditDone, setAuditDone] = useState(false);
 
     // Bottle Level Logic
     const [trackBottleLevels, setTrackBottleLevels] = useState(initialTrack);
@@ -431,6 +441,50 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
         } finally {
             setLoading(false);
         }
+    };
+
+    // Current location's audit settings (derived from server-side prop)
+    const currentAudit = selectedLocId ? (locationAuditSettings[selectedLocId] || {}) : {};
+    const showBeginAudit = !!(currentAudit.shift_audit_enabled && currentAudit.shift_begin_audit_enabled);
+    const showEndAudit = !!(currentAudit.shift_audit_enabled && currentAudit.shift_end_audit_enabled);
+
+    const openAudit = async (type: 'begin' | 'end') => {
+        setAuditDone(false);
+        setAuditCounts({});
+        setAuditNotes('');
+        setAuditLoading(true);
+        setAuditModal({ type });
+        try {
+            const params = new URLSearchParams({ type });
+            if (selectedLocId) params.set('locationId', String(selectedLocId));
+            const res = await fetch(`/api/admin/shift-audit?${params}`);
+            const data = await res.json();
+            setAuditItems(data.items || []);
+        } catch { setAuditItems([]); } finally { setAuditLoading(false); }
+    };
+
+    const submitAudit = async () => {
+        if (!auditModal) return;
+        setAuditSubmitting(true);
+        try {
+            const entries = auditItems.map(item => ({
+                item_id: item.id,
+                item_name: item.name,
+                expected_qty: item.quantity,
+                counted_qty: auditCounts[item.id] !== undefined ? parseFloat(auditCounts[item.id]) || 0 : null,
+            }));
+            await fetch('/api/admin/shift-audit', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    audit_type: auditModal.type,
+                    location_id: selectedLocId,
+                    entries,
+                    notes: auditNotes.trim() || null,
+                }),
+            });
+            setAuditDone(true);
+        } finally { setAuditSubmitting(false); }
     };
 
     const openPendingOrders = async () => {
@@ -823,6 +877,26 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
                         sx={{ flexShrink: 0 }}
                     >
                         Close Shift
+                    </Button>
+                )}
+                {showBeginAudit && (
+                    <Button
+                        variant="contained"
+                        size="small"
+                        onClick={() => openAudit('begin')}
+                        sx={{ background: '#065f46', '&:hover': { background: '#047857' }, flexShrink: 0 }}
+                    >
+                        Begin Shift Audit
+                    </Button>
+                )}
+                {showEndAudit && (
+                    <Button
+                        variant="contained"
+                        size="small"
+                        onClick={() => openAudit('end')}
+                        sx={{ background: '#7c2d12', '&:hover': { background: '#9a3412' }, flexShrink: 0 }}
+                    >
+                        End Shift Audit
                     </Button>
                 )}
                 <Button
@@ -1900,6 +1974,88 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
                     >
                         {applyingInfo ? 'Applying…' : 'Apply to Item'}
                     </Button>
+                </DialogActions>
+            </Dialog>
+
+            {/* ── Shift Audit Modal ── */}
+            <Dialog open={!!auditModal} onClose={() => { if (!auditSubmitting) setAuditModal(null); }} maxWidth="sm" fullWidth
+                PaperProps={{ style: { background: '#111827', border: '1px solid #1f2937', borderRadius: 12 } }}>
+                <DialogTitle style={{ borderBottom: '1px solid #1f2937', padding: '1rem 1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ color: 'white', fontWeight: 700, fontSize: '1rem' }}>
+                        {auditModal?.type === 'begin' ? '▶ Begin Shift Audit' : '■ End Shift Audit'}
+                    </span>
+                    <IconButton size="small" onClick={() => setAuditModal(null)} disabled={auditSubmitting}
+                        style={{ color: '#6b7280' }}>✕</IconButton>
+                </DialogTitle>
+                <DialogContent style={{ padding: '1.25rem 1.5rem', maxHeight: '60vh', overflowY: 'auto' }}>
+                    {auditDone ? (
+                        <Box sx={{ textAlign: 'center', py: 3 }}>
+                            <Typography style={{ fontSize: '2rem', marginBottom: 8 }}>✓</Typography>
+                            <Typography style={{ color: '#34d399', fontWeight: 700, marginBottom: 4 }}>Audit submitted!</Typography>
+                            <Typography variant="body2" style={{ color: '#6b7280' }}>The shift audit has been recorded.</Typography>
+                        </Box>
+                    ) : auditLoading ? (
+                        <Box sx={{ textAlign: 'center', py: 3 }}>
+                            <Typography style={{ color: '#9ca3af' }}>Loading items…</Typography>
+                        </Box>
+                    ) : auditItems.length === 0 ? (
+                        <Box sx={{ textAlign: 'center', py: 3 }}>
+                            <Typography style={{ color: '#9ca3af', fontSize: '0.9rem' }}>
+                                No items are flagged for this audit type.<br />
+                                Enable items in Admin → Products or turn on "Apply to all products" in Location settings.
+                            </Typography>
+                        </Box>
+                    ) : (
+                        <>
+                            <Typography variant="body2" style={{ color: '#9ca3af', marginBottom: '1rem', fontSize: '0.85rem' }}>
+                                Enter the counted quantity for each item. Leave blank to skip an item.
+                            </Typography>
+                            <Box sx={{ display: 'grid', gap: 1 }}>
+                                {auditItems.map(item => (
+                                    <Box key={item.id} sx={{ display: 'flex', alignItems: 'center', gap: 1.5, background: '#1f2937', borderRadius: 2, p: '0.6rem 0.75rem' }}>
+                                        <Box sx={{ flex: 1, minWidth: 0 }}>
+                                            <Typography style={{ color: 'white', fontWeight: 600, fontSize: '0.9rem' }}>{item.name}</Typography>
+                                            <Typography variant="caption" style={{ color: '#6b7280' }}>
+                                                {item.type}{item.secondary_type ? ` · ${item.secondary_type}` : ''} · Current: {Number(item.quantity).toFixed(0)} {item.stock_unit_label}
+                                            </Typography>
+                                        </Box>
+                                        <TextField
+                                            type="number"
+                                            size="small"
+                                            placeholder="Count"
+                                            value={auditCounts[item.id] ?? ''}
+                                            onChange={e => setAuditCounts(prev => ({ ...prev, [item.id]: e.target.value }))}
+                                            inputProps={{ min: 0, step: 1, style: { color: 'white', textAlign: 'center', width: 72 } }}
+                                            sx={{ '& .MuiOutlinedInput-root': { '& fieldset': { borderColor: '#374151' } } }}
+                                        />
+                                    </Box>
+                                ))}
+                            </Box>
+                            <Box sx={{ mt: 2 }}>
+                                <Typography variant="body2" style={{ color: '#9ca3af', marginBottom: 4, fontSize: '0.8rem' }}>Notes (optional)</Typography>
+                                <TextField
+                                    multiline rows={2} fullWidth size="small"
+                                    placeholder="Add any notes about this audit…"
+                                    value={auditNotes}
+                                    onChange={e => setAuditNotes(e.target.value)}
+                                    inputProps={{ style: { color: 'white', fontSize: '0.875rem' } }}
+                                    sx={{ '& .MuiOutlinedInput-root': { '& fieldset': { borderColor: '#374151' } } }}
+                                />
+                            </Box>
+                        </>
+                    )}
+                </DialogContent>
+                <DialogActions style={{ borderTop: '1px solid #1f2937', padding: '0.75rem 1rem', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                    <Button onClick={() => setAuditModal(null)} disabled={auditSubmitting}
+                        style={{ color: '#9ca3af', border: '1px solid #374151', borderRadius: 6 }}>
+                        {auditDone ? 'Close' : 'Cancel'}
+                    </Button>
+                    {!auditDone && auditItems.length > 0 && (
+                        <Button variant="contained" disabled={auditSubmitting} onClick={submitAudit}
+                            style={{ background: auditModal?.type === 'begin' ? '#065f46' : '#7c2d12' }}>
+                            {auditSubmitting ? 'Submitting…' : 'Submit Audit'}
+                        </Button>
+                    )}
                 </DialogActions>
             </Dialog>
 

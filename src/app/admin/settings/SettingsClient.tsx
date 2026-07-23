@@ -355,23 +355,25 @@ export default function SettingsClient() {
     };
 
     const handleTestEmail = async () => {
-        if (!settings.report_emails) {
-            alert('Please configure Report Emails first.');
-            return;
-        }
-        if (!confirm(`Send a test email to ${settings.report_emails}?`)) return;
+        const defaultTo = (settings.report_emails as string | undefined)?.split(',')[0]?.trim() || '';
+        const to = window.prompt('Send a diagnostic test email to:', defaultTo);
+        if (!to?.trim()) return;
 
         try {
             const res = await fetch('/api/admin/settings/test-email', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ report_emails: settings.report_emails })
+                body: JSON.stringify({ tier: 'reporting', to: to.trim() }),
             });
             const data = await res.json();
-            if (res.ok) alert(data.message || 'Email sent!');
-            else alert(data.error || 'Failed to send email');
+            if (res.ok) {
+                alert(`✓ Test email sent to ${to}\n\nSMTP: ${data.diagnostic?.host}:${data.diagnostic?.port}\nMessage ID: ${data.messageId}`);
+            } else {
+                const hint = data.hint ? `\n\n💡 ${data.hint}` : '';
+                alert(`✗ Failed to send\n\n${data.error || 'Unknown error'}${data.code ? `\nCode: ${data.code}` : ''}${hint}\n\nCheck Super Admin → System Logs for full details.`);
+            }
         } catch (e) {
-            alert('Error sending email');
+            alert('Error sending email — check your network connection.');
         }
     };
 

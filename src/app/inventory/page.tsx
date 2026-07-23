@@ -10,7 +10,6 @@ export default async function InventoryPage() {
         redirect('/');
     }
 
-    // Pass necessary user info to client
     const user = {
         firstName: session.firstName,
         role: session.role,
@@ -18,7 +17,6 @@ export default async function InventoryPage() {
         iat: session.iat
     };
 
-    // Fetch Global Settings
     let trackBottleLevels = false;
     let bottleOptions: any[] = [];
     try {
@@ -32,11 +30,15 @@ export default async function InventoryPage() {
     }
 
     let orgLocations: { id: number; name: string }[] = [];
+    // Also load location audit settings so the client knows which buttons to show per location
+    let locationAuditSettings: Record<number, Record<string, any>> = {};
     try {
-        orgLocations = await db.query(
-            'SELECT id, name FROM locations WHERE organization_id = $1 ORDER BY id ASC',
+        const locs = await db.query(
+            'SELECT id, name, COALESCE(settings, \'{}\') AS settings FROM locations WHERE organization_id = $1 ORDER BY id ASC',
             [session.organizationId]
         );
+        orgLocations = locs.map((l: any) => ({ id: l.id, name: l.name }));
+        for (const l of locs) locationAuditSettings[l.id] = l.settings || {};
     } catch {}
 
     let organizationMode = 'bar_and_food';
@@ -45,5 +47,14 @@ export default async function InventoryPage() {
         if (orgRow?.settings?.organization_mode) organizationMode = orgRow.settings.organization_mode;
     } catch {}
 
-    return <InventoryClient user={user} trackBottleLevels={trackBottleLevels} bottleOptions={bottleOptions} orgLocations={orgLocations} organizationMode={organizationMode} />;
+    return (
+        <InventoryClient
+            user={user}
+            trackBottleLevels={trackBottleLevels}
+            bottleOptions={bottleOptions}
+            orgLocations={orgLocations}
+            organizationMode={organizationMode}
+            locationAuditSettings={locationAuditSettings}
+        />
+    );
 }
