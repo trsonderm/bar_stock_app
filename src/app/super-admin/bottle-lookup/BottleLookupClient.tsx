@@ -1,3 +1,6 @@
+/**
+ * Configure and test the barcode lookup pipeline.
+ */
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
@@ -194,7 +197,7 @@ export default function BottleLookupClient() {
             <div style={{ background: '#111827', border: '1px solid #374151', borderRadius: '8px', padding: '1rem', marginBottom: '1.5rem', fontSize: '0.85rem', color: '#9ca3af' }}>
                 <strong style={{ color: '#d1d5db', display: 'block', marginBottom: '0.5rem' }}>How Barcode Lookup Works</strong>
                 <ol style={{ margin: 0, paddingLeft: '1.25rem', lineHeight: '1.8' }}>
-                    <li>Camera opens and scans the bottle's barcode (UPC/EAN/Code128).</li>
+                    <li>Camera opens and scans the bottle&apos;s barcode (UPC/EAN/Code128).</li>
                     <li>If <strong>local lookup</strong> is enabled, searches your inventory for an existing product with that barcode.</li>
                     <li>If not found locally and <strong>external lookup</strong> is enabled, queries the selected external service.</li>
                     <li>If <strong>auto-fill</strong> is enabled, product name and type fields are pre-populated.</li>

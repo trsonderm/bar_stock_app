@@ -1,3 +1,7 @@
+/**
+ * Configuration of the barcode lookup pipeline (local items -> site bottle DB ->
+ * external UPC provider), stored as JSON in system_settings.bottle_lookup_config.
+ */
 export interface BottleLookupConfig {
     local_lookup_enabled: boolean;
     site_lookup_enabled: boolean;

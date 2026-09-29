@@ -1,3 +1,7 @@
+/**
+ * Staff inventory screen: loads the user's locations and bottle-level options
+ * and renders the inventory client.
+ */
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
 import { redirect } from 'next/navigation';

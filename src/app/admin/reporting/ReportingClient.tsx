@@ -1,3 +1,6 @@
+/**
+ * Usage reporting dashboard with filters, charts and predictions.
+ */
 'use client';
 
 import { useState, useEffect } from 'react';

@@ -1,3 +1,8 @@
+/**
+ * GET /api/admin/notifications?limit=&offset=
+ *
+ * Admin-only paged list of every notification in the caller's organization.
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';

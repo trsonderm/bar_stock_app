@@ -1,3 +1,6 @@
+/**
+ * Global system settings page.
+ */
 import SettingsClient from './SettingsClient';
 import { requireSuperAdmin } from '@/lib/auth-server';
 import { db } from '@/lib/db';

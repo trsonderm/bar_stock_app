@@ -1,3 +1,6 @@
+/**
+ * Supplier detail: linked items, costs and SKUs.
+ */
 'use client';
 
 import { useState } from 'react';

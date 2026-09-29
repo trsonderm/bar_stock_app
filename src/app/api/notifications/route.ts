@@ -1,3 +1,9 @@
+/**
+ * /api/notifications — the signed-in user's own notifications.
+ *
+ *  GET  up to 50 unread notifications
+ *  PUT  mark read: { id } or { all: true }
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
@@ -7,8 +13,7 @@ export async function GET(req: NextRequest) {
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     try {
-        // Fetch unread notifications for the user
-        // Optional: Limit to last 50?
+        // Latest 50 unread notifications for this user
         const notifications = await db.query(`
             SELECT * FROM notifications 
             WHERE user_id = $1 

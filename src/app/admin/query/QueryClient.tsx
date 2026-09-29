@@ -1,3 +1,6 @@
+/**
+ * Stock added / removed per user and product for a date range.
+ */
 'use client';
 
 import { useState } from 'react';

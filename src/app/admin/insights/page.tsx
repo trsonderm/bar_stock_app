@@ -1,3 +1,6 @@
+/**
+ * Usage insights and forecasts page.
+ */
 import { getSession } from '@/lib/auth';
 import { redirect } from 'next/navigation';
 import InsightsClient from './InsightsClient';

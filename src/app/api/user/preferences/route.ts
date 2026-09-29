@@ -1,3 +1,9 @@
+/**
+ * /api/user/preferences — the signed-in user's notification preferences.
+ *
+ *  GET  read
+ *  POST replace with the JSON body
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';

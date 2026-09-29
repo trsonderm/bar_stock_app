@@ -1,3 +1,9 @@
+/**
+ * /api/super-admin/ml-models — forecasting model configuration (ml_model_config).
+ *
+ *  GET  current config merged with defaults
+ *  POST save config
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';

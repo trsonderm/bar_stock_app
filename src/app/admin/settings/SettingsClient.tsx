@@ -1,3 +1,6 @@
+/**
+ * Organization settings: general, inventory display, branding, stations and more.
+ */
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
@@ -555,7 +558,7 @@ export default function SettingsClient() {
                                 <p style={{ color: '#e5e7eb', margin: '0 0 0.5rem 0', fontWeight: 'bold' }}>To install manually on Android (Chrome):</p>
                                 <ol style={{ margin: 0, paddingLeft: '1.2rem', color: '#d1d5db', fontSize: '0.9rem' }}>
                                     <li>Tap the browser menu (⋮) at the top right.</li>
-                                    <li>Select <strong>"Add to Home screen"</strong> or <strong>"Install App"</strong>.</li>
+                                    <li>Select <strong>&quot;Add to Home screen&quot;</strong> or <strong>&quot;Install App&quot;</strong>.</li>
                                 </ol>
                             </div>
                         )}
@@ -566,7 +569,7 @@ export default function SettingsClient() {
                 <div className={styles.card} style={{ gridColumn: 'span 2' }}>
                     <div className={styles.cardTitle}>Global Stock Counting Mode</div>
                     <p style={{ color: '#9ca3af', marginBottom: '1rem' }}>
-                        Choose how your inventory counts are entered. Changing this affects the "Stock View" and "Bottles" pages.
+                        Choose how your inventory counts are entered. Changing this affects the &quot;Stock View&quot; and &quot;Bottles&quot; pages.
                     </p>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', background: '#1f2937', padding: '1rem', borderRadius: '0.5rem', border: '1px solid #374151' }}>
                         <label style={{ display: 'flex', alignItems: 'center', gap: '1rem', cursor: 'pointer' }}>
@@ -580,7 +583,7 @@ export default function SettingsClient() {
                             />
                             <div>
                                 <div style={{ color: 'white', fontWeight: 'bold' }}>Category Level Counting</div>
-                                <div style={{ fontSize: '0.85rem', color: '#9ca3af' }}>Stock is entered per category (e.g. "Liquor" page lists all liquors).</div>
+                                <div style={{ fontSize: '0.85rem', color: '#9ca3af' }}>Stock is entered per category (e.g. &quot;Liquor&quot; page lists all liquors).</div>
                             </div>
                         </label>
                         <label style={{ display: 'flex', alignItems: 'center', gap: '1rem', cursor: 'pointer' }}>
@@ -912,7 +915,7 @@ export default function SettingsClient() {
                 <div className={styles.card} style={{ gridColumn: 'span 2' }}>
                     <div className={styles.cardTitle}>Bottle Level Tracking</div>
                     <p style={{ color: '#9ca3af', fontSize: '0.9rem', marginBottom: '1rem' }}>
-                        If enabled, staff will be asked to record the "Existing Bottle Level" when they replace a bottle (Subtract Stock) for Wine/Liquor.
+                        If enabled, staff will be asked to record the &quot;Existing Bottle Level&quot; when they replace a bottle (Subtract Stock) for Wine/Liquor.
                     </p>
 
                     <div style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>

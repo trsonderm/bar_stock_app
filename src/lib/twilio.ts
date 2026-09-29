@@ -1,3 +1,7 @@
+/**
+ * SMS via Twilio, using credentials stored in system_settings
+ * (twilio_sid, twilio_token, twilio_from).
+ */
 import twilio from 'twilio';
 import { db } from '@/lib/db';
 

@@ -1,3 +1,6 @@
+/**
+ * Content card container.
+ */
 import React from 'react';
 
 interface CardProps {

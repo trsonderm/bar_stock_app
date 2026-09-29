@@ -1,3 +1,9 @@
+/**
+ * /api/support/tickets — support tickets.
+ *
+ *  GET  super admins see every ticket; everyone else sees their org's tickets
+ *  POST open a ticket (multipart: subject, description, optional file)
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
@@ -52,38 +58,28 @@ export async function POST(req: NextRequest) {
             attachmentPath = await saveFile(file);
         }
 
-        // Begin Transaction
-        await db.execute('BEGIN');
-
-        try {
-            // 1. Create Ticket
-            const ticketRes = await db.one(`
+        const ticketId = await db.transaction(async (tx) => {
+            // 1. Create the ticket
+            const ticketRes = await tx.one(`
                 INSERT INTO support_tickets (organization_id, user_id, subject, description, status)
                 VALUES ($1, $2, $3, $4, 'open')
                 RETURNING id
             `, [session.organizationId, session.id, subject, description]);
 
-            const ticketId = ticketRes.id;
-
-            // 2. Create Initial Message
+            // 2. The description doubles as the first message in the thread
             const attachments = attachmentPath ? JSON.stringify([attachmentPath]) : '[]';
-
-            await db.execute(`
+            await tx.execute(`
                 INSERT INTO support_messages (ticket_id, user_id, message, attachments)
                 VALUES ($1, $2, $3, $4)
-            `, [ticketId, session.id, description, attachments]);
+            `, [ticketRes.id, session.id, description, attachments]);
 
-            // Log
-            await db.execute('INSERT INTO activity_logs (organization_id, user_id, action, details) VALUES ($1, $2, $3, $4)',
-                [session.organizationId, session.id, 'CREATE_TICKET', JSON.stringify({ ticketId, subject })]);
+            await tx.execute('INSERT INTO activity_logs (organization_id, user_id, action, details) VALUES ($1, $2, $3, $4)',
+                [session.organizationId, session.id, 'CREATE_TICKET', JSON.stringify({ ticketId: ticketRes.id, subject })]);
 
-            await db.execute('COMMIT');
-            return NextResponse.json({ success: true, ticketId });
+            return ticketRes.id;
+        });
 
-        } catch (err) {
-            await db.execute('ROLLBACK');
-            throw err;
-        }
+        return NextResponse.json({ success: true, ticketId });
 
     } catch (e) {
         console.error('Create Ticket Error', e);

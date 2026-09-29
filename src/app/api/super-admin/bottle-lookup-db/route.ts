@@ -1,3 +1,10 @@
+/**
+ * /api/super-admin/bottle-lookup-db — the shared site bottle (barcode) database.
+ *
+ *  GET    list / search entries
+ *  POST   add or update one entry
+ *  DELETE remove an entry
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';

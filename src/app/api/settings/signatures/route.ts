@@ -1,3 +1,10 @@
+/**
+ * /api/settings/signatures — saved signature images used on reports.
+ *
+ *  GET  the user's own and shared signatures
+ *  POST save { label, data_url, is_shared }
+ *  PUT  { id } make one signature the organization's active signature
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';

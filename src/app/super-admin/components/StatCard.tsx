@@ -1,3 +1,6 @@
+/**
+ * Metric tile used on the super admin dashboard.
+ */
 import React from 'react';
 import { LucideIcon, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 

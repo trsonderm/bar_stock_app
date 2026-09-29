@@ -1,3 +1,6 @@
+/**
+ * Staff scheduler: assign shifts to users per day, including recurring assignments.
+ */
 'use client';
 
 import { useState, useEffect } from 'react';

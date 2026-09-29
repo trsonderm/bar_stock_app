@@ -1,3 +1,6 @@
+/**
+ * Draw, save and select signature images used on reports.
+ */
 'use client';
 
 import { useState, useRef, useEffect } from 'react';

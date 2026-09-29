@@ -1,3 +1,6 @@
+/**
+ * Create and edit categories, their stock buttons and sub-categories.
+ */
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -176,7 +179,7 @@ export default function CategoriesClient() {
                                 onChange={e => setEnableReporting(e.target.checked)}
                                 style={{ width: '18px', height: '18px' }}
                             />
-                            <label style={{ fontSize: '0.9rem', color: '#d1d5db' }}>Include in "Bottle Levels" Report</label>
+                            <label style={{ fontSize: '0.9rem', color: '#d1d5db' }}>Include in &quot;Bottle Levels&quot; Report</label>
                         </div>
                     </div>
 
@@ -186,7 +189,7 @@ export default function CategoriesClient() {
                             <div style={{ gridColumn: 'span 1', background: '#1f2937', padding: '1rem', borderRadius: '0.5rem', border: '1px solid #374151' }}>
                                 <label className={styles.label} style={{ color: '#9ca3af' }}>Stock Options</label>
                                 <p style={{ fontSize: '0.85rem', color: '#6b7280' }}>
-                                    Stock options are disabled because "Product Level Counting" is active in Settings.
+                                    Stock options are disabled because &quot;Product Level Counting&quot; is active in Settings.
                                 </p>
                             </div>
                         )}

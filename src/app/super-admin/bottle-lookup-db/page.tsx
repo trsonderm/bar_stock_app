@@ -1,3 +1,6 @@
+/**
+ * Site bottle database page.
+ */
 import { getSession } from '@/lib/auth';
 import { redirect } from 'next/navigation';
 import BottleLookupDbClient from './BottleLookupDbClient';

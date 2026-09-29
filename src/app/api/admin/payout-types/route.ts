@@ -1,3 +1,10 @@
+/**
+ * /api/admin/payout-types — cash payout categories used on the close-shift form.
+ *
+ *  GET    list (any signed-in user; seeds DJ / Karaoke / Miscellaneous on first use)
+ *  POST   create { name } (admin)
+ *  DELETE { id } (admin)
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';

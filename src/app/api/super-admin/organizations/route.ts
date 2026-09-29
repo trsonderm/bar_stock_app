@@ -1,3 +1,9 @@
+/**
+ * /api/super-admin/organizations
+ *
+ *  GET  every organization
+ *  POST { id, billing_status?, sms_enabled?, subscription_plan?, default_theme? }
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';

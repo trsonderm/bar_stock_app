@@ -1,3 +1,6 @@
+/**
+ * Configure automated ordering (suppliers, approval, CC users) and test it.
+ */
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -249,7 +252,7 @@ export default function OrderingSettingsClient() {
 
                             {config.require_confirmation && (
                                 <div style={{ marginTop: '2rem', padding: '1rem', background: '#fff7ed', border: '1px solid #fdba74', borderRadius: '5px', fontSize: '0.9rem', color: '#c2410c' }}>
-                                    <strong>Internal Note:</strong> Since "Require Manual Confirmation" is ON, you (the manager) will receive this email FIRST with an [Approve Order] button. The supplier will only receive it after you click Approve.
+                                    <strong>Internal Note:</strong> Since &quot;Require Manual Confirmation&quot; is ON, you (the manager) will receive this email FIRST with an [Approve Order] button. The supplier will only receive it after you click Approve.
                                 </div>
                             )}
 

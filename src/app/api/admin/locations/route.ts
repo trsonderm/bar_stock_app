@@ -1,3 +1,11 @@
+/**
+ * /api/admin/locations — bar locations of an organization.
+ *
+ *  GET    list (admin; super admins may pass ?orgId=)
+ *  POST   create { name, address } (admin)
+ *  PUT    rename { id, name, address } (admin)
+ *  DELETE ?id= (admin) — cascades to that location's inventory rows
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
@@ -73,10 +81,7 @@ export async function DELETE(req: NextRequest) {
         const id = searchParams.get('id');
         if (!id) return NextResponse.json({ error: 'Missing ID' }, { status: 400 });
 
-        // Check for usage in inventory? 
-        // Logic: If we delete a location, inventory cascades? Or block?
-        // Schema says: FOREIGN KEY (location_id) REFERENCES locations(id) ON DELETE CASCADE
-        // So it will cascade delete inventory. That's fine for now, but maybe warn user.
+        // inventory.location_id is ON DELETE CASCADE, so the location's stock rows go with it.
 
         await db.execute('DELETE FROM locations WHERE id = $1 AND organization_id = $2', [id, session.organizationId]);
         return NextResponse.json({ success: true });

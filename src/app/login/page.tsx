@@ -1,3 +1,7 @@
+/**
+ * Login page: email + password, or PIN on a registered station. Optional
+ * quick-login buttons appear when the super admin enables them.
+ */
 'use client';
 
 import { useState, useEffect, Suspense } from 'react';
@@ -34,20 +38,13 @@ function LoginContent() {
 
       if (res.ok) {
         console.log('Login success:', data);
-        if (data.isSuperAdmin) {
-          console.log('Redirecting to super-admin...');
-          router.refresh();
-          router.push('/super-admin');
-        } else if (data.role === 'admin') {
-          console.log('Redirecting to admin dashboard...');
-          router.refresh();
-          // Redirect to admin dashboard
-          router.push('/admin/dashboard');
-        } else {
-          console.log('Redirecting to inventory...');
-          router.refresh();
-          router.push('/inventory');
-        }
+        const destination = data.isSuperAdmin
+          ? '/super-admin'
+          : data.role === 'admin'
+          ? '/admin/dashboard'
+          : '/inventory';
+        console.log('Navigating to:', destination);
+        window.location.href = destination;
       } else {
         console.error('Login failed:', data);
         setError(data.error || 'Login failed');

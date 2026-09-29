@@ -1,3 +1,6 @@
+/**
+ * Smart Order page (Pro plan).
+ */
 import { db } from '@/lib/db';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/auth';

@@ -1,3 +1,6 @@
+/**
+ * Platform activity logs and log retention settings.
+ */
 'use client';
 
 import { useState, useEffect } from 'react';

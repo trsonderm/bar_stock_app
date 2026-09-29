@@ -1,3 +1,9 @@
+/**
+ * GET /api/admin/reporting/low-stock?locationId=
+ *
+ * Items whose total stock (optionally at one location) is at or below their
+ * low-stock threshold.
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { db } from '@/lib/db';

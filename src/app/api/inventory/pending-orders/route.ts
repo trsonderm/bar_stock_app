@@ -1,3 +1,9 @@
+/**
+ * GET /api/inventory/pending-orders
+ *
+ * Open purchase orders (PENDING / IN_TRANSIT / PARTIALLY_RECEIVED) for the
+ * pending-deliveries banner on the inventory screen.
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';

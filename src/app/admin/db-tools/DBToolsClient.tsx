@@ -1,3 +1,6 @@
+/**
+ * Duplicate and orphaned record tools (uses the super-admin tools API).
+ */
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -202,7 +205,7 @@ export default function DBToolsClient() {
                                 <div className="space-y-2">
                                     {dup.ids.map((id: number, idx: number) => (
                                         <div key={id} className="flex justify-between items-center bg-gray-800 p-2 rounded">
-                                            <span className="text-white">ID: {id} - "{dup.names[idx]}"</span>
+                                            <span className="text-white">ID: {id} - &quot;{dup.names[idx]}&quot;</span>
                                             <button
                                                 onClick={() => mergeDuplicates(id, dup.ids.filter((oid: number) => oid !== id))}
                                                 className="bg-green-600 text-white text-xs px-2 py-1 rounded"

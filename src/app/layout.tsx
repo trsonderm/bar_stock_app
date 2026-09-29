@@ -1,3 +1,6 @@
+/**
+ * Root layout: global styles, MUI theme, and the signed-in user's saved UI theme.
+ */
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";

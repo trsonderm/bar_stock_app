@@ -1,8 +1,14 @@
+/**
+ * POST /api/super-admin/test-verification-email
+ *
+ * Super admin: sends a sample account-verification email to check the
+ * notifications SMTP tier and the verification link.
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
 import { sendEmail } from '@/lib/mail';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'crypto';
 
 export async function POST(req: NextRequest) {
     const session = await getSession();
@@ -20,7 +26,7 @@ export async function POST(req: NextRequest) {
         const userId = session.id;
 
         // Ensure email_verification_tokens table exists (graceful)
-        const token = uuidv4();
+        const token = randomUUID();
         const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
 
         await db.execute(

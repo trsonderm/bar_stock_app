@@ -1,131 +1,23 @@
+/**
+ * Station (PIN-login device) tokens.
+ *
+ * An admin registers a device as a station for their organization; the device
+ * then holds a long-lived `station_token` cookie. PIN login and the station
+ * PIN pad pages are only available while that token is valid.
+ */
+import { randomUUID } from 'crypto';
 import { db } from './db';
 
-// Helper to enforce organization isolation
+/** Organization-scoped operations. */
 export class OrgScope {
     constructor(private orgId: number) {
         if (!orgId) throw new Error('Organization ID is required');
     }
 
-    // Generic helper queries (wrappers)
-    async query(sql: string, params: any[] = []) {
-        return await db.query(sql, params);
-    }
-
-    // --- Users ---
-    async getUsers() {
-        return await db.query('SELECT * FROM users WHERE organization_id = $1', [this.orgId]);
-    }
-
-    async getUser(id: number) {
-        return await db.one('SELECT * FROM users WHERE organization_id = $1 AND id = $2', [this.orgId, id]);
-    }
-
-    // --- Items / Inventory ---
-    async getItems(categoryId?: number) {
-        let sql = 'SELECT * FROM items WHERE organization_id = $1';
-        const params: any[] = [this.orgId];
-
-        if (categoryId) {
-            // Assuming categories are joined or filtered. 
-            // For now simple Filter if column exists, or we might need JOIN logic.
-            // Schema has 'type' on items which matches category name.
-            // Let's assume we pass category name as type?
-            // Or if categoryId is passed, we first get category name?
-            // Simplified: fetch all and filter in app or update sql if we know structure.
-            // Let's stick to simple for now. 
-        }
-        return await db.query(sql, params);
-    }
-
-    // --- Activity Logs ---
-    async logActivity(userId: number, action: string, details: any) {
-        return await db.execute(`
-            INSERT INTO activity_logs (organization_id, user_id, action, details)
-            VALUES ($1, $2, $3, $4)
-        `, [this.orgId, userId, action, JSON.stringify(details)]);
-    }
-
-    async getLogs(limit = 50) {
-        return await db.query(`
-            SELECT l.*, u.first_name, u.last_name 
-            FROM activity_logs l
-            LEFT JOIN users u ON l.user_id = u.id
-            WHERE l.organization_id = $1
-            ORDER BY l.timestamp DESC
-            LIMIT $2
-        `, [this.orgId, limit]);
-    }
-
-    // --- Shifts ---
-    async getShifts(startTime: string, endTime: string) {
-        return await db.query(`
-            SELECT * FROM shifts 
-            WHERE organization_id = $1 
-            AND start_time >= $2 AND end_time <= $3
-            ORDER BY start_time ASC
-        `, [this.orgId, startTime, endTime]);
-    }
-
-    async createShift(label: string, startTime: string, endTime: string, assignedUserIds: number[] = []) {
-        return await db.one(`
-            INSERT INTO shifts (organization_id, label, start_time, end_time, assigned_user_ids)
-            VALUES ($1, $2, $3, $4, $5)
-            RETURNING *
-        `, [this.orgId, label, startTime, endTime, JSON.stringify(assignedUserIds)]);
-    }
-
-    async updateShift(id: number, label: string, startTime: string, endTime: string, assignedUserIds: number[]) {
-        return await db.one(`
-            UPDATE shifts 
-            SET label = $3, start_time = $4, end_time = $5, assigned_user_ids = $6
-            WHERE id = $1 AND organization_id = $2
-            RETURNING *
-        `, [id, this.orgId, label, startTime, endTime, JSON.stringify(assignedUserIds)]);
-    }
-
-    async deleteShift(id: number) {
-        return await db.execute('DELETE FROM shifts WHERE id = $1 AND organization_id = $2', [id, this.orgId]);
-    }
-
-    // --- Notifications ---
-    async getNotifications(userId: number, limit = 20) {
-        return await db.query(`
-            SELECT * FROM notifications 
-            WHERE organization_id = $1 AND user_id = $2
-            ORDER BY created_at DESC
-            LIMIT $3
-        `, [this.orgId, userId, limit]);
-    }
-
-    async createNotification(userId: number, type: string, title: string, message: string, data: any = {}) {
-        return await db.one(`
-            INSERT INTO notifications (organization_id, user_id, type, title, message, data)
-            VALUES ($1, $2, $3, $4, $5, $6)
-            RETURNING *
-        `, [this.orgId, userId, type, title, message, JSON.stringify(data)]);
-    }
-
-    async markNotificationRead(id: number) {
-        return await db.execute('UPDATE notifications SET is_read = TRUE WHERE id = $1 AND organization_id = $2', [id, this.orgId]);
-    }
-
-    // --- Purchase Orders ---
-    async getPurchaseOrders(status?: string) {
-        if (status) {
-            return await db.query('SELECT * FROM purchase_orders WHERE organization_id = $1 AND status = $2 ORDER BY created_at DESC', [this.orgId, status]);
-        }
-        return await db.query('SELECT * FROM purchase_orders WHERE organization_id = $1 ORDER BY created_at DESC', [this.orgId]);
-    }
-
-    async createPurchaseOrder(supplierId: number, expectedDate: string, details: any = {}) {
-        return await db.one(`
-            INSERT INTO purchase_orders (organization_id, supplier_id, expected_delivery_date, details)
-            VALUES ($1, $2, $3, $4)
-            RETURNING *
-        `, [this.orgId, supplierId, expectedDate, JSON.stringify(details)]);
-    }
-
-    // --- Station Tokens ---
+    /**
+     * Issues a new station token for this organization, valid for `days` days,
+     * optionally bound to a browser fingerprint, IP and user agent.
+     */
     async createStationToken(
         deviceName: string,
         days: number = 90,
@@ -133,8 +25,7 @@ export class OrgScope {
         registeredIp?: string,
         userAgent?: string
     ) {
-        const { v4: uuidv4 } = require('uuid');
-        const token = uuidv4();
+        const token = randomUUID();
         const expiresAt = new Date();
         expiresAt.setDate(expiresAt.getDate() + days);
         const expiresAtIso = expiresAt.toISOString();
@@ -150,8 +41,11 @@ export class OrgScope {
     }
 }
 
-// Global Token Validator
-// fingerprintHash is optional — if the record has one stored, it must match
+/**
+ * Returns the token row (with org_id, org_name and subdomain) if `token` is
+ * unexpired and not revoked, otherwise null. When the token was registered
+ * with a fingerprint and one is supplied, they must match. Updates last_used_at.
+ */
 export async function validateStationToken(token: string, fingerprintHash?: string) {
     const row = await db.one(`
         SELECT t.*, o.subdomain, o.id as org_id, o.name as org_name
@@ -164,9 +58,8 @@ export async function validateStationToken(token: string, fingerprintHash?: stri
 
     if (!row) return null;
 
-    // If both a fingerprint was stored at registration AND one was provided now, they must match
     if (fingerprintHash && row.fingerprint_hash && fingerprintHash !== row.fingerprint_hash) {
-        return null; // Fingerprint mismatch — reject
+        return null;
     }
 
     await db.execute('UPDATE organization_tokens SET last_used_at = NOW() WHERE id = $1', [row.id]);

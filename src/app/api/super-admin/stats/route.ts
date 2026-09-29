@@ -1,3 +1,6 @@
+/**
+ * GET /api/super-admin/stats — platform dashboard counts and 7-day growth/activity series.
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';

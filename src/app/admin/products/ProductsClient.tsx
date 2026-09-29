@@ -1,3 +1,6 @@
+/**
+ * Product catalogue: create, edit, bulk edit, CSV import and delete items.
+ */
 'use client';
 
 import { useState, useEffect } from 'react';

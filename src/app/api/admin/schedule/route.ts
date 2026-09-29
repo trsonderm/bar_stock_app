@@ -1,6 +1,25 @@
+/**
+ * /api/admin/schedule — staff schedule entries (user_schedules), admin only.
+ *
+ *  GET    ?start=&end=&locationId= entries in a date range
+ *  POST   { userIds, shiftId, dates, isRecurring } assign a shift (replaces that
+ *         user's entry on each date); recurring assignments share a recurring_group_id
+ *  PUT    { id, userId, shiftId, modifyStrategy: 'instance' | 'following' | 'all', ... }
+ *  DELETE { id, modifyStrategy, recurringGroupId, date }
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { db } from '@/lib/db';
+import { randomUUID } from 'crypto';
+
+/** True if the shift and every user id belong to the organization. */
+async function ownsShiftAndUsers(organizationId: number, shiftId: unknown, userIds: unknown[]): Promise<boolean> {
+    const shift = await db.one('SELECT id FROM shifts WHERE id = $1 AND organization_id = $2', [shiftId, organizationId]);
+    if (!shift) return false;
+    const ids = [...new Set(userIds.map(Number))];
+    const users = await db.query('SELECT id FROM users WHERE id = ANY($1::int[]) AND organization_id = $2', [ids, organizationId]);
+    return users.length === ids.length;
+}
 
 export async function GET(req: NextRequest) {
     const session = await getSession();
@@ -41,8 +60,6 @@ export async function GET(req: NextRequest) {
     }
 }
 
-import { randomUUID } from 'crypto';
-
 export async function POST(req: NextRequest) {
     const session = await getSession();
     if (!session || session.role !== 'admin') {
@@ -58,6 +75,9 @@ export async function POST(req: NextRequest) {
         }
 
         const organizationId = session.organizationId;
+        if (!(await ownsShiftAndUsers(organizationId, shiftId, userIds))) {
+            return NextResponse.json({ error: 'Shift or user not found' }, { status: 404 });
+        }
         const recurringGroupId = isRecurring && dates.length > 1 ? randomUUID() : null;
 
         for (const date of dates) {
@@ -94,6 +114,9 @@ export async function PUT(req: NextRequest) {
         const { id, userId, shiftId, modifyStrategy, recurringGroupId, date } = body;
 
         const organizationId = session.organizationId;
+        if (!(await ownsShiftAndUsers(organizationId, shiftId, [userId]))) {
+            return NextResponse.json({ error: 'Shift or user not found' }, { status: 404 });
+        }
 
         if (modifyStrategy === 'all' && recurringGroupId) {
             // Update all records with this recurring_group_id

@@ -1,3 +1,6 @@
+/**
+ * SMTP mail accounts page.
+ */
 import MailAccountsClient from './MailAccountsClient';
 import { requireSuperAdmin } from '@/lib/auth-server';
 import { db } from '@/lib/db';

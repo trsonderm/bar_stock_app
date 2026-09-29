@@ -1,3 +1,6 @@
+/**
+ * Charts and tables for /api/admin/insights (burn rates, anomalies, forecasts).
+ */
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 

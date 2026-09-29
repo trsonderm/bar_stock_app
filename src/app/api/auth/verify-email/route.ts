@@ -1,3 +1,9 @@
+/**
+ * GET /api/auth/verify-email?token=
+ *
+ * Public link target from the verification email: marks the token used and the
+ * user verified, then redirects to /login?verified=ok|already|expired|invalid.
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { sendEmail } from '@/lib/mail';

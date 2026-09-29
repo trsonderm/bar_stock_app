@@ -1,3 +1,6 @@
+/**
+ * DELETE /api/super-admin/devices/:id — revokes a station token.
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { db } from '@/lib/db';

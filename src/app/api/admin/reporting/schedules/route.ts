@@ -1,4 +1,10 @@
-
+/**
+ * /api/admin/reporting/schedules — email schedule of a saved report (admin only).
+ *
+ *  GET  ?reportId= current schedule
+ *  POST { reportId, frequency: 'daily' | 'weekly' | 'monthly', recipients, active }
+ *       creates or updates the schedule; the scheduler sends it at 08:00.
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { db } from '@/lib/db';
@@ -38,6 +44,9 @@ export async function POST(req: NextRequest) {
         const body = await req.json();
         const { reportId, frequency, recipients, active } = body;
         const organizationId = session.organizationId;
+
+        const report = await db.one('SELECT id FROM saved_reports WHERE id = $1 AND organization_id = $2', [reportId, organizationId]);
+        if (!report) return NextResponse.json({ error: 'Report not found' }, { status: 404 });
 
         // Check if exists
         const rows = await db.query(

@@ -1,3 +1,6 @@
+/**
+ * Calendar popover for choosing a start/end date range.
+ */
 import React, { useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 

@@ -1,3 +1,6 @@
+/**
+ * Top-bar bell showing the user's unread notifications (/api/notifications).
+ */
 'use client';
 
 import { useState, useEffect, useRef } from 'react';

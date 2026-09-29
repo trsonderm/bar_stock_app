@@ -1,13 +1,15 @@
+/**
+ * /api/super-admin/integrations — third-party credentials (e.g. Twilio) in system_settings.
+ *
+ *  GET  current values
+ *  POST save values
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
 
 export async function GET(req: NextRequest) {
     const session = await getSession();
-    // Check if super admin (simplified check: is admin of org 1 or has specific permission? 
-    // For now assuming role 'admin' of 'system' org or just check permission 'super_admin'
-
-    // In login route we added `isSuperAdmin`.
     if (!session || !session.isSuperAdmin) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }

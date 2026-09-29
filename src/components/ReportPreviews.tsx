@@ -1,3 +1,7 @@
+/**
+ * Renders a report (daily, low stock, ...) from live data, or from sample data
+ * when the caller toggles the sample view.
+ */
 import React from 'react';
 
 interface ReportPreviewProps {

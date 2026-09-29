@@ -1,3 +1,10 @@
+/**
+ * GET /api/inventory/predictive?model=SMA|EMA|...&locationId=
+ *
+ * Smart Order suggestions: estimates each item's burn rate from recent usage
+ * with the chosen model, subtracts stock and open orders, and returns suggested
+ * order quantities rounded to the item's order size.
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';

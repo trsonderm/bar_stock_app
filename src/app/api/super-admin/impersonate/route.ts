@@ -1,3 +1,10 @@
+/**
+ * POST /api/super-admin/impersonate
+ *
+ * Super admin: re-issues the session cookie scoped to another organization
+ * ({ orgId }) with admin rights and isImpersonating = true, so tenant admin
+ * pages can be used on that organization's behalf.
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession, createSessionToken, COOKIE_OPTIONS, UserRole } from '@/lib/auth';

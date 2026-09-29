@@ -1,3 +1,6 @@
+/**
+ * Raw database browser and SQL console.
+ */
 'use client';
 
 import { useState, useEffect } from 'react';

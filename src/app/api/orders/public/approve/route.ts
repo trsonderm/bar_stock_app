@@ -1,3 +1,10 @@
+/**
+ * POST /api/orders/public/approve
+ *
+ * Public (token-authenticated) approve or decline of a pending automated order.
+ * Body: { token, action: 'approve' | 'decline', items }. Sending the approved
+ * order to the supplier is not implemented yet.
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 // import { sendEmail } from '@/lib/email'; // Assume exists or we stub it
@@ -31,17 +38,9 @@ export async function POST(req: NextRequest) {
                 [JSON.stringify(finalItems), order.id]
             );
 
-            // 3. Trigger Email Sending (Stub)
-            console.log('--- SENT EMAIL TO SUPPLIER ---');
-            console.log('Items:', finalItems);
-
-            // 4. Trigger SMS to Supplier? (Optional feature: "text delivery of the link to phone numbers added in user accounts") 
-            // Wait, the user said "add a text delivery of the link to phone numbers added in user accounts that show the order items and the same link to approve edit decline" 
-            // -> This sends the link TO THE USER (manager) for approval.
-            // Once approved, we send order to supplier via EMAIL (usually). 
-            // If we also text the supplier, we'd need their mobile. 
-            // Prompt says "order email or text confirmations should come on the days teh suppliers are selected."
-            // Assuming "Sent" means email to supplier.
+            // TODO: deliver the approved order to the supplier (email and/or SMS).
+            // Only the status change is implemented so far.
+            console.log(`[orders/approve] Order ${order.id} approved with ${finalItems.length} items (supplier delivery not implemented)`);
 
             return NextResponse.json({ success: true, status: 'sent' });
         }

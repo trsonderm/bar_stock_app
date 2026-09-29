@@ -1,3 +1,11 @@
+/**
+ * Outgoing email via SMTP (nodemailer).
+ *
+ * SMTP accounts are configured per "tier" by the super admin in
+ * system_settings (<tier>_smtp_host / _port / _user / _pass / _secure):
+ * reporting, support, admin and notifications. Every send is recorded in
+ * system_logs.
+ */
 import nodemailer from 'nodemailer';
 import { db } from './db';
 import { syslog } from './syslog';

@@ -1,3 +1,6 @@
+/**
+ * GET /api/system-settings/chat — whether live support chat is available.
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';

@@ -1,3 +1,6 @@
+/**
+ * Client-side CSV download helper.
+ */
 'use client';
 
 // Utility to export data to CSV

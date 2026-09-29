@@ -1,3 +1,7 @@
+/**
+ * Organization station page (/o/<subdomain>): shows the PIN pad when this device
+ * holds a valid station token for the organization.
+ */
 import { cookies } from 'next/headers';
 import { notFound } from 'next/navigation';
 import { db } from '@/lib/db';

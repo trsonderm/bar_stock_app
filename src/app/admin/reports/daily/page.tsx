@@ -1,3 +1,6 @@
+/**
+ * Daily report page.
+ */
 import { getSession } from '@/lib/auth';
 import { redirect } from 'next/navigation';
 import DailyReportClient from './DailyReportClient';

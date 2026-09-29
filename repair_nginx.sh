@@ -9,7 +9,7 @@ if [ "$EUID" -ne 0 ]; then
   exit 1
 fi
 
-APP_DIR="/srv/bar_stock_app"
+APP_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 echo "1. Killing any stuck processes on Port 80 / 443..."
 fuser -k 80/tcp || true

@@ -1,3 +1,9 @@
+/**
+ * GET /api/admin/query?start=&end=
+ *
+ * Admin activity query: stock added / removed per user and product between two
+ * dates (YYYY-MM-DD dates cover the whole day).
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
@@ -17,11 +23,7 @@ export async function GET(req: NextRequest) {
             return NextResponse.json({ error: 'Missing date range' }, { status: 400 });
         }
 
-        // Adjust end date to cover the full day if it's just a YYYY-MM-DD string
-        // If end is 2024-01-04, we want up to 2024-01-04 23:59:59 or just strict string comparison if user passes full ISO.
-        // Let's assume user passes simple dates, we'll append time.
-        // Actually, easiest is letting client handle ISO strings, but for robustness:
-        // Parse as LOCAL time string if standard date format
+        // Plain YYYY-MM-DD dates are widened to cover the whole day; full ISO timestamps are used as-is.
         let startDateStr = start;
         let endDateStr = end;
 
@@ -71,11 +73,6 @@ export async function GET(req: NextRequest) {
                 report[userName].removed[itemName] = (report[userName].removed[itemName] || 0) + qty;
             }
 
-            // Should we add ALL logs? Query asked for aggregate. 
-            // "get user activity which is grouped by user and aggregate sum"
-            // Let's return just aggregate for the summary view, maybe distinct logs aren't needed for the high level?
-            // "grouped by user and aggregate sum of actions by name of product"
-            // Let's mostly focus on sums. 
         });
 
         // Format for client

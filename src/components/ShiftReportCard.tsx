@@ -1,3 +1,6 @@
+/**
+ * Printable summary card for one closed shift; also exports the ShiftClose type.
+ */
 'use client';
 
 import React from 'react';

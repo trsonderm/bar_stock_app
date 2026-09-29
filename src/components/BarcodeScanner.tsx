@@ -1,3 +1,6 @@
+/**
+ * Camera barcode scanner modal used when adding or finding products.
+ */
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';

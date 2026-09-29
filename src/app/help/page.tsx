@@ -1,3 +1,6 @@
+/**
+ * Help centre (published articles) for signed-in users.
+ */
 import { getSession } from '@/lib/auth';
 import { redirect } from 'next/navigation';
 import HelpClient from './HelpClient';

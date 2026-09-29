@@ -1,3 +1,11 @@
+/**
+ * GET /api/admin/orders?locationId=
+ *
+ * Admin order tracking list for one location (query param, else the
+ * current_location_id cookie). Returns { current, history, archived } where
+ * current = PENDING / IN_TRANSIT / PARTIALLY_RECEIVED, history = RECEIVED /
+ * DELIVERED and archived = orders replaced by an edit/resubmit.
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db, pool } from '@/lib/db';
 import { getSession } from '@/lib/auth';

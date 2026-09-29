@@ -1,3 +1,8 @@
+/**
+ * Scheduled shift-report emails: each minute the scheduler calls
+ * runShiftReportSchedule(), which emails the shifts closed since the last run
+ * for every organization whose shift_report_schedule matches the current time.
+ */
 import { db } from './db';
 import { sendEmail } from './mail';
 import { buildShiftReportHtml } from './shift-report-email';

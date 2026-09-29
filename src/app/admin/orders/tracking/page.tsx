@@ -1,3 +1,6 @@
+/**
+ * Order tracking page.
+ */
 import { getSession } from '@/lib/auth';
 import { redirect } from 'next/navigation';
 import OrderTrackingClient from './OrderTrackingClient';

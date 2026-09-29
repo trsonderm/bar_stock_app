@@ -1,6 +1,13 @@
+/**
+ * /api/admin/settings/ordering — automated-ordering configuration (admin only).
+ *
+ *  GET  { config, suppliers, users } for the settings screen
+ *  POST replace organizations.ai_ordering_config with the JSON body
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
+import { parseJsonColumn } from '@/lib/json';
 
 export async function GET(req: NextRequest) {
     const session = await getSession();
@@ -13,13 +20,13 @@ export async function GET(req: NextRequest) {
 
         // 1. Fetch AI Config
         const org = await db.one('SELECT ai_ordering_config FROM organizations WHERE id = $1', [organizationId]);
-        const config = org.ai_ordering_config ? JSON.parse(org.ai_ordering_config) : {
+        const config = parseJsonColumn(org?.ai_ordering_config, {
             enabled: false,
             require_confirmation: true,
-            cc_emails: [], // stored as strings or user IDs? IDs preferred for lookup, but simple strings fine too. Let's use IDs.
-            cc_user_ids: [],
-            supplier_ids: [], // Whitelist of enabled suppliers
-        };
+            cc_emails: [],
+            cc_user_ids: [],      // users CC'd on approval requests
+            supplier_ids: [],     // suppliers enabled for automated ordering
+        });
 
         // 2. Fetch Suppliers (id, name, contact_email)
         const suppliers = await db.query(
@@ -50,10 +57,6 @@ export async function POST(req: NextRequest) {
     try {
         const organizationId = session.organizationId;
         const config = await req.json();
-
-        // Validate? 
-        // Ensure cc_user_ids is array
-        // Ensure supplier_ids is array
 
         await db.execute(
             'UPDATE organizations SET ai_ordering_config = $1 WHERE id = $2',

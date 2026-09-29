@@ -1,3 +1,6 @@
+/**
+ * Build a purchase order by hand and optionally email/SMS the supplier.
+ */
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';

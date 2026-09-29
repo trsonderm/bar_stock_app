@@ -1,3 +1,6 @@
+/**
+ * Dashboard: today's activity, stats and shortcuts.
+ */
 'use client';
 
 import { useState, useEffect } from 'react';

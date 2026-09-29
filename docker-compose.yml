@@ -1,3 +1,8 @@
+# TopShelf Inventory — production stack.
+#
+# Secrets are read from a `.env` file next to this file (never committed).
+# Copy .env.example to .env and set at least JWT_SECRET before `docker compose up`.
+
 version: '3.8'
 
 services:
@@ -10,9 +15,14 @@ services:
     ports:
       - "6050:3000"
     environment:
-      - DATABASE_URL=postgresql://postgres:postgres@db:5432/topshelf
-      - JWT_SECRET=fosters-secret-key-change-in-prod
+      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/topshelf
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set in .env (see .env.example)}
+      - COOKIE_SECURE=${COOKIE_SECURE:-false}
+      - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-}
       - NODE_ENV=production
+    volumes:
+      - uploads_data:/app/public/uploads
+      - backups_data:/app/backups
     depends_on:
       - db
     networks:
@@ -24,10 +34,12 @@ services:
     restart: always
     environment:
       - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
+      # Only applied when the data volume is first created.
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
       - POSTGRES_DB=topshelf
     ports:
-      - "5433:5432"
+      # Host-only: reachable by host scripts (init/migrate) and SSH tunnels, not the internet.
+      - "127.0.0.1:5433:5432"
     volumes:
       - db_data:/var/lib/postgresql/data
     networks:
@@ -38,7 +50,8 @@ services:
     container_name: topshelf_adminer
     restart: always
     ports:
-      - "8080:8080"
+      # Host-only; reach it with an SSH tunnel: ssh -L 8080:localhost:8080 <server>
+      - "127.0.0.1:8080:8080"
     environment:
       - ADMINER_DEFAULT_SERVER=db
     depends_on:
@@ -48,7 +61,8 @@ services:
 
 volumes:
   db_data:
-
+  uploads_data:
+  backups_data:
 
 networks:
   topshelf_net:

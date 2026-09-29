@@ -1,3 +1,6 @@
+/**
+ * Create and list suppliers with ordering / delivery days.
+ */
 'use client';
 
 import { useState, useEffect } from 'react';

@@ -1,3 +1,6 @@
+/**
+ * Create and edit shift templates (name, times, colour).
+ */
 'use client';
 
 import { useState, useEffect } from 'react';

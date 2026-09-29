@@ -1,3 +1,9 @@
+/**
+ * DELETE /api/admin/products/delete-all
+ *
+ * Admin-only. Permanently removes every item (and its stock rows) belonging
+ * to the caller's organization, and records the action in the activity log.
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
@@ -7,33 +13,21 @@ export async function DELETE(req: NextRequest) {
         const session = await getSession();
         if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-        // Strict Admin Check
         if (session.role !== 'admin') {
             return NextResponse.json({ error: 'Permission denied' }, { status: 403 });
         }
 
-        await db.execute('BEGIN');
+        await db.transaction(async (tx) => {
+            await tx.execute('DELETE FROM inventory WHERE organization_id = $1', [session.organizationId]);
+            await tx.execute('DELETE FROM items WHERE organization_id = $1', [session.organizationId]);
 
-        try {
-            // Delete inventory for this org
-            await db.execute('DELETE FROM inventory WHERE organization_id = $1', [session.organizationId]);
-            // Delete items for this org
-            await db.execute('DELETE FROM items WHERE organization_id = $1', [session.organizationId]);
-
-            // Log the action
-            await db.execute(
-                'INSERT INTO activity_logs (user_id, action, details) VALUES ($1, $2, $3)',
-                [session.id, 'DELETE_ALL_PRODUCTS', JSON.stringify({ timestamp: new Date().toISOString() })]
+            await tx.execute(
+                'INSERT INTO activity_logs (organization_id, user_id, action, details) VALUES ($1, $2, $3, $4)',
+                [session.organizationId, session.id, 'DELETE_ALL_PRODUCTS', JSON.stringify({ timestamp: new Date().toISOString() })]
             );
+        });
 
-            await db.execute('COMMIT');
-            return NextResponse.json({ success: true });
-
-        } catch (err) {
-            await db.execute('ROLLBACK');
-            throw err;
-        }
-
+        return NextResponse.json({ success: true });
     } catch (error) {
         console.error('Delete All Error:', error);
         return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });

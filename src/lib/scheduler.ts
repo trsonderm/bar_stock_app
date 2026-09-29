@@ -1,11 +1,27 @@
+/**
+ * In-process background job scheduler.
+ *
+ * Started once per server process from `src/instrumentation.ts`. Every task
+ * has a simplified cron spec of "<minute> <hour> * * *" where each field is a
+ * number or `*`; day/month fields are ignored. Times use the server's local
+ * time zone (UTC inside the Docker image unless TZ is set).
+ *
+ * Jobs: log cleanup, monthly invoice generation, scheduled report emails,
+ * low-stock alert emails and shift report emails.
+ */
 import { db } from './db';
 import { sendEmail } from './mail';
 import { exec } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 
+/** How often the scheduler wakes up to check whether a new minute has started. */
+const TICK_MS = 10_000;
+
 class Scheduler {
     private interval: NodeJS.Timeout | null = null;
+    /** Minute (epoch minutes) that tasks were last evaluated for, so each minute runs once. */
+    private lastRunMinute = -1;
     private tasks: { name: string; cron: string; run: () => Promise<void> }[] = [];
 
     constructor() {
@@ -18,16 +34,20 @@ class Scheduler {
         ];
     }
 
+    /** Begins checking tasks. Safe to call more than once. */
     start() {
         if (this.interval) return;
         console.log('Scheduler Started');
 
+        // Poll frequently and run each calendar minute exactly once. (A plain
+        // 60s interval drifts and cannot guarantee it lands on every minute.)
         this.interval = setInterval(() => {
             const now = new Date();
-            if (now.getSeconds() < 2) {
-                this.checkTasks(now);
-            }
-        }, 1000 * 60);
+            const minute = Math.floor(now.getTime() / 60_000);
+            if (minute === this.lastRunMinute) return;
+            this.lastRunMinute = minute;
+            this.checkTasks(now).catch(e => console.error('[Scheduler] tick failed:', e));
+        }, TICK_MS);
     }
 
     stop() {

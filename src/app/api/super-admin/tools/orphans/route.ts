@@ -1,3 +1,9 @@
+/**
+ * /api/super-admin/tools/orphans — find and fix rows whose foreign key points nowhere.
+ *
+ *  GET  ?type=&organizationId= list orphaned rows
+ *  POST { type, fixAction: 'delete' | 'reassign', orphanIds, targetId }
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';

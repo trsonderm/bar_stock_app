@@ -1,3 +1,6 @@
+/**
+ * Public landing page (features, pricing, "go to my bar" station link).
+ */
 'use client';
 
 import { useState } from 'react';

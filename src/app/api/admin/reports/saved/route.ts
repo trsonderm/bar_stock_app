@@ -1,3 +1,9 @@
+/**
+ * /api/admin/reports/saved — report-builder reports (Pro plan).
+ *
+ *  GET  list the organization's saved reports
+ *  POST create (admin)
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';

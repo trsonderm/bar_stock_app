@@ -1,3 +1,6 @@
+/**
+ * Barcode lookup configuration page.
+ */
 import { getSession } from '@/lib/auth';
 import { redirect } from 'next/navigation';
 import BottleLookupClient from './BottleLookupClient';

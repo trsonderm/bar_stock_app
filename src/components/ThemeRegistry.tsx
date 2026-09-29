@@ -1,3 +1,6 @@
+/**
+ * MUI theme provider with Emotion cache for the App Router.
+ */
 'use client';
 
 import * as React from 'react';

@@ -1,3 +1,9 @@
+/**
+ * POST /api/super-admin/reports/send
+ *
+ * Super admin: emails a table of rows (from the custom report builder) to the
+ * given recipients.
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { sendEmail } from '@/lib/mail';

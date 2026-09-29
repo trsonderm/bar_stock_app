@@ -1,3 +1,6 @@
+/**
+ * Reply to a support ticket.
+ */
 'use client';
 
 import { useEffect, useState } from 'react';

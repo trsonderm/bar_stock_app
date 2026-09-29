@@ -1,3 +1,9 @@
+/**
+ * GET /api/super-admin/bottle-lookup/test?barcode=&organizationId=
+ *
+ * Super admin diagnostic: runs each lookup stage (local, site DB, external) for
+ * a barcode and streams per-step results as server-sent events.
+ */
 import { NextRequest } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';

@@ -1,16 +1,16 @@
 const nextJest = require('next/jest')
 
+// Loads next.config.mjs and .env files into the test environment.
 const createJestConfig = nextJest({
-    // Provide the path to your Next.js app to load next.config.js and .env files in your test environment
     dir: './',
 })
 
-// Add any custom config to be passed to Jest
+/** Unit tests only; Playwright end-to-end specs live in /tests and run via `npx playwright test`. */
 const customJestConfig = {
     setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
     testEnvironment: 'jest-environment-jsdom',
+    testPathIgnorePatterns: ['<rootDir>/node_modules/', '<rootDir>/.next/', '<rootDir>/tests/'],
     moduleNameMapper: {
-        // Handle module aliases (this will be automatically configured for you soon)
         '^@/(.*)$': '<rootDir>/src/$1',
     },
     transformIgnorePatterns: [
@@ -18,5 +18,5 @@ const customJestConfig = {
     ],
 }
 
-// createJestConfig is exported this way to ensure that next/jest can load the Next.js config which is async
+// Exported this way so next/jest can load the (async) Next.js config.
 module.exports = createJestConfig(customJestConfig)

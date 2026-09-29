@@ -1,3 +1,6 @@
+/**
+ * Saved reports (Pro plan).
+ */
 import { getSession } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { redirect } from 'next/navigation';

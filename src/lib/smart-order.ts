@@ -1,5 +1,11 @@
+/**
+ * Smart Order proposal emails: when a stock change takes an item from above its
+ * low-stock threshold to at/below it, and the organization has automated
+ * ordering enabled, an order proposal is emailed to the configured address.
+ */
 import { db } from './db';
 import { sendEmail } from './mail';
+import { parseJsonColumn } from './json';
 
 interface ProposalItem {
     id: number;
@@ -17,10 +23,7 @@ export async function checkAndTriggerSmartOrder(
     const org = await db.one('SELECT ai_ordering_config FROM organizations WHERE id = $1', [organizationId]);
     if (!org || !org.ai_ordering_config) return;
 
-    let config;
-    try {
-        config = JSON.parse(org.ai_ordering_config);
-    } catch { return; }
+    const config = parseJsonColumn<any>(org.ai_ordering_config, {});
 
     if (!config.enabled) return;
 

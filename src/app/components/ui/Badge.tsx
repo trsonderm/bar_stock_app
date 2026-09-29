@@ -1,3 +1,6 @@
+/**
+ * Small status badge.
+ */
 import React from 'react';
 
 interface BadgeProps {

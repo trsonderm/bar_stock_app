@@ -46,3 +46,17 @@ next-env.d.ts
 
 # logs
 *.log
+!.env.example
+
+# runtime artifacts
+*.pid
+/backups/
+/public/uploads/
+
+# playwright
+/.auth/
+/playwright-report/
+/test-results/
+
+# ide
+*.code-workspace

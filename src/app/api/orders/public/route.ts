@@ -1,3 +1,9 @@
+/**
+ * GET /api/orders/public?token=
+ *
+ * Public (token-authenticated) read of a pending automated order for the
+ * approval page at /orders/<token>.
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 

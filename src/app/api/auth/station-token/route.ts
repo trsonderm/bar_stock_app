@@ -1,3 +1,11 @@
+/**
+ * POST /api/auth/station-token
+ *
+ * Admin: registers the current device as a PIN-login station for the
+ * organization. Stores a 90-day token (bound to IP, user agent and optional
+ * browser fingerprint) and sets the httpOnly `station_token` cookie plus a
+ * readable `station_org_id` cookie.
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { OrgScope } from '@/lib/dba';
 import { getSession } from '@/lib/auth';

@@ -1,3 +1,6 @@
+/**
+ * Super admin dashboard: platform stats and growth charts.
+ */
 'use client';
 
 import React, { useEffect, useState } from 'react';

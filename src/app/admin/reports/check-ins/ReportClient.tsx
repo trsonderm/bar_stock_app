@@ -1,3 +1,6 @@
+/**
+ * Delivery variance report: expected vs received quantities per check-in.
+ */
 'use client';
 
 import { useState } from 'react';

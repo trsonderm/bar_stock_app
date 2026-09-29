@@ -1,3 +1,10 @@
+/**
+ * GET /api/admin/reporting/daily?date=YYYY-MM-DD&locationId=
+ *
+ * Admin daily report. The "business day" runs from 06:00 until one hour after
+ * the latest shift end time. Returns usage and restock totals by user and by
+ * item (valued at current unit cost) plus low-stock and run-out alerts.
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
@@ -32,11 +39,8 @@ export async function GET(req: NextRequest) {
         if (shifts.length > 0) {
             shifts.forEach((s: any) => {
                 const [h, m] = s.end_time.split(':').map(Number);
-                // Convert to "hours from start of day", dealing with late night (0-5 AM) as > 24 for comparison?
-                // Actually, we just need to know if any shift ends late.
-                // If a shift ends at 02:00, that's effectively 26:00 relative to previous day.
-                // Let's assume day starts at 6AM.
-                // If end time is < 6, it's next day.
+                // The business day starts at 06:00, so an end time before 06:00 belongs to
+                // the next calendar day (02:00 compares as 26:00).
                 let effectiveHour = h;
                 if (h < 6) effectiveHour += 24;
 

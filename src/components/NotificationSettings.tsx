@@ -1,3 +1,6 @@
+/**
+ * Per-user notification preference toggles (/api/user/preferences).
+ */
 'use client';
 import { useState, useEffect } from 'react';
 

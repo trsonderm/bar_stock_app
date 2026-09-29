@@ -1,3 +1,9 @@
+/**
+ * POST /api/auth/verify-station
+ *
+ * Checks the device's `station_token` cookie (and optional fingerprint / orgId)
+ * before the station PIN pad is shown. Returns { valid, orgName, orgId, subdomain }.
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { validateStationToken } from '@/lib/dba';
 import { cookies } from 'next/headers';

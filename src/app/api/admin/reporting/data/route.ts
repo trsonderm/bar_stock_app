@@ -1,4 +1,10 @@
-
+/**
+ * POST /api/admin/reporting/data
+ *
+ * Admin chart data for the reporting dashboard.
+ * Body: { source: 'inventory' | 'activity' | 'orders' | 'users_stats',
+ *         period: 'daily' | 'weekly' | 'monthly' | 'yearly', dateRange: { start, end } }.
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { db } from '@/lib/db';
@@ -37,18 +43,18 @@ export async function POST(req: NextRequest) {
             return filter;
         };
 
-        // Helper for Orders date filtering (uses order_date)
+        // Helper for Orders date filtering (uses purchase_orders.created_at)
         const getOrderDateFilter = (startDate?: string, endDate?: string) => {
             let filter = '';
             let pIndex = params.length + 1;
 
             if (startDate) {
-                filter += ` AND order_date >= $${pIndex}`;
+                filter += ` AND created_at >= $${pIndex}`;
                 params.push(startDate);
                 pIndex++;
             }
             if (endDate) {
-                filter += ` AND order_date <= $${pIndex}::timestamp + INTERVAL '1 day'`;
+                filter += ` AND created_at <= $${pIndex}::timestamp + INTERVAL '1 day'`;
                 params.push(endDate);
                 pIndex++;
             }
@@ -102,7 +108,7 @@ export async function POST(req: NextRequest) {
 
             query = `
                 SELECT 
-                    to_char(date_trunc('${truncPeriod}', order_date), 'YYYY-MM-DD') as name,
+                    to_char(date_trunc('${truncPeriod}', created_at), 'YYYY-MM-DD') as name,
                     COUNT(*) as value -- Or SUM cost if we parsed details
                 FROM purchase_orders
                 WHERE organization_id = $1 ${dateFilter}

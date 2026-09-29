@@ -1,3 +1,6 @@
+/**
+ * Daily usage / restock report with alerts (/api/admin/reporting/daily).
+ */
 'use client';
 
 import { useState, useEffect, useRef } from 'react';

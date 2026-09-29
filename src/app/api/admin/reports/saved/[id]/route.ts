@@ -1,3 +1,10 @@
+/**
+ * /api/admin/reports/saved/:id — one report-builder report (Pro plan).
+ *
+ *  GET    read
+ *  PUT    update (admin)
+ *  DELETE delete (admin)
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';

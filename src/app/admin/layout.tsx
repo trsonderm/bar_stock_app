@@ -1,3 +1,7 @@
+/**
+ * Tenant admin layout: sidebar navigation, using the organization's current
+ * subscription plan (read fresh from the DB, not the session) to gate Pro items.
+ */
 import { getSession } from '@/lib/auth';
 import { db } from '@/lib/db';
 import AdminNav from './AdminNav';

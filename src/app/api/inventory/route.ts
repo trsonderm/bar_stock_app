@@ -1,3 +1,16 @@
+/**
+ * /api/inventory — items and their stock for the caller's organization.
+ *
+ *  GET    items with stock at the current location (?locationId= or the
+ *         current_location_id cookie), usage counts and per-location supplier /
+ *         price; honours the org's show_items_at_all_locations and
+ *         shared_inventory_count settings. ?sort=usage|name
+ *  POST   create an item and its stock rows (admin, add_item_name or manage_products)
+ *  PUT    edit an item and/or set its stock (edit and stock permissions checked separately)
+ *  DELETE ?id= delete an item (admin or manage_products)
+ *
+ * Super admins may target another organization with ?orgId=.
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
@@ -183,8 +196,8 @@ export async function POST(req: NextRequest) {
         );
         const itemId = res.id;
 
-        // Auto-link Supplier if provided
-        if (supplier_id) {
+        // Auto-link Supplier if provided (must be one of this organization's suppliers)
+        if (supplier_id && await db.one('SELECT id FROM suppliers WHERE id = $1 AND organization_id = $2', [supplier_id, organizationId])) {
             await db.execute(`
                 INSERT INTO item_suppliers(item_id, supplier_id, is_preferred)
                 VALUES($1, $2, true)
@@ -196,7 +209,10 @@ export async function POST(req: NextRequest) {
         let locationsToInit: { id: number }[] = [];
 
         if (assignedLocations && Array.isArray(assignedLocations) && assignedLocations.length > 0) {
-            locationsToInit = assignedLocations.map((id: number) => ({ id }));
+            locationsToInit = await db.query(
+                'SELECT id FROM locations WHERE id = ANY($1::int[]) AND organization_id = $2',
+                [assignedLocations.map(Number), organizationId]
+            );
         } else if (add_to_all_locations) {
             const assigned = await db.query(`
                 SELECT l.id 
@@ -271,6 +287,16 @@ export async function PUT(req: NextRequest) {
         const { id, unit_cost, sale_price, name, type, quantity, secondary_type, supplier, supplier_id, low_stock_threshold, low_stock_threshold_type, low_stock_threshold_factor, order_size, stock_options, include_in_audit, include_in_low_stock_alerts, assignedLocations, stock_unit_label, stock_unit_size, order_unit_label, order_unit_size, use_category_qty_defaults, location_supplier_id, location_sale_price, locationId: bodyLocationId, barcodes, abv, bottle_size } = await req.json();
 
         if (!id) return NextResponse.json({ error: 'Missing ID' }, { status: 400 });
+
+        // Every write below is keyed by item id, so confirm ownership up front.
+        const ownedItem = await db.one('SELECT id FROM items WHERE id = $1 AND organization_id = $2', [id, organizationId]);
+        if (!ownedItem) return NextResponse.json({ error: 'Item not found' }, { status: 404 });
+
+        // Location the per-location writes apply to: body, then cookie; ignored unless it belongs to this org.
+        const requestedLocId = parseInt(bodyLocationId ?? req.cookies.get('current_location_id')?.value ?? '', 10);
+        const putLocId: number | null = requestedLocId
+            ? (await db.one('SELECT id FROM locations WHERE id = $1 AND organization_id = $2', [requestedLocId, organizationId]))?.id ?? null
+            : null;
 
         // Update Item Details (Name, Type, Cost, Supplier, Threshold, Order Size)
         if (canEdit) {
@@ -413,7 +439,9 @@ export async function PUT(req: NextRequest) {
             }
 
             // Auto-link logic for Updates — clear old preferred first, then set new one
-            const validSupplierId = supplier_id && !isNaN(Number(supplier_id)) ? Number(supplier_id) : null;
+            const validSupplierId = supplier_id && !isNaN(Number(supplier_id))
+                && await db.one('SELECT id FROM suppliers WHERE id = $1 AND organization_id = $2', [supplier_id, organizationId])
+                ? Number(supplier_id) : null;
             if (validSupplierId) {
                 try {
                     await db.execute(
@@ -431,7 +459,6 @@ export async function PUT(req: NextRequest) {
             }
 
             // Per-location supplier (non-fatal — table may not exist until migration runs)
-            const putLocId = bodyLocationId ? parseInt(bodyLocationId) : (req.cookies.get('current_location_id')?.value ? parseInt(req.cookies.get('current_location_id')!.value) : null);
             if (location_supplier_id !== undefined && putLocId) {
                 try {
                     const validLocSupplierId = location_supplier_id && !isNaN(Number(location_supplier_id)) ? Number(location_supplier_id) : null;
@@ -478,7 +505,11 @@ export async function PUT(req: NextRequest) {
                 try {
                     const currentLocs = await db.query('SELECT location_id FROM inventory WHERE item_id = $1 AND organization_id = $2', [id, organizationId]);
                     const currentLocIds = currentLocs.map((l: any) => Number(l.location_id));
-                    const assignedIds = assignedLocations.map(Number);
+                    const orgLocs = await db.query(
+                        'SELECT id FROM locations WHERE id = ANY($1::int[]) AND organization_id = $2',
+                        [assignedLocations.map(Number), organizationId]
+                    );
+                    const assignedIds = orgLocs.map((l: any) => Number(l.id));
 
                     // Add missing
                     for (const locId of assignedIds) {
@@ -574,8 +605,7 @@ export async function PUT(req: NextRequest) {
                 }
             } else {
                 // Per-location mode (default)
-                const cookieLoc = req.cookies.get('current_location_id')?.value;
-                let targetLocationId: number | null = bodyLocationId ? parseInt(bodyLocationId) : (cookieLoc ? parseInt(cookieLoc) : null);
+                let targetLocationId: number | null = putLocId;
 
                 if (!targetLocationId) {
                     const defaultLoc = await db.one('SELECT id FROM locations WHERE organization_id = $1 ORDER BY id ASC LIMIT 1', [organizationId]);

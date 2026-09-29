@@ -1,3 +1,9 @@
+/**
+ * GET /api/super-admin/bottle-lookup-db/org-barcodes
+ *
+ * Super admin: every organization item that has a saved barcode, for the
+ * "import from organizations" tool.
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';

@@ -1,3 +1,9 @@
+/**
+ * POST /api/admin/reporting/email-now
+ *
+ * Admin: immediately email a report ('daily' | 'smart-order' | 'bottle-levels')
+ * to the organization's configured report recipients.
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';

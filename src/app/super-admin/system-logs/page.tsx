@@ -1,3 +1,6 @@
+/**
+ * Server-side event log viewer (system_logs).
+ */
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';

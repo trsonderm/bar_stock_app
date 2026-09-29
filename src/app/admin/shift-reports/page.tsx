@@ -1,3 +1,6 @@
+/**
+ * Shift reports page.
+ */
 import { getSession } from '@/lib/auth';
 import { redirect } from 'next/navigation';
 import ShiftReportsClient from './ShiftReportsClient';

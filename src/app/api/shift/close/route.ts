@@ -1,3 +1,11 @@
+/**
+ * /api/shift/close — end-of-shift cash reconciliation.
+ *
+ *  GET  last 20 shift closes (?locationId= to filter)
+ *  POST record a close: computes bag amount and over/short from bank, sales,
+ *       tips and payouts, logs it, and emails the shift report when the
+ *       organization has immediate shift-report emails enabled.
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
@@ -68,6 +76,11 @@ export async function POST(req: NextRequest) {
 
     const n = (v: any) => parseFloat(v) || 0;
 
+    // Ignore a location that does not belong to this organization.
+    const location = locationId
+        ? await db.one('SELECT id FROM locations WHERE id = $1 AND organization_id = $2', [locationId, organizationId])
+        : null;
+
     const totalPayouts = payouts.reduce((sum: number, p: any) => sum + n(p.amount), 0);
     const ccTipsCashAmount = ccTipsCashPayout ? n(ccTips) : 0;
     const bagAmount = n(bankEnd) - totalPayouts - ccTipsCashAmount;
@@ -90,7 +103,7 @@ export async function POST(req: NextRequest) {
         ) RETURNING id, closed_at`,
         [
             organizationId,
-            locationId || null,
+            location?.id ?? null,
             userId,
             n(bankStart),
             n(bankEnd),

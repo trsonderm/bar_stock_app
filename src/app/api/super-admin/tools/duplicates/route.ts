@@ -1,8 +1,21 @@
+/**
+ * /api/super-admin/tools/duplicates — find and merge duplicate records (super admin only).
+ *
+ *  GET  ?type=items&organizationId=N  lists case-insensitive duplicate names
+ *  POST { type, keepId, mergeIds }     re-points related rows to keepId, deletes the rest
+ *
+ * KNOWN ISSUE: the `items` config below still references the legacy
+ * `item_names` / `inventory_snapshots` tables, which the current PostgreSQL
+ * schema does not have, so this tool errors until it is rewritten against
+ * `items` (merging must also handle the UNIQUE(item_id, location_id)
+ * constraint on `inventory`).
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
 
-// Define the logic for different types
+// Table / column names are fixed here (never from user input) because they
+// are interpolated into SQL.
 const TYPES = {
     items: {
         table: 'item_names',
@@ -57,31 +70,23 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
         }
 
-        // Transaction
-        await db.execute('BEGIN');
-
-        try {
-            // 1. Update all related tables to point to keepId
+        await db.transaction(async (tx) => {
+            // 1. Re-point all related rows at keepId
             for (const rel of config.related) {
-                // We use ANY($1) for array of IDs
-                await db.execute(
+                await tx.execute(
                     `UPDATE ${rel.table} SET ${rel.fk} = $1 WHERE ${rel.fk} = ANY($2)`,
                     [keepId, mergeIds]
                 );
             }
 
             // 2. Delete the merged records
-            await db.execute(
+            await tx.execute(
                 `DELETE FROM ${config.table} WHERE id = ANY($1)`,
                 [mergeIds]
             );
+        });
 
-            await db.execute('COMMIT');
-            return NextResponse.json({ success: true });
-        } catch (e) {
-            await db.execute('ROLLBACK');
-            throw e;
-        }
+        return NextResponse.json({ success: true });
 
     } catch (e: any) {
         return NextResponse.json({ error: e.message }, { status: 500 });

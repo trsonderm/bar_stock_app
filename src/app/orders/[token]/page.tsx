@@ -1,3 +1,6 @@
+/**
+ * Public approval page for an automated order, reached via its one-time link.
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 

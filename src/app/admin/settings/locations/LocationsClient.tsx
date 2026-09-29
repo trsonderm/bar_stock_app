@@ -1,3 +1,6 @@
+/**
+ * Create, rename and delete locations.
+ */
 'use client';
 
 import { useState, useEffect } from 'react';

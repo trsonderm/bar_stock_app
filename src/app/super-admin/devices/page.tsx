@@ -1,3 +1,6 @@
+/**
+ * Registered station devices; revoke tokens.
+ */
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';

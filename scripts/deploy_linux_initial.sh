@@ -13,12 +13,12 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 echo ""
-echo "[Step 1] Securing Docker Dependencies & Plugins..."
+echo "[Step 1] Securing Docker Dependencies & Node Tools..."
 apt-get update
 # --fix-broken ensures we don't trip over legacy docker-compose leftovers
 apt-get --fix-broken install -y
 apt-get remove -y docker-compose docker-buildx || true
-apt-get install -y docker.io docker-compose-plugin docker-buildx-plugin
+apt-get install -y docker.io docker-compose-plugin docker-buildx-plugin nodejs npm psmisc lsof curl
 
 echo ""
 echo "[Step 2] Activating Docker Daemon..."
@@ -28,6 +28,15 @@ systemctl restart docker
 echo ""
 echo "[Step 3] Pulling Latest Application Code..."
 git pull || true
+
+echo ""
+echo "[Step 3.5] Ensuring .env file exists..."
+if [ ! -f .env ]; then
+  echo "No .env found. Creating .env from .env.example with a fresh JWT_SECRET..."
+  cp .env.example .env
+  RAND_SECRET=$(openssl rand -base64 36 | tr -dc 'a-zA-Z0-9' | head -c 48)
+  sed -i "s/^JWT_SECRET=.*/JWT_SECRET=$RAND_SECRET/" .env
+fi
 
 echo ""
 echo "[Step 4] Rebuilding Docker Containers natively via Compose..."
@@ -57,12 +66,20 @@ npm install --legacy-peer-deps || true
 
 echo ""
 echo "[Step 7] Initializing Raw Database Schema..."
-# This drops and recreates the public schema and tables directly against the mapped 5433 port
+# Applies schema.sql + migrate.sql against the mapped 5433 port. Refuses to run
+# if the database already has tables (use --force to wipe it deliberately).
 node scripts/init-postgres.js
 
 echo ""
 echo "[Step 8] Injecting Primary Super Admin Account..."
-node scripts/create_super_admin.js trsonderm@gmail.com D@T@121j
+# Credentials come from the environment so they are never committed to git:
+#   sudo SUPER_ADMIN_EMAIL=you@example.com SUPER_ADMIN_PASSWORD='...' ./scripts/deploy_linux_initial.sh
+if [ -z "$SUPER_ADMIN_EMAIL" ] || [ -z "$SUPER_ADMIN_PASSWORD" ]; then
+  echo "SUPER_ADMIN_EMAIL / SUPER_ADMIN_PASSWORD not set - skipping."
+  echo "Create one later with: node scripts/create_super_admin.js <email> <password>"
+else
+  node scripts/create_super_admin.js "$SUPER_ADMIN_EMAIL" "$SUPER_ADMIN_PASSWORD"
+fi
 
 echo "=========================================================="
 echo "✅ DEPLOYMENT COMPLETE! Bar Stock App is fully online."

@@ -1,3 +1,6 @@
+/**
+ * POST /api/user/theme — saves the signed-in user's UI theme.
+ */
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { db } from '@/lib/db';

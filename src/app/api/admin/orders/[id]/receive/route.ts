@@ -1,3 +1,12 @@
+/**
+ * POST /api/admin/orders/:id/receive
+ *
+ * Confirms delivery of a purchase order. Body: { receivedItems: [...] }.
+ * Records the received quantity per line, adds it to stock at the order's
+ * location, logs ADD_STOCK activity, marks the order RECEIVED, then emails
+ * the organization's order-confirmation recipients.
+ * Requires admin or the add_stock permission.
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db, pool } from '@/lib/db';
 import { getSession } from '@/lib/auth';
@@ -29,7 +38,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
         // Validate order belongs to org
         const orderRows = await client.query(
-            `SELECT id, tracking_status, status, organization_id FROM purchase_orders WHERE id = $1 AND organization_id = $2`,
+            `SELECT id, tracking_status, status, organization_id, location_id FROM purchase_orders WHERE id = $1 AND organization_id = $2`,
             [orderId, session.organizationId]
         );
         if (!orderRows.rows || orderRows.rows.length === 0) {
@@ -37,16 +46,22 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
             return NextResponse.json({ error: 'Order not found' }, { status: 404 });
         }
 
-        // Get current location for inventory updates
+        // Received stock goes to the order's own location; orders created before
+        // per-location ordering have none, so fall back to the org's first location.
         const locRes = await client.query(
-            `SELECT id FROM locations WHERE organization_id = $1 ORDER BY id ASC LIMIT 1`,
-            [session.organizationId]
+            `SELECT id FROM locations WHERE organization_id = $1
+             ORDER BY (id = $2) DESC, id ASC LIMIT 1`,
+            [session.organizationId, orderRows.rows[0].location_id]
         );
         const locationId = locRes.rows[0]?.id;
         if (!locationId) throw new Error('No location found');
 
         for (const ri of receivedItems) {
             const qty = Math.max(0, parseInt(ri.received_qty) || 0);
+
+            // Skip items that do not belong to this organization.
+            const owned = await client.query('SELECT 1 FROM items WHERE id = $1 AND organization_id = $2', [ri.item_id, session.organizationId]);
+            if (owned.rowCount === 0) continue;
 
             // Update the order item received quantity
             await client.query(

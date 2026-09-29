@@ -1,3 +1,9 @@
+/**
+ * GET /api/admin/analytics
+ *
+ * Admin dashboard summary for the caller's organization: today's activity
+ * count, today's most active user and the 20 most recent activity log entries.
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';

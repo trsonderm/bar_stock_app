@@ -1,3 +1,6 @@
+/**
+ * GET /api/super-admin/devices — every issued station token with its organization.
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { db } from '@/lib/db';

@@ -1,3 +1,6 @@
+/**
+ * Drag-and-drop report builder with live previews and scheduling.
+ */
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';

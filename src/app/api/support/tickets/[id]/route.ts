@@ -1,3 +1,9 @@
+/**
+ * /api/support/tickets/:id — a single support ticket thread.
+ *
+ *  GET  ticket + messages (own organization, or any ticket for super admins)
+ *  POST reply and/or change status (multipart: message, status, optional file)
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
@@ -45,14 +51,11 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     const isSuperAdmin = session.isSuperAdmin || (session.permissions as any)?.includes('super_admin');
 
     try {
-        console.log(`[Support Reply] Processing for ticket ${ticketId}`);
-        // Validate Access first
+        // Validate access first
         const ticket = await db.one('SELECT organization_id FROM support_tickets WHERE id = $1', [ticketId]);
         if (!ticket) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-        // Fix: Ensure super admin check is robust
         if (!isSuperAdmin && ticket.organization_id !== session.organizationId) {
-            console.log('[Support Reply] Unauthorized');
             return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
         }
 
@@ -61,8 +64,6 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         const status = formData.get('status') as string;
         const file = formData.get('file') as File | null;
 
-        console.log(`[Support Reply] Message: ${message ? 'Yes' : 'No'}, Status: ${status}, File: ${file ? file.size : 'None'}`);
-
         if (!message && !status) return NextResponse.json({ error: 'Nothing to update' }, { status: 400 });
 
         let attachmentPath = null;
@@ -70,34 +71,27 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
             try {
                 attachmentPath = await saveFile(file);
             } catch (err) {
+                // The reply is still saved without the attachment.
                 console.error('File upload failed', err);
-                // Continue without file? Or fail?
             }
         }
 
         const attachments = attachmentPath ? JSON.stringify([attachmentPath]) : '[]';
 
-        // Transaction
-        await db.execute('BEGIN');
-
-        try {
+        await db.transaction(async (tx) => {
             if (message) {
-                await db.execute(`
+                await tx.execute(`
                     INSERT INTO support_messages (ticket_id, user_id, message, attachments)
                     VALUES ($1, $2, $3, $4)
                 `, [ticketId, session.id, message, attachments]);
             }
 
             if (status) {
-                await db.execute('UPDATE support_tickets SET status = $1 WHERE id = $2', [status, ticketId]);
+                await tx.execute('UPDATE support_tickets SET status = $1 WHERE id = $2', [status, ticketId]);
             }
+        });
 
-            await db.execute('COMMIT');
-            return NextResponse.json({ success: true });
-        } catch (err) {
-            await db.execute('ROLLBACK');
-            throw err;
-        }
+        return NextResponse.json({ success: true });
 
     } catch (e) {
         console.error('Reply Error Main Catch', e);

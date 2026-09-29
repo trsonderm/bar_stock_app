@@ -1,3 +1,6 @@
+/**
+ * Public sign-up form that creates a new organization and its admin user.
+ */
 'use client';
 
 import { useState } from 'react';
@@ -74,7 +77,7 @@ export default function RegisterPage() {
                     </p>
                     <p style={{ color: '#64748b', fontSize: '0.9rem', lineHeight: 1.6, marginBottom: '1.5rem' }}>
                         Click the link in the email to activate your account. The link expires in 24 hours.
-                        If you don't see it, check your spam folder.
+                        If you don&apos;t see it, check your spam folder.
                     </p>
                     <a href="/login" className={styles.link}>Back to Login</a>
                 </div>

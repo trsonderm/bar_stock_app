@@ -1,3 +1,6 @@
+/**
+ * GET /api/super-admin/resources — host CPU, memory and disk usage.
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import si from 'systeminformation';

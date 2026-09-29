@@ -1,3 +1,9 @@
+/**
+ * /api/super-admin/bottle-lookup — barcode lookup configuration (bottle_lookup_config).
+ *
+ *  GET  current config merged with defaults
+ *  POST save config
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';

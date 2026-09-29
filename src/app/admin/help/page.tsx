@@ -1,3 +1,6 @@
+/**
+ * Support tickets: list and open a ticket.
+ */
 'use client';
 
 import { useEffect, useState } from 'react';

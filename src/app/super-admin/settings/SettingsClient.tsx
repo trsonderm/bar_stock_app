@@ -1,3 +1,6 @@
+/**
+ * Global system settings (quick login, email verification, logging, ...).
+ */
 'use client';
 
 import { useState } from 'react';

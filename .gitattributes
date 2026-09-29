@@ -1,0 +1,8 @@
+# Enforce LF endings for shell scripts and sql files on all platforms
+*.sh text eol=lf
+*.sql text eol=lf
+*.conf text eol=lf
+*.json text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.js text eol=lf

@@ -1,3 +1,8 @@
+/**
+ * GET /api/admin/reports/stock
+ *
+ * Stock rows at or below their item's low-stock threshold, per location.
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
@@ -9,13 +14,13 @@ export async function GET(req: NextRequest) {
     }
 
     try {
-        // Items where quantity <= par_level
+        // Stock rows at or below the item's low-stock threshold (returned as par_level)
         const lowStock = await db.query(`
-            SELECT i.name, i.type, inv.quantity, inv.par_level, l.name as location
+            SELECT i.name, i.type, inv.quantity, i.low_stock_threshold AS par_level, l.name as location
             FROM inventory inv
             JOIN items i ON inv.item_id = i.id
             JOIN locations l ON inv.location_id = l.id
-            WHERE inv.organization_id = $1 AND inv.quantity <= inv.par_level
+            WHERE inv.organization_id = $1 AND inv.quantity <= COALESCE(i.low_stock_threshold, 0)
             ORDER BY inv.quantity ASC
         `, [session.organizationId]);
 

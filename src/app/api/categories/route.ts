@@ -1,3 +1,6 @@
+/**
+ * GET /api/categories — categories of the caller's organization (any signed-in user).
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';

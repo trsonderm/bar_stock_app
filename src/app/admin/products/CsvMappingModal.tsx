@@ -1,3 +1,6 @@
+/**
+ * Maps CSV columns to product fields before an import.
+ */
 import React, { useState, useEffect } from 'react';
 import styles from '../admin.module.css'; // Assuming we can use the same styles or similar
 

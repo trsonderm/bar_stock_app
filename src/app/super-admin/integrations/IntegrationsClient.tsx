@@ -1,3 +1,6 @@
+/**
+ * Edit integration credentials (e.g. Twilio).
+ */
 'use client';
 
 import { useState, useEffect } from 'react';

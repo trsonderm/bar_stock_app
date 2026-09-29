@@ -1,3 +1,6 @@
+/**
+ * Threat analysis dashboard and response actions (block IP, lock account, ...).
+ */
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';

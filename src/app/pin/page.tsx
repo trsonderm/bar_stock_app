@@ -1,3 +1,7 @@
+/**
+ * Generic station PIN page; redirects to /o/<subdomain> when the station's
+ * organization has one, otherwise shows the PIN pad or a "not registered" notice.
+ */
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { db } from '@/lib/db';

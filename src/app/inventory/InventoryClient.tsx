@@ -1,3 +1,7 @@
+/**
+ * Main staff screen: stock list with +/- controls, barcode scanning, pending
+ * changes, deliveries check-in, item editing and location switching.
+ */
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -470,8 +474,7 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
 
     const handleLogout = async () => {
         await fetch('/api/auth/logout', { method: 'POST' });
-        router.push('/');
-        router.refresh();
+        window.location.href = '/';
     };
 
     const clearFilters = () => {
@@ -742,7 +745,7 @@ export default function InventoryClient({ user, trackBottleLevels: initialTrack,
                 {/* Header Welcome Title */}
                 <Box sx={{ mb: 4 }}>
                     <Typography variant="h4" fontWeight="bold" color="primary">{user.firstName}</Typography>
-                    <Typography variant="subtitle1" color="text.secondary">Welcome to Foster's Stock</Typography>
+                    <Typography variant="subtitle1" color="text.secondary">Welcome to Foster&apos;s Stock</Typography>
                 </Box>
 
                 {/* Filters and Controls */}

@@ -1,3 +1,6 @@
+/**
+ * Report and alert email settings page.
+ */
 import ReportingSettingsClient from './ReportingSettingsClient';
 
 export const metadata = {

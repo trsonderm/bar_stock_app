@@ -1,3 +1,10 @@
+/**
+ * GET /api/barcode-lookup?barcode=
+ *
+ * Resolves a scanned barcode to a product: first the organization's own items,
+ * then the shared site bottle database, then (if enabled by the super admin) an
+ * external UPC provider. Behaviour is configured by `bottle_lookup_config`.
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';

@@ -1,3 +1,6 @@
+/**
+ * Delivery variance report page.
+ */
 import ReportClient from './ReportClient';
 import { getSession } from '@/lib/auth';
 import { db } from '@/lib/db';

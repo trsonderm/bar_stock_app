@@ -1,3 +1,9 @@
+/**
+ * GET /api/super-admin/billing/stats
+ *
+ * Super admin billing overview: estimated MRR, pending invoice total and the
+ * 20 most recent invoices.
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
@@ -9,9 +15,7 @@ export async function GET(req: NextRequest) {
     }
 
     try {
-        // Calculate Stats
-        // MRR = Sum of amounts of latest paid invoices? Or just sum of all active PRO plans * price?
-        // Let's do PRO plans * 49
+        // Estimated MRR: number of PRO organizations x $49
         const subStats = await db.one("SELECT COUNT(*) as count FROM organizations WHERE subscription_plan = 'PRO'");
         const mrr = parseInt(subStats.count) * 49.00;
 

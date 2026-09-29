@@ -1,3 +1,6 @@
+/**
+ * Month calendar view of the staff schedule.
+ */
 import { useState } from 'react';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 

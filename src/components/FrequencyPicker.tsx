@@ -1,3 +1,6 @@
+/**
+ * Picker for a recurring email schedule (hourly, daily, weekly, bi-weekly or monthly, plus time).
+ */
 import React from 'react';
 
 interface Schedule {

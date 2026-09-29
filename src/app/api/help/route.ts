@@ -1,3 +1,11 @@
+/**
+ * /api/help — help-centre articles.
+ *
+ *  GET    published articles (?category=, ?slug=; super admins may pass ?all=1)
+ *  POST   create (super admin)
+ *  PUT    update (super admin)
+ *  DELETE ?id= (super admin)
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';

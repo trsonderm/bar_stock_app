@@ -1,3 +1,10 @@
+/**
+ * POST /api/admin/reporting/bottle-levels
+ *
+ * Bottle-level report: counts of each bottle-level option recorded per item.
+ * Body filters: { dateRange: { start, end }, userId, categoryId, locationId }.
+ * Returns { data: [{ id, name, total, <option>: count }], options }.
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';

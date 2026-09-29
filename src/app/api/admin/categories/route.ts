@@ -1,3 +1,11 @@
+/**
+ * /api/admin/categories — product categories of the caller's organization.
+ *
+ *  GET    list categories with parsed stock_options / sub_categories
+ *  POST   create (admin or `all` permission)
+ *  PUT    update (admin)
+ *  DELETE ?id= delete (admin); refused while any item still uses the category
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';

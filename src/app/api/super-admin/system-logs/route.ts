@@ -1,3 +1,9 @@
+/**
+ * /api/super-admin/system-logs — server-side event log (system_logs table).
+ *
+ *  GET    paged, filterable list (?level=, ?category=, ?search=, ?limit=, ?offset=)
+ *  DELETE prune entries older than ?days= (optionally one ?category=)
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';

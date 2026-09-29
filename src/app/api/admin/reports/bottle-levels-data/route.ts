@@ -1,3 +1,9 @@
+/**
+ * GET /api/admin/reports/bottle-levels-data
+ *
+ * Admin: raw bottle-level log rows and the configured options for the
+ * bottle-levels report page.
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';

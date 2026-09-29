@@ -1,3 +1,9 @@
+/**
+ * /api/shift/reports/:id (admin only)
+ *
+ *  GET  one shift close with user and location names
+ *  POST re-send its shift report email to the configured recipients
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';

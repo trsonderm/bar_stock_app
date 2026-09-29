@@ -1,95 +1,123 @@
 /**
  * @jest-environment node
  */
-import { createMocks } from 'node-mocks-http';
-import { GET, POST } from '../route';
-import { createTestDb } from '@/lib/__tests__/test-db';
+import { NextRequest } from 'next/server';
 
-// Mock DB using manual mock
-jest.mock('@/lib/db');
-import { db } from '@/lib/db';
-
-const testDb = db as any;
-
-// Mock Auth
+jest.mock('@/lib/db', () => ({
+    db: { query: jest.fn(), one: jest.fn(), execute: jest.fn() },
+}));
 jest.mock('@/lib/auth', () => ({
     getSession: jest.fn(),
-    hashPassword: jest.fn(p => 'hashed_' + p),
-    hashPin: jest.fn(p => 'hashed_' + p)
+    hashPassword: jest.fn((p: string) => 'hashed_' + p),
+    hashPin: jest.fn((p: string) => p),
 }));
 
+import { GET, POST, PUT, DELETE } from '../route';
+import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
 
-describe('/api/admin/users Integration', () => {
+const mockDb = db as jest.Mocked<typeof db>;
+const mockGetSession = getSession as jest.Mock;
 
-    beforeAll(() => {
-        // Reset DB tables
-        testDb.prepare('DELETE FROM users').run();
-        testDb.prepare('DELETE FROM organizations').run();
+const tenantAdmin = { id: 10, organizationId: 1, role: 'admin', permissions: ['all'], isSuperAdmin: false };
+const superAdmin = { ...tenantAdmin, isSuperAdmin: true, permissions: ['all', 'super_admin'] };
 
-        // Seed
-        testDb.prepare("INSERT INTO organizations (id, name) VALUES (1, 'Org 1')").run();
-        testDb.prepare("INSERT INTO organizations (id, name) VALUES (2, 'Org 2')").run();
+function request(method: string, body?: unknown, url = 'http://localhost/api/admin/users') {
+    return new NextRequest(url, {
+        method,
+        body: body === undefined ? undefined : JSON.stringify(body),
+        headers: { 'content-type': 'application/json' },
+    });
+}
 
-        // Admin for Org 1
-        testDb.prepare("INSERT INTO users (id, first_name, last_name, role, organization_id) VALUES (1, 'Admin', 'One', 'admin', 1)").run();
-        // User for Org 1
-        testDb.prepare("INSERT INTO users (id, first_name, last_name, role, organization_id) VALUES (2, 'User', 'One', 'user', 1)").run();
+/** Returns the JSON-encoded permissions passed to the INSERT/UPDATE on users. */
+function writtenPermissions(): string[] {
+    const call = [...mockDb.one.mock.calls, ...mockDb.execute.mock.calls]
+        .find(([sql]) => /INSERT INTO users|UPDATE users SET/.test(sql));
+    const json = (call?.[1] as any[]).find(p => typeof p === 'string' && p.startsWith('['));
+    return JSON.parse(json);
+}
 
-        // Admin for Org 2
-        testDb.prepare("INSERT INTO users (id, first_name, last_name, role, organization_id) VALUES (3, 'Admin', 'Two', 'admin', 2)").run();
+beforeEach(() => {
+    jest.resetAllMocks();
+    mockDb.query.mockResolvedValue([]);
+    mockDb.one.mockResolvedValue(null);
+    mockDb.execute.mockResolvedValue({ rowCount: 1 } as any);
+});
+
+describe('/api/admin/users', () => {
+    it('rejects non-admins', async () => {
+        mockGetSession.mockResolvedValue({ ...tenantAdmin, role: 'user' });
+        const res = await GET(request('GET'));
+        expect(res.status).toBe(401);
     });
 
-    it('GET should return only users for the admin organization', async () => {
-        (getSession as jest.Mock).mockResolvedValue({
-            organizationId: 1,
-            role: 'admin'
-        });
+    it('GET only queries the caller organization, ignoring ?orgId for tenant admins', async () => {
+        mockGetSession.mockResolvedValue(tenantAdmin);
+        mockDb.query.mockResolvedValue([{ id: 1, first_name: 'A', assigned_locations: [null] }]);
 
-        const { req } = createMocks({
-            method: 'GET',
-            url: 'http://localhost:3000/api/admin/users'
-        });
-
-        const res = await GET(req as any);
-        const data = await res.json();
+        const res = await GET(request('GET', undefined, 'http://localhost/api/admin/users?orgId=2'));
 
         expect(res.status).toBe(200);
-        expect(data.users).toHaveLength(2); // ID 1 and 2
-        const ids = data.users.map((u: any) => u.id).sort();
-        expect(ids).toEqual([1, 2]);
+        expect(mockDb.query.mock.calls[0][1]).toEqual([1]);
+        const data = await res.json();
+        expect(data.users[0].assigned_locations).toEqual([]);
     });
 
-    it('POST should create a new user in the admin organization', async () => {
-        (getSession as jest.Mock).mockResolvedValue({
-            organizationId: 1,
-            role: 'admin'
-        });
+    it('POST strips the super_admin permission when a tenant admin creates a user', async () => {
+        mockGetSession.mockResolvedValue(tenantAdmin);
+        mockDb.one.mockResolvedValue({ id: 99 });
 
-        const { req } = createMocks({
-            method: 'POST',
-            body: {
-                firstName: 'New',
-                lastName: 'Staff',
-                pin: '1234',
-                role: 'user',
-                permissions: ['add_stock']
-            }
-        });
-        req.json = async () => req.body;
-
-        const res = await POST(req as any);
-        const data = await res.json();
+        const res = await POST(request('POST', {
+            firstName: 'New', lastName: 'Staff', pin: '1234', permissions: ['add_stock', 'super_admin'],
+        }));
 
         expect(res.status).toBe(200);
+        expect(writtenPermissions()).toEqual(['add_stock']);
+    });
 
-        // Check DB
-        const user = testDb.prepare("SELECT * FROM users WHERE first_name = 'New' AND organization_id = 1").get();
-        expect(user).toBeDefined();
-        expect(user.role).toBe('user');
+    it('POST lets a super admin grant super_admin', async () => {
+        mockGetSession.mockResolvedValue(superAdmin);
+        mockDb.one.mockResolvedValue({ id: 99 });
 
-        // Verify not in Org 2
-        const leak = testDb.prepare("SELECT * FROM users WHERE first_name = 'New' AND organization_id = 2").get();
-        expect(leak).toBeUndefined();
+        await POST(request('POST', {
+            firstName: 'New', lastName: 'Admin', pin: '1234', permissions: ['super_admin'],
+        }));
+
+        expect(writtenPermissions()).toEqual(['super_admin']);
+    });
+
+    it('POST only assigns locations that belong to the organization', async () => {
+        mockGetSession.mockResolvedValue(tenantAdmin);
+        mockDb.one.mockResolvedValue({ id: 99 });
+        mockDb.query.mockImplementation(async (sql: string) =>
+            sql.includes('FROM locations') ? [{ id: 5 }] : []);
+
+        await POST(request('POST', {
+            firstName: 'New', lastName: 'Staff', pin: '1234', assignedLocations: [5, 777],
+        }));
+
+        const inserts = mockDb.execute.mock.calls.filter(([sql]) => sql.includes('INSERT INTO user_locations'));
+        expect(inserts.map(([, params]) => (params as any[])[1])).toEqual([5]);
+    });
+
+    it('PUT refuses to let a tenant admin modify a super admin account', async () => {
+        mockGetSession.mockResolvedValue(tenantAdmin);
+        mockDb.one.mockResolvedValue({ id: 1, permissions: '["all","super_admin"]' });
+
+        const res = await PUT(request('PUT', { id: 1, firstName: 'X', lastName: 'Y', password: 'takeover' }));
+
+        expect(res.status).toBe(403);
+        expect(mockDb.execute).not.toHaveBeenCalled();
+    });
+
+    it('DELETE refuses to let a tenant admin delete a super admin account', async () => {
+        mockGetSession.mockResolvedValue(tenantAdmin);
+        mockDb.one.mockResolvedValue({ id: 1, permissions: ['super_admin'] });
+
+        const res = await DELETE(request('DELETE', { id: 1 }));
+
+        expect(res.status).toBe(403);
+        expect(mockDb.execute).not.toHaveBeenCalled();
     });
 });

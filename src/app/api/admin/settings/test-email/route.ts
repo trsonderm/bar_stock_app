@@ -1,3 +1,9 @@
+/**
+ * POST /api/admin/settings/test-email
+ *
+ * Admin: sends a test message through the reporting SMTP account to the first
+ * configured report recipient.
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { sendEmail } from '@/lib/mail';

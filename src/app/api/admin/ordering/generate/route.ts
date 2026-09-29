@@ -1,9 +1,18 @@
+/**
+ * POST /api/admin/ordering/generate
+ *
+ * Admin-only prototype of automated ordering: creates a pending_orders row with
+ * a one-time approval token for the first enabled supplier and, when
+ * confirmation is required, emails the approval link (/orders/<token>) to the
+ * configured CC users. NOTE: the ordered items are still placeholders.
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'crypto';
 import { sendSMS } from '@/lib/twilio';
 import { sendEmail } from '@/lib/mail';
+import { parseJsonColumn } from '@/lib/json';
 
 export async function POST(req: NextRequest) {
     const session = await getSession();
@@ -16,28 +25,28 @@ export async function POST(req: NextRequest) {
 
         // 1. Get Settings
         const org = await db.one('SELECT ai_ordering_config, sms_enabled FROM organizations WHERE id = $1', [organizationId]);
-        const config = org.ai_ordering_config ? JSON.parse(org.ai_ordering_config) : {};
+        const config = parseJsonColumn<any>(org?.ai_ordering_config, {});
 
         if (!config.enabled) {
             return NextResponse.json({ message: 'Automation is disabled' });
         }
 
-        // 2. Logic to find what to order (Mocked for now)
-        // Find a supplier enabled in config
+        // 2. Pick the first supplier enabled for automated ordering
         const enabledSupplierIds = config.supplier_ids || [];
         if (enabledSupplierIds.length === 0) return NextResponse.json({ message: 'No suppliers enabled' });
 
         const supplierId = enabledSupplierIds[0];
-        const supplier = await db.one('SELECT name FROM suppliers WHERE id = $1', [supplierId]);
+        const supplier = await db.one('SELECT name FROM suppliers WHERE id = $1 AND organization_id = $2', [supplierId, organizationId]);
+        if (!supplier) return NextResponse.json({ error: 'Configured supplier no longer exists' }, { status: 404 });
 
-        // Mock items
+        // TODO: replace with real suggestions (see /api/inventory/predictive); placeholder items for now
         const mockItems = [
             { id: 101, name: 'Mock Item A', quantity: 12 },
             { id: 102, name: 'Mock Item B', quantity: 6 }
         ];
 
         // 3. Create Pending Order
-        const token = uuidv4();
+        const token = randomUUID();
         await db.execute(
             `INSERT INTO pending_orders (token, organization_id, supplier_id, items_json, status) VALUES ($1, $2, $3, $4, 'pending')`,
             [token, organizationId, supplierId, JSON.stringify(mockItems)]

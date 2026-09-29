@@ -1,3 +1,14 @@
+/**
+ * /api/super-admin/security — security monitoring (see src/lib/security-analysis.ts).
+ *
+ *  GET    analysis of recent login attempts and activity, plus blocked IPs / locked users
+ *  POST   actions: block_ip, lock_account, force_logout / revoke_sessions,
+ *         require_password_reset, enable_rate_limit, notify_admin, flag_review
+ *  DELETE ?ip= unblock an IP
+ *
+ * NOTE: require_password_reset emails a link to /reset-password, which does not
+ * exist yet.
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';

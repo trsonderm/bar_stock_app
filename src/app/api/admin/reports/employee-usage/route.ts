@@ -1,3 +1,8 @@
+/**
+ * POST /api/admin/reports/employee-usage
+ *
+ * Stock usage per employee, filtered by { dateRange, shiftId, userIds, locationId }.
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';

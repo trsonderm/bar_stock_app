@@ -1,3 +1,6 @@
+/**
+ * Table component used on super admin pages.
+ */
 import React from 'react';
 import { ChevronLeft, ChevronRight, Search } from 'lucide-react';
 

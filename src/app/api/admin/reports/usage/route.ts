@@ -1,3 +1,9 @@
+/**
+ * GET /api/admin/reports/usage?start=&end=&locationId=&categoryId=
+ *
+ * Usage analytics: per-item consumption over the period, burn rate, predicted
+ * days of stock remaining and plain-language insights.
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';

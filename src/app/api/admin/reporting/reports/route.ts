@@ -1,4 +1,9 @@
-
+/**
+ * /api/admin/reporting/reports — saved reports of the organization (admin only).
+ *
+ *  GET  list
+ *  POST create { name, description, sections }
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { db } from '@/lib/db';

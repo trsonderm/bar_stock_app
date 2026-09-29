@@ -1,3 +1,6 @@
+/**
+ * Charts for the Smart Order page.
+ */
 'use client';
 
 import {

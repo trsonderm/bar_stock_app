@@ -1,3 +1,6 @@
+/**
+ * Page title bar used on super admin pages.
+ */
 import React from 'react';
 import { LucideIcon } from 'lucide-react';
 

@@ -1,3 +1,6 @@
+/**
+ * Builds the HTML email for a closed shift (cash reconciliation summary).
+ */
 import { ShiftClose } from '@/components/ShiftReportCard';
 
 const fmt = (v: number | string) => {

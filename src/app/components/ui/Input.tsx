@@ -1,3 +1,6 @@
+/**
+ * Styled text input and select controls.
+ */
 import React from 'react';
 
 interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {

@@ -1,3 +1,6 @@
+/**
+ * Browse, print and re-send closed shift reports.
+ */
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';

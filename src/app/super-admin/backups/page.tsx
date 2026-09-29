@@ -1,3 +1,6 @@
+/**
+ * Database backups: run a backup and configure the backup schedule.
+ */
 'use client';
 
 import React, { useState, useEffect } from 'react';

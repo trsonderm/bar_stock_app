@@ -1,56 +1,31 @@
-const Database = require('better-sqlite3');
-const path = require('path');
+/**
+ * Applies scripts/migrate.sql to the database in DATABASE_URL.
+ *
+ *   npm run db:migrate
+ *
+ * migrate.sql is idempotent (IF NOT EXISTS / duplicate_column guards), so this
+ * is safe to run on every deploy and on databases of any age.
+ */
+require('dotenv').config({ path: '.env.local' });
+require('dotenv').config();
+const { Pool } = require('pg');
 const fs = require('fs');
-const { execSync } = require('child_process');
+const path = require('path');
 
-const dbPath = path.join(process.cwd(), 'inventory.db');
-const db = new Database(dbPath);
+const pool = new Pool({
+    connectionString: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5433/topshelf'
+});
 
-// 1. Create migrations table
-db.prepare(`
-    CREATE TABLE IF NOT EXISTS migrations (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT UNIQUE NOT NULL,
-        run_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-`).run();
-
-// List of migrations in order
-// We use the filenames relative to project root
-const MIGRATIONS = [
-    'scripts/fix-schema.js',
-    'scripts/fix-items.js',
-    'scripts/migration-secondary-cats.js',
-    'scripts/seed-liquor.js',
-    'scripts/seed-liquor-batch2.js',
-    'scripts/seed-liquor-subcats.js'
-];
-
-console.log('Checking migrations...');
-
-const checkStmt = db.prepare('SELECT id FROM migrations WHERE name = ?');
-const insertStmt = db.prepare('INSERT INTO migrations (name) VALUES (?)');
-
-for (const script of MIGRATIONS) {
-    const exists = checkStmt.get(script);
-    if (exists) {
-        // Already run
-        continue;
-    }
-
-    console.log(`Running migration: ${script}`);
+async function migrate() {
     try {
-        // Run the script using node
-        execSync(`node ${script}`, { stdio: 'inherit' });
-
-        // Record success
-        insertStmt.run(script);
-        console.log(`Recorded migration: ${script}`);
+        await pool.query(fs.readFileSync(path.join(__dirname, 'migrate.sql'), 'utf8'));
+        console.log('Migrations applied successfully.');
     } catch (e) {
-        console.error(`Failed to run ${script}`);
-        console.error(e);
-        process.exit(1); // Stop deployment on failure
+        console.error('Migration failed:', e.message);
+        process.exitCode = 1;
+    } finally {
+        await pool.end();
     }
 }
 
-console.log('All migrations are up for date.');
+migrate();

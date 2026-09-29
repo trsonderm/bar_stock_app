@@ -1,3 +1,9 @@
+/**
+ * /api/system/settings — the quick-login flag shown on the login page.
+ *
+ *  GET  public: { quick_login_enabled }
+ *  POST super admin: { enabled }
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';

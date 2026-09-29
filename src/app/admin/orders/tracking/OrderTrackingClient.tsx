@@ -1,3 +1,6 @@
+/**
+ * Track open orders per location: receive, edit & resubmit, or delete.
+ */
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';

@@ -1,3 +1,6 @@
+/**
+ * Manual purchase order page.
+ */
 import ManualOrderClient from './ManualOrderClient';
 import { getSession } from '@/lib/auth';
 import { redirect } from 'next/navigation';

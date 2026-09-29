@@ -1,3 +1,7 @@
+/**
+ * PIN login pad for a registered station device (/o/<slug> and /pin); verifies
+ * the station token and optional browser fingerprint before accepting PINs.
+ */
 'use client';
 
 import { useState, useEffect } from 'react';

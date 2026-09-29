@@ -1,3 +1,6 @@
+/**
+ * Tenant admin sidebar navigation (Pro-only items are badged for base plans).
+ */
 'use client';
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
@@ -124,8 +127,7 @@ export default function AdminNav({ user, children }: { user: NavUser, children: 
 
     const handleLogout = async () => {
         await fetch('/api/auth/logout', { method: 'POST' });
-        router.push('/');
-        router.refresh();
+        window.location.href = '/';
     };
 
     const handleDrawerToggle = () => {

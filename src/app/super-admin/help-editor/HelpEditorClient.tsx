@@ -1,3 +1,6 @@
+/**
+ * Block-based editor for help-centre articles.
+ */
 'use client';
 
 import { useState, useEffect } from 'react';

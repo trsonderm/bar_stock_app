@@ -1,3 +1,6 @@
+/**
+ * Manage the shared bottle / barcode database and import from organizations.
+ */
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';

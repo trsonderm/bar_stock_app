@@ -1,3 +1,9 @@
+/**
+ * GET /api/admin/reporting/daily-stats
+ *
+ * Today's headline numbers for the caller's organization: items created,
+ * activity entries and distinct active users.
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { db } from '@/lib/db';
@@ -18,18 +24,17 @@ export async function GET(req: NextRequest) {
             WHERE organization_id = $1 AND DATE(created_at) = DATE($2)
         `, [session.organizationId, today]);
 
-        // 2. Users Active (using audits as proxy, checking if inventory_audits exists, wait, table list check first)
-        // I saw 'activity_logs' in table list, that is better!
+        // 2. Activity entries today
 
         const activity = await db.one(`
             SELECT COUNT(*) as count FROM activity_logs 
-            WHERE organization_id = $1 AND DATE(created_at) = DATE($2)
+            WHERE organization_id = $1 AND DATE(timestamp) = DATE($2)
         `, [session.organizationId, today]);
 
         // 3. Active Staff (distinct users in activity logs)
         const users = await db.one(`
             SELECT COUNT(DISTINCT user_id) as count FROM activity_logs
-            WHERE organization_id = $1 AND DATE(created_at) = DATE($2)
+            WHERE organization_id = $1 AND DATE(timestamp) = DATE($2)
         `, [session.organizationId, today]);
 
         return NextResponse.json({

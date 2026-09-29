@@ -1,3 +1,6 @@
+/**
+ * GET /api/user/activity — the signed-in user's own recent activity log.
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';

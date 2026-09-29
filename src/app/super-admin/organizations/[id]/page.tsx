@@ -1,3 +1,6 @@
+/**
+ * One organization's details and users.
+ */
 'use client';
 
 import { useState, useEffect } from 'react';

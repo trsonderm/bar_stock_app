@@ -1,3 +1,6 @@
+/**
+ * Super admin layout (super admins only).
+ */
 import { requireSuperAdmin } from '@/lib/auth-server';
 import SuperAdminNav from './SuperAdminNav';
 import { redirect } from 'next/navigation';

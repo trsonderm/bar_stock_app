@@ -1,3 +1,6 @@
+/**
+ * POST /api/auth/logout — clears the session cookie.
+ */
 import { NextRequest, NextResponse } from 'next/server';
 
 

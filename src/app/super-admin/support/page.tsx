@@ -1,3 +1,6 @@
+/**
+ * All support tickets across organizations.
+ */
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';

@@ -1,3 +1,6 @@
+/**
+ * Report builder page (Pro plan).
+ */
 import { getSession } from '@/lib/auth';
 import { redirect } from 'next/navigation';
 import { Suspense } from 'react';

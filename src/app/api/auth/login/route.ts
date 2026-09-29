@@ -1,10 +1,20 @@
+/**
+ * POST /api/auth/login
+ *
+ * Two login modes:
+ *  - email + password (admins / any user with credentials)
+ *  - 4-digit PIN, only from a device holding a valid `station_token` cookie;
+ *    the PIN is matched only against users of that station's organization.
+ *
+ * Enforces the super-admin IP block list, account locks and (optionally)
+ * email verification, and records every attempt in `login_attempts`.
+ * On success sets the `session` cookie.
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { db } from '@/lib/db';
 import { verifyPin, verifyPassword, createSessionToken, COOKIE_OPTIONS, UserRole } from '@/lib/auth';
 import { validateStationToken } from '@/lib/dba';
-import * as fs from 'fs';
-import path from 'path';
 
 function getClientIp(req: NextRequest): string {
     return (
@@ -63,27 +73,24 @@ export async function POST(req: NextRequest) {
                 matchedUser = user;
             }
         }
-        // 2. PIN Login (Legacy / POS)
+        // 2. PIN login from a registered station device
         else if (pin) {
-            // Station Token Check
             const cookieStore = cookies();
             const stationToken = cookieStore.get('station_token')?.value;
+            const station = stationToken ? await validateStationToken(stationToken) : null;
 
-            if (!stationToken || !(await validateStationToken(stationToken))) {
+            if (!station) {
                 return NextResponse.json({ error: 'Station not authorized. Please log in with email and password.' }, { status: 401 });
             }
 
-            // Note: PIN login iterates. If multi-tenant, this might find first match. 
-            // Ideally should be scoped by subdomain or org selection, but for now fallback to global search.
-            const users = await db.query('SELECT * FROM users');
-            for (const user of users) {
-                if (user.pin_hash && verifyPin(pin, user.pin_hash)) {
-                    matchedUser = user;
-                    // If multiple users have same PIN, this picks the first one. 
-                    // This is a known limitation of legacy PIN auth in multi-tenant without Org context.
-                    break;
-                }
-            }
+            // Only match users belonging to the organization the station is registered to,
+            // so a PIN can never sign someone into a different tenant.
+            const users = await db.query(
+                'SELECT * FROM users WHERE organization_id = $1 AND pin_hash IS NOT NULL ORDER BY id',
+                [station.org_id]
+            );
+            // PINs are not unique; if two users in the same org share one, the lowest id wins.
+            matchedUser = users.find((user: any) => verifyPin(pin, user.pin_hash)) || null;
         } else {
             return NextResponse.json({ error: 'Data required' }, { status: 400 });
         }
@@ -97,27 +104,34 @@ export async function POST(req: NextRequest) {
 
             // Block login if email verification is required and not yet verified
             if (email && password) {
-                const verifySetting = await db.one("SELECT value FROM system_settings WHERE key = 'require_email_verification'");
+                const verifySetting = await db.one("SELECT value FROM system_settings WHERE key = 'require_email_verification'").catch(() => null);
                 if (verifySetting?.value === 'true' && matchedUser.is_email_verified === false) {
                     return NextResponse.json({ error: 'Please verify your email address before logging in. Check your inbox for the verification link.' }, { status: 403 });
                 }
             }
 
             // Fetch Organization Plan
-            const org = await db.one('SELECT subscription_plan FROM organizations WHERE id = $1', [matchedUser.organization_id || 1]);
+            const org = matchedUser.organization_id ? await db.one('SELECT subscription_plan FROM organizations WHERE id = $1', [matchedUser.organization_id]).catch(() => null) : null;
             const subscriptionPlan = org ? org.subscription_plan : 'base';
 
-            const permissions = typeof matchedUser.permissions === 'string' ? JSON.parse(matchedUser.permissions) : matchedUser.permissions;
-            // Check if permissions includes super_admin
+            let rawPermissions = matchedUser.permissions;
+            if (typeof rawPermissions === 'string') {
+                try {
+                    rawPermissions = JSON.parse(rawPermissions);
+                } catch {
+                    rawPermissions = [];
+                }
+            }
+            const permissions: string[] = Array.isArray(rawPermissions) ? rawPermissions : [];
             const isSuperAdmin = permissions.includes('super_admin');
 
             const sessionUser = {
                 id: matchedUser.id,
-                role: matchedUser.role as UserRole,
-                permissions: matchedUser.permissions,
-                firstName: matchedUser.first_name,
-                lastName: matchedUser.last_name,
-                email: matchedUser.email,
+                role: (matchedUser.role || 'user') as UserRole,
+                permissions,
+                firstName: matchedUser.first_name || '',
+                lastName: matchedUser.last_name || '',
+                email: matchedUser.email || '',
                 organizationId: matchedUser.organization_id || 1, // Fallback to 1 if null (shouldn't happen after migration)
                 isSuperAdmin,
                 subscriptionPlan
@@ -150,8 +164,11 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
         }
 
-    } catch (error) {
-        console.error('Login error:', error);
-        return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+    } catch (error: any) {
+        console.error('Login error:', error?.message || error, error?.stack);
+        return NextResponse.json({
+            error: 'Internal Server Error',
+            message: process.env.NODE_ENV !== 'production' ? (error?.message || 'Unknown error') : undefined
+        }, { status: 500 });
     }
 }

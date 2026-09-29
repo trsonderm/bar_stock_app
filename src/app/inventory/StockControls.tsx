@@ -1,3 +1,6 @@
+/**
+ * +/- stock buttons and custom-amount input for one item.
+ */
 import { useState } from 'react';
 import Box from '@mui/material/Box';
 import IconButton from '@mui/material/IconButton';

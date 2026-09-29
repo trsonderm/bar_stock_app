@@ -1,3 +1,11 @@
+/**
+ * /api/admin/orders/:id — a single purchase order.
+ *
+ *  GET    order detail with its line items (any signed-in user of the org)
+ *  DELETE delete a PENDING / IN_TRANSIT order (admin)
+ *  PUT    edit & resubmit (admin): archives this order and creates a new PENDING
+ *         order at the same location linked via resubmit_of
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db, pool } from '@/lib/db';
 import { getSession } from '@/lib/auth';
@@ -93,21 +101,36 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     try {
         await client.query('BEGIN');
 
-        // Archive the existing order
-        await client.query(
-            `UPDATE purchase_orders SET archived_at = NOW(), resubmit_note = $1 WHERE id = $2 AND organization_id = $3`,
+        // Archive the existing order (must belong to this organization)
+        const archived = await client.query(
+            `UPDATE purchase_orders SET archived_at = NOW(), resubmit_note = $1
+             WHERE id = $2 AND organization_id = $3 AND archived_at IS NULL
+             RETURNING location_id`,
             [note || 'Edited and resubmitted', orderId, session.organizationId]
         );
+        if (archived.rowCount === 0) {
+            await client.query('ROLLBACK');
+            return NextResponse.json({ error: 'Order not found' }, { status: 404 });
+        }
 
-        // Create new order linked to the archived one
+        if (supplier_id) {
+            const supplier = await client.query('SELECT 1 FROM suppliers WHERE id = $1 AND organization_id = $2', [supplier_id, session.organizationId]);
+            if (supplier.rowCount === 0) {
+                await client.query('ROLLBACK');
+                return NextResponse.json({ error: 'Supplier not found' }, { status: 404 });
+            }
+        }
+
+        // Create the replacement order at the same location, linked to the archived one
         const newOrderRes = await client.query(`
             INSERT INTO purchase_orders
-                (organization_id, supplier_id, expected_delivery_date, tracking_status, status, submitted_by, resubmit_of, details)
-            VALUES ($1, $2, $3, 'PENDING', 'PENDING', $4, $5, $6)
+                (organization_id, supplier_id, location_id, expected_delivery_date, tracking_status, status, submitted_by, resubmit_of, details)
+            VALUES ($1, $2, $3, $4, 'PENDING', 'PENDING', $5, $6, $7)
             RETURNING id
         `, [
             session.organizationId,
             supplier_id,
+            archived.rows[0].location_id,
             expected_delivery_date,
             session.id,
             orderId,
@@ -116,9 +139,11 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
         const newOrderId = newOrderRes.rows[0].id;
 
         for (const item of (items || [])) {
+            // Only this organization's items may be ordered
             await client.query(
-                `INSERT INTO purchase_order_items (purchase_order_id, item_id, quantity) VALUES ($1, $2, $3)`,
-                [newOrderId, item.item_id, item.quantity]
+                `INSERT INTO purchase_order_items (purchase_order_id, item_id, quantity)
+                 SELECT $1, id, $3 FROM items WHERE id = $2 AND organization_id = $4`,
+                [newOrderId, item.item_id, item.quantity, session.organizationId]
             );
         }
 

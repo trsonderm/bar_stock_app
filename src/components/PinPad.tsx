@@ -1,3 +1,6 @@
+/**
+ * Numeric 4-digit PIN entry pad.
+ */
 'use client';
 
 import { useState, useEffect } from 'react';

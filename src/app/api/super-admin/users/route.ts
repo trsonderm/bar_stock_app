@@ -1,3 +1,11 @@
+/**
+ * /api/super-admin/users — users across all organizations.
+ *
+ *  GET    search (?search=)
+ *  POST   create a user in any organization
+ *  PUT    update a user
+ *  DELETE archive (soft delete) a user
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';

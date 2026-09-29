@@ -1,3 +1,9 @@
+/**
+ * /api/admin/suppliers/:id (admin only)
+ *
+ *  GET    supplier details and the items linked to it
+ *  DELETE delete the supplier
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';

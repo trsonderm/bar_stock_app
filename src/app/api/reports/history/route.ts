@@ -1,3 +1,8 @@
+/**
+ * GET /api/reports/history?itemId=&locationId=
+ *
+ * Stock movement history of one item at a location (activity log entries).
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
@@ -71,11 +76,9 @@ export async function GET(req: NextRequest) {
             logsByDay[date].push(l);
         });
 
-        // Loop 0 to days-1 (Today to Past) or Past to Today?
-        // Charts usually want Past -> Today.
-        // But to calculate stock, we work Today -> Past (reversing actions).
-
-        // Let's generate array of dates for chart (Past -> Today)
+        // Chart dates, oldest first. Stock is reconstructed by walking backwards from
+        // today's stock and reversing each day's movements:
+        //   stockEndOf(D-1) = stockEndOf(D) - restock(D) + usage(D)
         const dates = [];
         for (let d = days; d >= 0; d--) {
             const date = new Date();
@@ -83,28 +86,9 @@ export async function GET(req: NextRequest) {
             dates.push(date.toISOString().split('T')[0]);
         }
 
-        // We need to map Date -> Stock/Usage. 
-        // But runningStock is at "End of Today" (current).
-        // To get "Start of Today", we reverse Today's actions.
-        // Actually simpler:
-        // Stock[End of D] = Stock[End of D-1] + Add[D] - Sub[D].
-        // So Stock[End of D-1] = Stock[End of D] - Add[D] + Sub[D].
-
-        // We will build a map date -> { stockEnd, usage, restock }
-        // Start with current runningStock as "End of Today (or latest)".
-        // If we want detailed chart, we assume 'current' is 'now'. 
-        // If logs exist for 'tomorrow' (future), ignore.
-
         const dailyStats: Record<string, { stock: number, usage: number, restock: number }> = {};
 
-        // Sort logs DESC (Newest first) is already done.
-        // We traverse logs. For each log, we adjust runningStock.
-        // But we need daily snapshots.
-
-        // Let's iterate dates backwards (Today -> Past) to fill dailyStats.
         const todayStr = new Date().toISOString().split('T')[0];
-
-        // Optimization: Just index logs by date first. (Done above)
 
         let currentCalcStock = runningStock;
 
@@ -116,19 +100,11 @@ export async function GET(req: NextRequest) {
             let dayUsage = 0;
             let dayRestock = 0;
 
-            // Process logs for this day to find "Start of Day" stock (which is End of Prev Day)
-            // And sum usage/restock.
-            // Note: Logs are mixed time. 
-            // Effect of log on stock:
-            // ADD_STOCK (+qty).  To reverse: -qty.
-            // SUBTRACT_STOCK (-qty). To reverse: +qty.
+            // Sum the day's movements and reverse them to get the stock at the start of the day.
 
             dayLogs.forEach(l => {
-                const d = l.details; // pg driver returns JSON object if jsonb column? 
-                // Wait, typically pg driver returns object for jsonb. existing code used user-defined parse or cast?
-                // The query uses `details->>'itemId'` so raw SQL access. 
-                // But `details` column select... `pg` parses JSON usually.
-                // Adapting safely:
+                // details is JSONB (already an object), but tolerate a JSON string too
+                const d = l.details;
                 let qty = 0;
                 if (typeof d === 'string') {
                     try { qty = JSON.parse(d).quantity || 0; } catch { }
@@ -145,12 +121,7 @@ export async function GET(req: NextRequest) {
                 }
             });
 
-            // At this point, `currentCalcStock` is the stock at the START of `dateStr` 
-            // (or End of `dateStr - 1`).
-            // The stock displayed for `dateStr` should typically be "End of Day" stock?
-            // "End of Day Stock" for `dateStr` was the value BEFORE we reversed logs.
-            // So:
-            // EndStock = currentCalcStock + Restock - Usage
+            // currentCalcStock is now the stock at the start of dateStr; report end-of-day stock.
 
             dailyStats[dateStr] = {
                 stock: Math.max(0, currentCalcStock + dayRestock - dayUsage),

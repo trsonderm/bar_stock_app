@@ -1,3 +1,12 @@
+/**
+ * POST /api/inventory/adjust
+ *
+ * The stock +/- buttons. Body: { itemId, change, locationId?, bottleLevel? }.
+ * Adds `change` (clamped at zero) to the item's stock at the given location
+ * (else the current-location cookie, else the org's first location), logs an
+ * ADD_STOCK / SUBTRACT_STOCK activity and an optional bottle-level entry, all in
+ * one transaction. Adding stock needs admin or the add_stock permission.
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db';
 import { getSession } from '@/lib/auth';

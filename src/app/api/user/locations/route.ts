@@ -1,3 +1,9 @@
+/**
+ * GET /api/user/locations
+ *
+ * Locations the signed-in user is assigned to (admins with no assignments get
+ * every location of the organization).
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
@@ -10,19 +16,7 @@ export async function GET(req: NextRequest) {
     const userId = session.id;
 
     try {
-        let query = '';
-        let params = [];
-
-        // If admin (or specific permission?), maybe they can see all locations?
-        // Requirement says "admins... will have a dropdown if they are selected for multiple locations".
-        // Use user_locations table for everyone.
-
-        // CHECK if user is Super Admin or has "all" permission? 
-        // For now, let's stick to explicit assignment in user_locations.
-        // If user_locations has entries, use those. 
-        // IF NO entries in user_locations AND role is admin, maybe show all?
-        // Let's strictly follow the table. If admin wants access, they assign themselves.
-
+        // Locations come from explicit user_locations assignments.
         const assigned = await db.query(`
             SELECT l.id, l.name 
             FROM locations l
@@ -31,11 +25,8 @@ export async function GET(req: NextRequest) {
             ORDER BY l.name ASC
         `, [userId, organizationId]);
 
-        // Fallback: If no locations assigned, maybe they are legacy admin?
-        // Or if table is empty?
-        // Let's check if they have NO assignments.
+        // An admin with no assignments sees every location of the organization.
         if (assigned.length === 0) {
-            // If admin, maybe return ALL?
             if (session.role === 'admin') {
                 const all = await db.query('SELECT id, name FROM locations WHERE organization_id = $1 ORDER BY name ASC', [organizationId]);
                 return NextResponse.json({ locations: all });

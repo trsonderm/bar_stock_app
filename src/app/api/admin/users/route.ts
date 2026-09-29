@@ -1,6 +1,44 @@
+/**
+ * /api/admin/users — manage the users of an organization (admin only).
+ *
+ *  GET    list users (optional ?locationId= filter for the scheduler)
+ *  POST   create a user (PIN and/or email + password)
+ *  PUT    update a user, their locations and shift assignments
+ *  DELETE remove a user
+ *
+ * Super admins may target another organization with ?orgId=.
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { getSession, hashPin, hashPassword } from '@/lib/auth';
+import { getSession, hashPin, hashPassword, UserSession } from '@/lib/auth';
+
+/**
+ * Only a super admin may grant the platform-wide `super_admin` permission;
+ * otherwise any tenant admin could escalate a user (or themselves) to it.
+ */
+function sanitizePermissions(permissions: unknown, session: UserSession): string[] {
+    const list = Array.isArray(permissions) ? permissions.filter((p): p is string => typeof p === 'string') : [];
+    return session.isSuperAdmin ? list : list.filter(p => p !== 'super_admin');
+}
+
+/** True if a users row carries the platform-wide super_admin permission. */
+function isSuperAdminUser(user: { permissions: unknown }): boolean {
+    let perms = user.permissions;
+    if (typeof perms === 'string') {
+        try { perms = JSON.parse(perms); } catch { perms = []; }
+    }
+    return Array.isArray(perms) && perms.includes('super_admin');
+}
+
+/** Keeps only the location ids that belong to the given organization. */
+async function filterOrgLocations(locationIds: unknown, organizationId: number): Promise<number[]> {
+    if (!Array.isArray(locationIds) || locationIds.length === 0) return [];
+    const rows = await db.query(
+        'SELECT id FROM locations WHERE id = ANY($1::int[]) AND organization_id = $2',
+        [locationIds.map(Number), organizationId]
+    );
+    return rows.map((r: any) => Number(r.id));
+}
 
 export async function GET(req: NextRequest) {
     try {
@@ -102,13 +140,14 @@ export async function POST(req: NextRequest) {
             INSERT INTO users (first_name, last_name, pin_hash, email, password_hash, role, permissions, organization_id, phone, bio, notes, hide_from_scheduler)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
             RETURNING id
-        `, [firstName, lastName, pinHash, email || null, passwordHash, finalRole, JSON.stringify(permissions), organizationId, phone || null, bio || null, notes || null, hideFromScheduler]);
+        `, [firstName, lastName, pinHash, email || null, passwordHash, finalRole, JSON.stringify(sanitizePermissions(permissions, session)), organizationId, phone || null, bio || null, notes || null, hideFromScheduler]);
 
         const userId = res.id;
 
         // Save Locations
-        if (Array.isArray(assignedLocations) && assignedLocations.length > 0) {
-            for (const locId of assignedLocations) {
+        const locationIds = await filterOrgLocations(assignedLocations, organizationId);
+        if (locationIds.length > 0) {
+            for (const locId of locationIds) {
                 await db.execute(
                     'INSERT INTO user_locations (user_id, location_id, organization_id) VALUES ($1, $2, $3)',
                     [userId, locId, organizationId]
@@ -172,8 +211,11 @@ export async function PUT(req: NextRequest) {
         }
 
         // Authorization
-        const user = await db.one('SELECT id FROM users WHERE id = $1 AND organization_id = $2', [id, organizationId]);
+        const user = await db.one('SELECT id, permissions FROM users WHERE id = $1 AND organization_id = $2', [id, organizationId]);
         if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 });
+        if (isSuperAdminUser(user) && !session.isSuperAdmin) {
+            return NextResponse.json({ error: 'Only a super admin can modify this account' }, { status: 403 });
+        }
 
         const updates = [];
         const params = [];
@@ -190,8 +232,8 @@ export async function PUT(req: NextRequest) {
         if (password) {
             updates.push(`password_hash = $${pIdx++}`); params.push(hashPassword(password));
         }
-        updates.push(`role = $${pIdx++}`); params.push(role);
-        updates.push(`permissions = $${pIdx++}`); params.push(JSON.stringify(permissions));
+        updates.push(`role = $${pIdx++}`); params.push(role === 'admin' ? 'admin' : 'user');
+        updates.push(`permissions = $${pIdx++}`); params.push(JSON.stringify(sanitizePermissions(permissions, session)));
         if (phone !== undefined) {
             updates.push(`phone = $${pIdx++}`); params.push(phone || null);
         }
@@ -214,11 +256,10 @@ export async function PUT(req: NextRequest) {
             );
         }
 
-        // assignedLocations logic... (keeping existing)
+        // Replace the user's location assignments
         if (assignedLocations !== undefined && Array.isArray(assignedLocations)) {
-            // Replace locations
             await db.execute('DELETE FROM user_locations WHERE user_id = $1 AND organization_id = $2', [id, organizationId]);
-            for (const locId of assignedLocations) {
+            for (const locId of await filterOrgLocations(assignedLocations, organizationId)) {
                 await db.execute(
                     'INSERT INTO user_locations (user_id, location_id, organization_id) VALUES ($1, $2, $3)',
                     [id, locId, organizationId]
@@ -285,6 +326,12 @@ export async function DELETE(req: NextRequest) {
         }
         const { id } = await req.json();
         if (id === session.id) return NextResponse.json({ error: 'Cannot delete yourself' }, { status: 400 });
+
+        const target = await db.one('SELECT id, permissions FROM users WHERE id = $1 AND organization_id = $2', [id, organizationId]);
+        if (!target) return NextResponse.json({ error: 'User not found' }, { status: 404 });
+        if (isSuperAdminUser(target) && !session.isSuperAdmin) {
+            return NextResponse.json({ error: 'Only a super admin can delete this account' }, { status: 403 });
+        }
 
         const result = await db.execute('DELETE FROM users WHERE id = $1 AND organization_id = $2', [id, organizationId]);
 

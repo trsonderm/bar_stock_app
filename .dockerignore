@@ -2,8 +2,15 @@ node_modules
 .next
 .git
 .gitignore
-inventory.db
-bar_stock.db
+.env*
+!.env.example
 Dockerfile
 docker-compose.yml
 README.md
+backups
+public/uploads
+playwright-report
+test-results
+coverage
+.auth
+*.log

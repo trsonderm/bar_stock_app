@@ -1,3 +1,7 @@
+/**
+ * Close-shift form: bank, sales, tips, payouts and receipt OCR; computes the bag
+ * amount and over/short and submits to /api/shift/close.
+ */
 'use client';
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';

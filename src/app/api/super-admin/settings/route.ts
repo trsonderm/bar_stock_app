@@ -1,3 +1,9 @@
+/**
+ * /api/super-admin/settings — global key/value system settings (super admin only).
+ *
+ *  GET  returns every row of system_settings as { config: { key: value } }
+ *  POST upserts every key in the JSON body
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
@@ -30,21 +36,21 @@ export async function POST(req: NextRequest) {
 
     const payload = await req.json();
 
-    await db.execute('BEGIN');
     try {
-        for (const [key, value] of Object.entries(payload)) {
-            if (value !== undefined) {
-                await db.execute(
-                    "INSERT INTO system_settings (key, value) VALUES ($1, $2) ON CONFLICT(key) DO UPDATE SET value = EXCLUDED.value", 
-                    [key, String(value)]
-                );
+        await db.transaction(async (tx) => {
+            for (const [key, value] of Object.entries(payload)) {
+                if (value !== undefined) {
+                    await tx.execute(
+                        "INSERT INTO system_settings (key, value) VALUES ($1, $2) ON CONFLICT(key) DO UPDATE SET value = EXCLUDED.value",
+                        [key, String(value)]
+                    );
+                }
             }
-        }
+        });
 
-        await db.execute('COMMIT');
         return NextResponse.json({ success: true });
     } catch (e) {
-        await db.execute('ROLLBACK');
+        console.error('Failed to save system settings:', e);
         return NextResponse.json({ error: 'Failed' }, { status: 500 });
     }
 }

@@ -1,3 +1,6 @@
+/**
+ * Activity search page.
+ */
 import { getSession } from '@/lib/auth';
 import { redirect } from 'next/navigation';
 import QueryClient from './QueryClient';

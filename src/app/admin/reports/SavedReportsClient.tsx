@@ -1,3 +1,6 @@
+/**
+ * List, open and delete report-builder reports.
+ */
 'use client';
 
 import { useState, useEffect } from 'react';

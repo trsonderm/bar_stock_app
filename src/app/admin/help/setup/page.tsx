@@ -1,3 +1,6 @@
+/**
+ * Static getting-started guide for new organizations.
+ */
 'use client';
 
 import styles from '../../admin.module.css';
@@ -34,8 +37,8 @@ export default function SetupGuidePage() {
                             <div>
                                 <h3 style={{ margin: '0 0 0.5rem 0', color: 'white' }}>Define Product Categories</h3>
                                 <p style={{ color: '#9ca3af', fontSize: '0.9rem' }}>
-                                    Create groups for your products (e.g. "Liquor", "Beer").
-                                    <strong>Crucial:</strong> Define the "Stock Buttons" (e.g. +1, +6, +24) that staff will use to count inventory.
+                                    Create groups for your products (e.g. &quot;Liquor&quot;, &quot;Beer&quot;).
+                                    <strong>Crucial:</strong> Define the &quot;Stock Buttons&quot; (e.g. +1, +6, +24) that staff will use to count inventory.
                                 </p>
                                 <a href="/admin/categories" style={{ color: '#60a5fa', textDecoration: 'none' }}>Go to Product Categories &rarr;</a>
                             </div>
@@ -53,7 +56,7 @@ export default function SetupGuidePage() {
                                     <ul style={{ paddingLeft: '1.2rem', marginTop: '0.5rem' }}>
                                         <li>Assign them to a <strong>Category</strong>.</li>
                                         <li>Select a <strong>Supplier</strong>.</li>
-                                        <li>Enable <strong>"Track Quantity"</strong> if you want to count stock levels.</li>
+                                        <li>Enable <strong>&quot;Track Quantity&quot;</strong> if you want to count stock levels.</li>
                                     </ul>
                                 </p>
                                 <a href="/admin/products" style={{ color: '#60a5fa', textDecoration: 'none' }}>Go to Products &rarr;</a>
@@ -90,7 +93,7 @@ export default function SetupGuidePage() {
 
                     <div style={{ marginBottom: '2rem' }}>
                         <h3 style={{ color: '#d1d5db' }}>Adding a Product</h3>
-                        <p style={{ color: '#9ca3af' }}>Ensure "Track Quantity" is checked for items you want to count.</p>
+                        <p style={{ color: '#9ca3af' }}>Ensure &quot;Track Quantity&quot; is checked for items you want to count.</p>
                         <div style={{ background: '#000', padding: '2rem', borderRadius: '0.5rem', border: '1px dashed #4b5563', color: '#6b7280', textAlign: 'center' }}>
                             [Screenshot Reuse of Add Product Modal]
                         </div>

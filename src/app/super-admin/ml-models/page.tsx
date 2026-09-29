@@ -1,3 +1,6 @@
+/**
+ * Forecasting model settings page.
+ */
 import { requireSuperAdmin } from '@/lib/auth-server';
 import { redirect } from 'next/navigation';
 import MLModelsClient from './MLModelsClient';

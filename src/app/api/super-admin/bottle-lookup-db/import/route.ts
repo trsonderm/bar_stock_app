@@ -1,3 +1,9 @@
+/**
+ * POST /api/super-admin/bottle-lookup-db/import
+ *
+ * Super admin: copies selected organization items (with barcodes) into the
+ * shared site bottle database.
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';

@@ -1,3 +1,10 @@
+/**
+ * GET /api/admin/insights
+ *
+ * Admin analytics: per-item daily usage over the configured window, burn rates,
+ * day-of-week patterns, anomaly detection and stock-out forecasts, using the
+ * models and parameters configured by the super admin (see src/lib/ml.ts).
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';

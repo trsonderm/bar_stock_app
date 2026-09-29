@@ -1,3 +1,6 @@
+/**
+ * Review, edit, approve or decline a pending automated order.
+ */
 'use client';
 
 import { useState, useEffect } from 'react';

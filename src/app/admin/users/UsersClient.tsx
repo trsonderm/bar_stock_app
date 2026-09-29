@@ -1,3 +1,6 @@
+/**
+ * Create and edit users: PIN / login, permissions, locations and shifts.
+ */
 'use client';
 
 import { useState, useEffect } from 'react';

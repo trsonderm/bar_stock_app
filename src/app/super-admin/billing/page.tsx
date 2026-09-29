@@ -1,3 +1,6 @@
+/**
+ * Platform billing overview and recent invoices.
+ */
 'use client';
 
 import { useState, useEffect } from 'react';

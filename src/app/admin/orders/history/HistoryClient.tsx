@@ -1,3 +1,6 @@
+/**
+ * List of past purchase orders with their items.
+ */
 'use client';
 
 import { useState } from 'react';

@@ -1,3 +1,6 @@
+/**
+ * To / CC / BCC recipient inputs; pick organization users or type free-form addresses.
+ */
 import React, { useState } from 'react';
 import { X } from 'lucide-react';
 

@@ -1,3 +1,9 @@
+/**
+ * POST /api/admin/schedule/bulk
+ *
+ * Admin bulk schedule clearing. Body: { action: 'clear_week', startDate, endDate }
+ * or { action: 'clear_after_today' }.
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { db } from '@/lib/db';

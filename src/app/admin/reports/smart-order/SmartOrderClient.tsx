@@ -1,3 +1,6 @@
+/**
+ * Suggested orders from usage forecasts; create purchase orders from them.
+ */
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -529,7 +532,7 @@ export default function SmartOrderClient() {
                 <div className="bg-blue-900/20 border border-blue-500/30 rounded-lg p-6 print:hidden">
                     <h3 className="text-lg font-bold text-blue-300 mb-2">🧠 How Smart Order Works</h3>
                     <div className="text-blue-100 text-sm space-y-2">
-                        <p>Each location's predictions are calculated independently using that location's own usage history and current stock levels. If you have multiple locations, switch tabs to view and print orders per location.</p>
+                        <p>Each location&apos;s predictions are calculated independently using that location&apos;s own usage history and current stock levels. If you have multiple locations, switch tabs to view and print orders per location.</p>
                         <p><strong>Formula:</strong> <code>Days Remaining = Current Stock ÷ Avg Daily Usage</code></p>
                         <ul className="list-disc list-inside space-y-1 mt-2">
                             <li><span className="text-red-400 font-bold">CRITICAL</span> — Runs out before next delivery. Order immediately.</li>

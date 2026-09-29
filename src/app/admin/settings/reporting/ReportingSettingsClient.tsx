@@ -1,3 +1,6 @@
+/**
+ * Report recipients, schedules, low-stock alerts and daily-report subscriptions.
+ */
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -253,7 +256,7 @@ export default function ReportingSettingsClient() {
                             </div>
                             {settings.report_per_location === 'true' && (
                                 <p style={{ color: '#6b7280', fontSize: '0.8rem', marginTop: '0.5rem' }}>
-                                    Each location's subscribers (configured below) will receive a report containing only their location's inventory data.
+                                    Each location&apos;s subscribers (configured below) will receive a report containing only their location&apos;s inventory data.
                                 </p>
                             )}
                         </div>
@@ -417,7 +420,7 @@ export default function ReportingSettingsClient() {
                             <div style={{ marginBottom: '1rem' }}>
                                 <label className={styles.statLabel}>Send Schedule</label>
                                 <p style={{ color: '#6b7280', fontSize: '0.8rem', marginBottom: '0.5rem', marginTop: '0.25rem' }}>
-                                    "Per Shift" sends immediately after each shift close. Other options aggregate shifts.
+                                    &quot;Per Shift&quot; sends immediately after each shift close. Other options aggregate shifts.
                                 </p>
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
                                     <div>

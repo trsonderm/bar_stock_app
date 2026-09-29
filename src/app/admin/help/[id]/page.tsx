@@ -1,3 +1,6 @@
+/**
+ * One support ticket thread with replies and attachments.
+ */
 'use client';
 
 import { useEffect, useState } from 'react';

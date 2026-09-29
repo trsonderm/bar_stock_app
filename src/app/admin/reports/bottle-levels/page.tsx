@@ -1,3 +1,6 @@
+/**
+ * Bottle-level report.
+ */
 'use client';
 
 import { useState, useEffect } from 'react';

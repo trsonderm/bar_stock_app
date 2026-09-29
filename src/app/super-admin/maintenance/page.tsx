@@ -1,3 +1,6 @@
+/**
+ * Maintenance tools: duplicate and orphan cleanup across organizations.
+ */
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -230,12 +233,12 @@ export default function MaintenancePage() {
                                     {dup.ids.length} Conflicts
                                 </div>
                                 <h3 className="font-bold text-lg text-white mb-4 flex items-center gap-2">
-                                    <Layers className="text-orange-500" /> "{dup.norm_name}"
+                                    <Layers className="text-orange-500" /> &quot;{dup.norm_name}&quot;
                                 </h3>
                                 <div className="space-y-2">
                                     {dup.ids.map((id: number, idx: number) => (
                                         <div key={id} className="flex justify-between items-center bg-slate-900 p-3 rounded-lg border border-slate-800">
-                                            <span className="text-slate-300 font-mono text-sm">ID: <span className="text-white font-bold">{id}</span> - "{dup.names[idx]}"</span>
+                                            <span className="text-slate-300 font-mono text-sm">ID: <span className="text-white font-bold">{id}</span> - &quot;{dup.names[idx]}&quot;</span>
                                             <button
                                                 onClick={() => mergeDuplicates(id, dup.ids.filter((oid: number) => oid !== id))}
                                                 className="bg-green-600 hover:bg-green-500 text-white text-xs px-3 py-1.5 rounded font-bold transition-colors"

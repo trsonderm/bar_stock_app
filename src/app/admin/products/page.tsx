@@ -1,3 +1,6 @@
+/**
+ * Products page.
+ */
 import { Suspense } from 'react';
 import ProductsClient from './ProductsClient';
 

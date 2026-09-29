@@ -1,3 +1,10 @@
+/**
+ * /api/admin/suppliers/items — item <-> supplier links (admin only).
+ *
+ *  GET    list every item with the suppliers it is linked to
+ *  POST   link / update { item_id, supplier_id, cost, supplier_sku, is_preferred }
+ *  DELETE unlink { item_id, supplier_id }
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
@@ -68,11 +75,11 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
         }
 
-        // Check item belongs to this organization
+        // Both the item and the supplier must belong to this organization
         const item = await db.one('SELECT id FROM items WHERE id = $1 AND organization_id = $2', [item_id, session.organizationId]);
         if (!item) return NextResponse.json({ error: 'Item not found' }, { status: 404 });
-
-        await db.execute('BEGIN');
+        const supplier = await db.one('SELECT id FROM suppliers WHERE id = $1 AND organization_id = $2', [supplier_id, session.organizationId]);
+        if (!supplier) return NextResponse.json({ error: 'Supplier not found' }, { status: 404 });
 
         await db.execute(`
             INSERT INTO item_suppliers (item_id, supplier_id, cost_per_unit, supplier_sku, is_preferred)
@@ -84,10 +91,8 @@ export async function POST(req: NextRequest) {
                 is_preferred = EXCLUDED.is_preferred
         `, [item_id, supplier_id, cost || 0, supplier_sku || null, is_preferred || false]);
 
-        await db.execute('COMMIT');
         return NextResponse.json({ success: true });
     } catch (e) {
-        await db.execute('ROLLBACK');
         console.error('Link Supplier Error', e);
         return NextResponse.json({ error: 'Internal Error' }, { status: 500 });
     }

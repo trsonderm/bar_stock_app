@@ -1,3 +1,8 @@
+/**
+ * GET /api/inventory/item-quantities?itemId=
+ *
+ * Stock of one item at every location of the organization (0 where it has no row).
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';

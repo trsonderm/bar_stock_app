@@ -1,3 +1,6 @@
+/**
+ * Close-shift page (cash reconciliation) for signed-in staff.
+ */
 import { getSession } from '@/lib/auth';
 import { redirect } from 'next/navigation';
 import CloseShiftClient from './CloseShiftClient';

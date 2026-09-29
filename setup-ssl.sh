@@ -10,8 +10,14 @@ if [ "$EUID" -ne 0 ]; then
   exit 1
 fi
 
-DOMAIN="topshelfinventory.com"
-WWW_DOMAIN="www.topshelfinventory.com"
+read -p "Enter primary domain [topshelfinventory.com]: " INPUT_DOMAIN
+DOMAIN="${INPUT_DOMAIN:-topshelfinventory.com}"
+read -p "Enter www or secondary domain (or press enter for www.$DOMAIN, type 'none' to skip): " INPUT_WWW
+if [ "$INPUT_WWW" = "none" ]; then
+    WWW_DOMAIN=""
+else
+    WWW_DOMAIN="${INPUT_WWW:-www.$DOMAIN}"
+fi
 
 # Ask for an admin email for Let's Encrypt expiration notices
 read -p "Enter admin email address for SSL registration: " EMAIL
@@ -29,9 +35,11 @@ echo "Step 2: Installing Certbot and NGINX plugin..."
 apt-get install -y certbot python3-certbot-nginx
 
 echo "Step 3: Provisioning and Installing SSL Certificate..."
-# --nginx tells certbot to automatically configure your nginx-prod.conf
-# --redirect tells certbot to force HTTP -> HTTPS
-certbot --nginx -d $WWW_DOMAIN -d $DOMAIN --non-interactive --agree-tos -m "$EMAIL" --redirect
+DOMAIN_ARGS="-d $DOMAIN"
+if [ -n "$WWW_DOMAIN" ]; then
+    DOMAIN_ARGS="$DOMAIN_ARGS -d $WWW_DOMAIN"
+fi
+certbot --nginx $DOMAIN_ARGS --non-interactive --agree-tos -m "$EMAIL" --redirect
 
 echo "Step 4: Testing automatic renewal..."
 systemctl enable certbot.timer

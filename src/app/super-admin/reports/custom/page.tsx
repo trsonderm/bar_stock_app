@@ -1,3 +1,6 @@
+/**
+ * Ad-hoc table report builder (runs SELECTs through the database console API).
+ */
 'use client';
 
 import { useState, useEffect } from 'react';

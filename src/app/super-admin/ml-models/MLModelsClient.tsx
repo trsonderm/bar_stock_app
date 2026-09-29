@@ -1,3 +1,6 @@
+/**
+ * Choose forecasting models and parameters (see src/lib/ml.ts).
+ */
 'use client';
 import { useState, useEffect } from 'react';
 import { DEFAULT_ML_CONFIG, MLModelConfig, MLModelType } from '@/lib/ml';
@@ -213,7 +216,7 @@ export default function MLModelsClient() {
         {/* 3. Model Parameters */}
         <section className="bg-slate-800 border border-slate-700 rounded-xl p-6">
           <h2 className="text-lg font-bold text-white mb-1">Model Parameters</h2>
-          <p className="text-slate-400 text-sm mb-5">Tune each enabled model's parameters. Changes take effect on next data fetch.</p>
+          <p className="text-slate-400 text-sm mb-5">Tune each enabled model&apos;s parameters. Changes take effect on next data fetch.</p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {config.enabled_models.includes('SMA') && (
               <div className="bg-slate-900/60 rounded-xl p-5 border border-slate-700">

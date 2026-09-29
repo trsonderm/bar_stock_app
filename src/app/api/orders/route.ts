@@ -1,3 +1,13 @@
+/**
+ * POST /api/orders
+ *
+ * Creates a purchase order with its line items.
+ * Body: { supplier_id, location_id?, expected_delivery_date, items: [{ item_id, quantity }],
+ *         send_email?, send_sms? }
+ *
+ * The order and its items are written in one transaction; the supplier is
+ * then optionally notified by email and/or SMS.
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
@@ -10,42 +20,50 @@ export async function POST(req: NextRequest) {
 
     try {
         const body = await req.json();
-        const { supplier_id, expected_delivery_date, items, send_email, send_sms, location_id } = body; // items: [{item_id, quantity}]
+        const { supplier_id, expected_delivery_date, items, send_email, send_sms, location_id } = body;
+        const orgId = session.organizationId;
 
-        // Start Transaction
-        await db.query('BEGIN');
-
-        // Create Order
-        const orderRes = await db.query(`
-            INSERT INTO purchase_orders (organization_id, supplier_id, location_id, expected_delivery_date, details)
-            VALUES ($1, $2, $3, $4, $5) RETURNING id
-        `, [session.organizationId, supplier_id, location_id || null, expected_delivery_date, JSON.stringify({ created_by: session.id })]);
-
-        const orderId = orderRes[0].id; // pg-pool style or rows[0].id? Assuming db helper returns rows or we check helper again. 
-        // Note: db helper in this project usually returns rows directly if using simple query wrapper?
-        // Wait, looking at previous files, db.query returns result... wait, let's check `lib/db.ts` or usage.
-        // In predictive route: `const usageData = await db.query(...)`. usageData.forEach...
-        // So db.query returns rows array directly? Let's assume so or check.
-        // Actually, if it returns rows array, `orderRes[0].id` is correct.
-
-        for (const item of items) {
-            await db.query(`
-                INSERT INTO purchase_order_items (purchase_order_id, item_id, quantity)
-                VALUES ($1, $2, $3)
-             `, [orderId, item.item_id, item.quantity]);
+        if (!Array.isArray(items) || items.length === 0) {
+            return NextResponse.json({ error: 'No items in order' }, { status: 400 });
         }
 
-        await db.query('COMMIT');
+        // Every referenced record must belong to the caller's organization.
+        if (supplier_id && !(await db.one('SELECT id FROM suppliers WHERE id = $1 AND organization_id = $2', [supplier_id, orgId]))) {
+            return NextResponse.json({ error: 'Supplier not found' }, { status: 404 });
+        }
+        if (location_id && !(await db.one('SELECT id FROM locations WHERE id = $1 AND organization_id = $2', [location_id, orgId]))) {
+            return NextResponse.json({ error: 'Location not found' }, { status: 404 });
+        }
+        const itemIds = items.map((i: any) => Number(i.item_id));
+        const owned = await db.query('SELECT id FROM items WHERE id = ANY($1::int[]) AND organization_id = $2', [itemIds, orgId]);
+        if (owned.length !== new Set(itemIds).size) {
+            return NextResponse.json({ error: 'Some items not found' }, { status: 404 });
+        }
 
-        // Post-commit: Email & SMS
+        const orderId = await db.transaction(async (tx) => {
+            const order = await tx.one(`
+                INSERT INTO purchase_orders (organization_id, supplier_id, location_id, expected_delivery_date, details)
+                VALUES ($1, $2, $3, $4, $5) RETURNING id
+            `, [orgId, supplier_id, location_id || null, expected_delivery_date, JSON.stringify({ created_by: session.id })]);
+
+            for (const item of items) {
+                await tx.execute(`
+                    INSERT INTO purchase_order_items (purchase_order_id, item_id, quantity)
+                    VALUES ($1, $2, $3)
+                `, [order.id, item.item_id, item.quantity]);
+            }
+
+            return order.id as number;
+        });
+
+        // Post-commit: notify the supplier
         if ((send_email || send_sms) && supplier_id) {
-            const supplierRes = await db.query('SELECT name, contact_email, contact_phone FROM suppliers WHERE id = $1', [supplier_id]);
-            const supplier = supplierRes[0];
+            const supplier = await db.one('SELECT name, contact_email, contact_phone FROM suppliers WHERE id = $1', [supplier_id]);
             const orderTotalItems = items.reduce((acc: number, i: any) => acc + i.quantity, 0);
 
             if (supplier) {
                 const messageBody = `New Order from TopShelf. Order ID: #${orderId}. Total Items requested: ${orderTotalItems}. Please check your portal or email for details.`;
-                
+
                 if (send_sms && supplier.contact_phone) {
                     await sendSMS(supplier.contact_phone, messageBody);
                 }
@@ -63,7 +81,6 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ success: true, orderId });
 
     } catch (e) {
-        await db.query('ROLLBACK');
         console.error(e);
         return NextResponse.json({ error: 'Failed' }, { status: 500 });
     }

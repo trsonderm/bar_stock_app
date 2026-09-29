@@ -1,3 +1,6 @@
+/**
+ * Stock audit: enter physical counts and save the differences.
+ */
 'use client';
 
 import { useState, useEffect } from 'react';

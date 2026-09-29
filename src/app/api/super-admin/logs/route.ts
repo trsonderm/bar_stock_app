@@ -1,10 +1,16 @@
+/**
+ * /api/super-admin/logs — platform-wide activity logs.
+ *
+ *  GET    recent logs with user and organization names, plus retention settings
+ *  POST   update logging settings
+ *  DELETE prune logs older than the retention period
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
 
 export async function GET(req: NextRequest) {
     const session = await getSession();
-    // Simplified Super Admin check:
     const isSuperAdmin = session?.isSuperAdmin || (session?.permissions as any)?.includes('super_admin');
     if (!isSuperAdmin) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 

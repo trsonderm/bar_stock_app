@@ -1,3 +1,6 @@
+/**
+ * Automated ordering settings page.
+ */
 import OrderingSettingsClient from './OrderingSettingsClient';
 
 export const metadata = {

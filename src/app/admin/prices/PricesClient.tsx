@@ -1,3 +1,6 @@
+/**
+ * Edit sale prices (optionally per location) and view margins.
+ */
 'use client';
 
 import { useState, useEffect } from 'react';

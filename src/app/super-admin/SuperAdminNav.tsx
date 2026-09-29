@@ -1,3 +1,6 @@
+/**
+ * Super admin sidebar navigation.
+ */
 'use client';
 
 import Link from 'next/link';

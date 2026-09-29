@@ -1,4 +1,10 @@
-
+/**
+ * /api/admin/reporting/reports/:id — one saved report with its sections (admin only).
+ *
+ *  GET    report + sections + schedules
+ *  PUT    update name/description and replace all sections
+ *  DELETE delete the report
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { db } from '@/lib/db';
@@ -20,7 +26,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 
         const sections = await db.query('SELECT * FROM report_sections WHERE report_id = $1 ORDER BY sort_order ASC', [reportId]);
 
-        // Also fetch schedule?
+        // Email schedules attached to this report
         const schedules = await db.query('SELECT * FROM report_schedules WHERE report_id = $1', [reportId]);
 
         return NextResponse.json({ report: { ...report, sections, schedules } });

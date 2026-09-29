@@ -1,3 +1,9 @@
+/**
+ * POST /api/super-admin/backups
+ *
+ * Super admin: runs pg_dump into ./backups and emails a confirmation.
+ * Requires the pg_dump client on the host (it is not in the app Docker image).
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { db } from '@/lib/db';
@@ -24,12 +30,10 @@ export async function POST(req: NextRequest) {
     const backupFile = path.join(backupDir, `backup-${timestamp}.sql`);
     
     try {
-        // We will assume the local pg_dump command exists and database credentials match the .env
-        // Wait, for Bar Stock App, what is the DB URI?
-        // postgresql://postgres:postgres@localhost:5432/topshelf
+        // Requires the pg_dump client on the server's PATH.
         const dbUrl = process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/topshelf';
         
-        // Use pg_dump with the schema and data only
+        // Custom-format dump (restore with pg_restore --clean)
         const command = `pg_dump --clean --if-exists --format=c --dbname="${dbUrl}" --file="${backupFile}"`;
         await execAsync(command);
         

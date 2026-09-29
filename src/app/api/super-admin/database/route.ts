@@ -1,3 +1,13 @@
+/**
+ * /api/super-admin/database — raw database browser for super admins.
+ *
+ *  GET    ?action=tables, or rows of one table (validated against information_schema)
+ *  POST   { action: 'query', query } runs arbitrary SQL; otherwise inserts a row
+ *  PUT    update a row by primary key
+ *  DELETE delete a row by primary key
+ *
+ * This is intentionally a powerful tool: only super admins can reach it.
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';

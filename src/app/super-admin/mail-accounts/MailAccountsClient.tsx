@@ -1,3 +1,6 @@
+/**
+ * Configure and test the SMTP account for each mail tier.
+ */
 'use client';
 
 import { useState } from 'react';

@@ -1,3 +1,8 @@
+/**
+ * GET /api/shift/reports?page=&search=&locationId=&from=&to=
+ *
+ * Admin: paged, searchable list of shift closes.
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';

@@ -1,3 +1,10 @@
+/**
+ * POST /api/admin/products/import
+ *
+ * Admin-only CSV product import (multipart form: `file`, optional `mapping`
+ * JSON of field -> column index). Items whose name already exists in the
+ * organization are skipped. The whole import is one transaction.
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
@@ -41,9 +48,11 @@ export async function POST(req: NextRequest) {
         let successCount = 0;
         let skipCount = 0;
 
-        await db.execute('BEGIN');
+        await db.transaction(async (tx) => {
+            // Initial stock for imported items goes to the organization's first location.
+            const defaultLocation = await tx.one('SELECT id FROM locations WHERE organization_id = $1 ORDER BY id LIMIT 1', [organizationId]);
+            if (!defaultLocation) throw new Error('Organization has no locations');
 
-        try {
             for (let i = startIdx; i < lines.length; i++) {
                 const row = lines[i];
                 // Simple parser matching frontend
@@ -92,43 +101,32 @@ export async function POST(req: NextRequest) {
                 if (!type) type = 'Uncategorized';
 
                 // Check existing
-                const existing = await db.one('SELECT id FROM items WHERE name = $1 AND organization_id = $2', [name, organizationId]);
+                const existing = await tx.one('SELECT id FROM items WHERE name = $1 AND organization_id = $2', [name, organizationId]);
                 if (existing) {
                     skipCount++;
                     continue;
                 }
 
-                // Insert Item
-                const res = await db.one(
+                const res = await tx.one(
                     'INSERT INTO items (name, type, secondary_type, unit_cost, order_size, low_stock_threshold, organization_id) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id',
                     [name, type, secType, cost, JSON.stringify([orderSize]), threshold, organizationId]
                 );
 
-                // Insert Stock (Calculate default Location for this ORG instead of assuming 1)
-                const locReq = await db.one('SELECT id FROM locations WHERE organization_id = $1 LIMIT 1', [organizationId]);
-                const locId = locReq ? locReq.id : 1; 
-
-                await db.execute(
+                await tx.execute(
                     'INSERT INTO inventory (item_id, location_id, quantity, organization_id) VALUES ($1, $2, $3, $4)',
-                    [res.id, locId, qty, organizationId]
+                    [res.id, defaultLocation.id, qty, organizationId]
                 );
 
                 successCount++;
             }
 
-            // Log action
-            await db.execute(
+            await tx.execute(
                 'INSERT INTO activity_logs (organization_id, user_id, action, details) VALUES ($1, $2, $3, $4)',
                 [organizationId, session.id, 'IMPORT_CSV', JSON.stringify({ success: successCount, skipped: skipCount })]
             );
+        });
 
-            await db.execute('COMMIT');
-            return NextResponse.json({ success: true, count: successCount, skipped: skipCount });
-
-        } catch (err) {
-            await db.execute('ROLLBACK');
-            throw err;
-        }
+        return NextResponse.json({ success: true, count: successCount, skipped: skipCount });
 
     } catch (error) {
         console.error('Import Error:', error);

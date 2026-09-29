@@ -1,3 +1,10 @@
+/**
+ * POST /api/admin/reports/data
+ *
+ * Report-builder data endpoint (Pro plan). Returns time-series or grouped
+ * activity data for one report section (data source, filters, group-by and
+ * aggregation from the builder UI).
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';

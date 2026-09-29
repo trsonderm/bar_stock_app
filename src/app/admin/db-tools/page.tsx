@@ -1,3 +1,6 @@
+/**
+ * Data maintenance tools (duplicate / orphan cleanup).
+ */
 import { getSession } from '@/lib/auth';
 import { redirect } from 'next/navigation';
 import DBToolsClient from './DBToolsClient';

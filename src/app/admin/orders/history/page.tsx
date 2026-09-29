@@ -1,3 +1,6 @@
+/**
+ * Purchase order history page.
+ */
 import HistoryClient from './HistoryClient';
 import { getSession } from '@/lib/auth';
 import { db } from '@/lib/db';

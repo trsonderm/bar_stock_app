@@ -1,3 +1,9 @@
+/**
+ * POST /api/shift/ocr
+ *
+ * Parses OCR text from a register or credit-card batch receipt photo into
+ * totals for the close-shift form. Body: { text, receiptType: 'register' | 'cc' }.
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 

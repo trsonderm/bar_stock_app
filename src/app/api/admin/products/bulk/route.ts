@@ -1,3 +1,14 @@
+/**
+ * POST /api/admin/products/bulk
+ *
+ * Admin-only bulk edit of several items at once.
+ * Body: { item_ids: number[], updates: { type?, secondary_type?, supplier_id?,
+ *         global_supplier?, assigned_locations? } }
+ *
+ * `assigned_locations` replaces the set of locations each item is stocked at;
+ * removing a location deletes that location's stock row, exactly like the
+ * single-item edit.
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';
@@ -58,33 +69,46 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'No updates specified' }, { status: 400 });
     }
 
-    if (setClauses.length > 0) {
-        params.push(item_ids, session.organizationId);
-        await db.execute(
-            `UPDATE items SET ${setClauses.join(', ')} WHERE id = ANY($${pIdx}::int[]) AND organization_id = $${pIdx + 1}`,
-            params
+    // Location assignments are represented by `inventory` rows (one per item per
+    // location), matching the single-item edit in PUT /api/inventory.
+    let assignedLocationIds: number[] | null = null;
+    if (Array.isArray(updates.assigned_locations) && updates.assigned_locations.length > 0) {
+        const requested = updates.assigned_locations.map(Number);
+        const valid = await db.query(
+            'SELECT id FROM locations WHERE id = ANY($1::int[]) AND organization_id = $2',
+            [requested, session.organizationId]
         );
+        if (valid.length !== new Set(requested).size) {
+            return NextResponse.json({ error: 'Some locations not found' }, { status: 404 });
+        }
+        assignedLocationIds = valid.map((l: any) => Number(l.id));
     }
 
-    // Handle assigned_locations: update item_locations join table
-    if ('assigned_locations' in updates && Array.isArray(updates.assigned_locations)) {
-        for (const itemId of item_ids) {
-            // Remove current assignments for this org's locations
-            await db.execute(
-                `DELETE FROM item_locations WHERE item_id = $1 AND location_id IN (
-                    SELECT id FROM locations WHERE organization_id = $2
-                )`,
-                [itemId, session.organizationId]
+    await db.transaction(async (tx) => {
+        if (setClauses.length > 0) {
+            params.push(item_ids, session.organizationId);
+            await tx.execute(
+                `UPDATE items SET ${setClauses.join(', ')} WHERE id = ANY($${pIdx}::int[]) AND organization_id = $${pIdx + 1}`,
+                params
             );
-            // Insert new assignments
-            for (const locId of updates.assigned_locations) {
-                await db.execute(
-                    `INSERT INTO item_locations (item_id, location_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
-                    [itemId, locId]
-                );
-            }
         }
-    }
+
+        if (assignedLocationIds) {
+            // Add a zero-stock row at each newly assigned location...
+            await tx.execute(
+                `INSERT INTO inventory (item_id, location_id, quantity, organization_id)
+                 SELECT i, l, 0, $3 FROM unnest($1::int[]) AS i CROSS JOIN unnest($2::int[]) AS l
+                 ON CONFLICT (item_id, location_id) DO NOTHING`,
+                [item_ids, assignedLocationIds, session.organizationId]
+            );
+            // ...and remove the item from locations no longer assigned.
+            await tx.execute(
+                `DELETE FROM inventory
+                 WHERE item_id = ANY($1::int[]) AND organization_id = $2 AND NOT (location_id = ANY($3::int[]))`,
+                [item_ids, session.organizationId, assignedLocationIds]
+            );
+        }
+    });
 
     return NextResponse.json({ success: true, updated: item_ids.length });
 }

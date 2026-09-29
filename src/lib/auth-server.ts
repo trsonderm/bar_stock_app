@@ -1,3 +1,7 @@
+/**
+ * Guards for server components and layouts. Each reads the session and
+ * redirects (via next/navigation) when the requirement is not met.
+ */
 import { getSession } from './auth';
 import { redirect } from 'next/navigation';
 

@@ -7,10 +7,14 @@
     "build": "next build",
     "start": "next start -p 6050",
     "lint": "next lint",
+    "typecheck": "tsc --noEmit",
     "test": "jest",
     "test:watch": "jest --watch",
-    "db:up": "docker-compose up -d db",
-    "db:init": "node scripts/init-postgres.js"
+    "test:e2e": "playwright test",
+    "db:up": "docker compose up -d db",
+    "db:init": "node scripts/init-postgres.js",
+    "db:migrate": "node scripts/migrate.js",
+    "create-super-admin": "node scripts/create_super_admin.js"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
@@ -19,12 +23,10 @@
     "@mui/material": "^7.3.9",
     "@types/pg": "^8.16.0",
     "bcryptjs": "^3.0.3",
-    "better-sqlite3": "^12.8.0",
     "dotenv": "^17.3.1",
     "jose": "^5.2.3",
     "lucide-react": "^0.562.0",
-    "next": "14.1.0",
-    "node-cron": "^3.0.3",
+    "next": "^14.2.35",
     "nodemailer": "^6.9.9",
     "pg": "^8.17.1",
     "react": "18.2.0",
@@ -32,7 +34,6 @@
     "recharts": "^3.7.0",
     "systeminformation": "^5.30.4",
     "twilio": "^5.12.0",
-    "uuid": "^9.0.1",
     "zod": "^3.22.4"
   },
   "devDependencies": {
@@ -42,14 +43,12 @@
     "@types/bcryptjs": "^2.4.6",
     "@types/jest": "^30.0.0",
     "@types/node": "^20.19.30",
-    "@types/node-cron": "^3.0.11",
     "@types/nodemailer": "^6.4.14",
     "@types/react": "^18.3.27",
     "@types/react-dom": "^18",
-    "@types/uuid": "^9.0.8",
     "autoprefixer": "^10.4.23",
     "eslint": "^8",
-    "eslint-config-next": "14.1.0",
+    "eslint-config-next": "^14.2.35",
     "jest": "^30.2.0",
     "jest-environment-jsdom": "^30.2.0",
     "node-mocks-http": "^1.17.2",
@@ -58,5 +57,8 @@
     "ts-jest": "^29.4.6",
     "ts-node": "^10.9.2",
     "typescript": "^5"
+  },
+  "engines": {
+    "node": ">=18.17"
   }
 }

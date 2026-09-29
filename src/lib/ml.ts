@@ -1,3 +1,10 @@
+/**
+ * Lightweight forecasting helpers used by Smart Order, Insights and the
+ * security engine. All series are daily values ordered oldest -> newest.
+ * Model choice and parameters are configured by the super admin
+ * (system_settings.ml_model_config, see /super-admin/ml-models).
+ */
+
 export type MLModelType = 'SMA' | 'EMA' | 'WMA' | 'LINEAR_REGRESSION';
 
 export interface MLModelConfig {
@@ -15,6 +22,7 @@ export interface MLModelConfig {
   insights_model: MLModelType;
 }
 
+/** Used when no ml_model_config has been saved. */
 export const DEFAULT_ML_CONFIG: MLModelConfig = {
   enabled_models: ['SMA', 'EMA', 'WMA', 'LINEAR_REGRESSION'],
   smart_order_model: 'SMA',
@@ -30,12 +38,14 @@ export const DEFAULT_ML_CONFIG: MLModelConfig = {
   insights_model: 'EMA',
 };
 
+/** Simple moving average of the last `window` values. */
 export function computeSMA(values: number[], window: number): number {
   if (values.length === 0) return 0;
   const slice = values.slice(-window);
   return slice.reduce((a, b) => a + b, 0) / slice.length;
 }
 
+/** Exponential moving average over the whole series; higher `alpha` weights recent days more. */
 export function computeEMA(values: number[], alpha: number): number {
   if (values.length === 0) return 0;
   let ema = values[0];
@@ -45,6 +55,7 @@ export function computeEMA(values: number[], alpha: number): number {
   return ema;
 }
 
+/** Linearly weighted moving average of the last `window` values (newest weighs most). */
 export function computeWMA(values: number[], window: number): number {
   if (values.length === 0) return 0;
   const slice = values.slice(-window);
@@ -59,6 +70,7 @@ export function computeWMA(values: number[], window: number): number {
   return weightTotal > 0 ? weightedSum / weightTotal : 0;
 }
 
+/** Least-squares line through (index, value) with its R². */
 export function linearRegression(values: number[]): { slope: number; intercept: number; r2: number } {
   const n = values.length;
   if (n < 2) return { slope: 0, intercept: values[0] ?? 0, r2: 0 };
@@ -87,6 +99,11 @@ export function linearRegression(values: number[]): { slope: number; intercept: 
   return { slope, intercept, r2 };
 }
 
+/**
+ * Expected usage for the next day using `model` (default: the Smart Order
+ * model). Falls back to a plain average when there are fewer than
+ * `min_data_points` values.
+ */
 export function burnRate(values: number[], config: MLModelConfig, model?: MLModelType): number {
   const m = model ?? config.smart_order_model;
   if (values.length < config.min_data_points) {
@@ -112,6 +129,7 @@ export interface AnomalyPoint {
   direction: 'spike' | 'drop';
 }
 
+/** Flags values whose z-score exceeds `threshold` as spikes or drops. */
 export function detectAnomalies(
   values: number[],
   threshold: number
@@ -139,6 +157,7 @@ export function detectAnomalies(
   return { anomalies, mean, stdDev };
 }
 
+/** Values outside 1.5 × IQR of the series (needs at least 4 values). */
 export function detectOutliersIQR(values: number[]): number[] {
   if (values.length < 4) return [];
   const sorted = [...values].sort((a, b) => a - b);
@@ -150,6 +169,7 @@ export function detectOutliersIQR(values: number[]): number[] {
   return values.filter(v => v < lower || v > upper);
 }
 
+/** Mean value per day of week (0 = Sunday). */
 export function dowPattern(
   dateValues: { date: string; value: number }[]
 ): Record<number, { mean: number; count: number }> {
@@ -167,6 +187,7 @@ export function dowPattern(
   return result;
 }
 
+/** Rolls `burnRate` forward `steps` days, feeding each prediction back in. */
 export function forecastNext(
   values: number[],
   config: MLModelConfig,

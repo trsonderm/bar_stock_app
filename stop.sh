@@ -1,36 +1,35 @@
 #!/bin/bash
+# Stops the production server started by start.sh.
 
-# 1. Try stopping via PID file
+cd "$(dirname "$0")"
+
+# 1. Stop via PID file
 if [ -f app.pid ]; then
   PID=$(cat app.pid)
   if ps -p $PID > /dev/null; then
     kill $PID
     echo "Server stopped (PID from app.pid: $PID)"
-    rm app.pid
   else
     echo "Process $PID from app.pid not found."
-    rm app.pid
   fi
+  rm app.pid
 fi
 
-# 2. Try stopping process on Port 6050 (and 3000 just in case)
-PORTS="6050 3000"
-for PORT in $PORTS; do
+# 2. Stop anything still listening on the app ports
+for PORT in 5400 6050 3000; do
   PORT_PID=$(lsof -ti:$PORT)
-  if [ ! -z "$PORT_PID" ]; then
+  if [ -n "$PORT_PID" ]; then
     kill -9 $PORT_PID
     echo "Server stopped (PID from Port $PORT: $PORT_PID)"
-  else
-    echo "No process found on port $PORT."
   fi
 done
 
-# 3. Stop Scheduler
+# 3. Legacy: stop the old standalone scheduler if an older start.sh launched it
 if [ -f scheduler.pid ]; then
   SPID=$(cat scheduler.pid)
   if ps -p $SPID > /dev/null; then
     kill $SPID
-    echo "Scheduler stopped (PID $SPID)"
+    echo "Legacy scheduler stopped (PID $SPID)"
   fi
   rm scheduler.pid
 fi

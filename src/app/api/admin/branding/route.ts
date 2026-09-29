@@ -1,3 +1,9 @@
+/**
+ * /api/admin/branding — organization branding stored in organizations.settings.
+ *
+ *  GET  logo_url, brand_color, brand_name, logo_position (any signed-in user)
+ *  POST update branding (admin only); accepts JSON, or multipart with a `logo` file
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/auth';

@@ -1,3 +1,6 @@
+/**
+ * Locations settings page.
+ */
 import LocationsClient from './LocationsClient';
 
 export const metadata = {

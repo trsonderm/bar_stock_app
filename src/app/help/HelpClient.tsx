@@ -1,3 +1,6 @@
+/**
+ * Help centre article browser and search.
+ */
 'use client';
 
 import { useState, useEffect } from 'react';

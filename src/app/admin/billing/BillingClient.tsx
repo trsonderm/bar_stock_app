@@ -1,3 +1,6 @@
+/**
+ * Subscription, invoice history and payment settings view.
+ */
 'use client';
 
 import { useState } from 'react';

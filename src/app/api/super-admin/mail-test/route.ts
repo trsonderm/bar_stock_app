@@ -1,3 +1,8 @@
+/**
+ * POST /api/super-admin/mail-test
+ *
+ * Super admin: sends a test email through one SMTP tier and reports the result.
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { sendEmail, getSmtpConfig } from '@/lib/mail';
