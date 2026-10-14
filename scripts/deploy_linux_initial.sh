@@ -71,6 +71,10 @@ echo "[Step 7] Initializing Raw Database Schema..."
 node scripts/init-postgres.js
 
 echo ""
+echo "[Step 7.5] Verifying Initial Database State..."
+bash scripts/check-database.sh --auto || true
+
+echo ""
 echo "[Step 8] Injecting Primary Super Admin Account..."
 # Credentials come from the environment so they are never committed to git:
 #   sudo SUPER_ADMIN_EMAIL=you@example.com SUPER_ADMIN_PASSWORD='...' ./scripts/deploy_linux_initial.sh
