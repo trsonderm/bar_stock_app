@@ -15,6 +15,20 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR/.."
 
+# ── Detect docker compose command ─────────────────────────────────────────────
+if docker compose version >/dev/null 2>&1; then
+    DC="docker compose"
+elif command -v docker-compose >/dev/null 2>&1; then
+    DC="docker-compose"
+else
+    echo "ERROR: Neither 'docker compose' nor 'docker-compose' was found."
+    exit 1
+fi
+
+SEARCH_DIRS=()
+[ -n "$TOPSHELF_BACKUP_DIR" ] && SEARCH_DIRS+=("$TOPSHELF_BACKUP_DIR")
+SEARCH_DIRS+=("/opt/topshelf/backups" "$SCRIPT_DIR/../backups" "./backups")
+
 BACKUP_DIR="${TOPSHELF_BACKUP_DIR:-/opt/topshelf/backups}"
 AUTO_MODE=false
 [ "$1" = "--auto" ] && AUTO_MODE=true
@@ -22,7 +36,7 @@ AUTO_MODE=false
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 pg() {
-    docker compose exec -T db psql -U postgres -d topshelf -tAc "$1" 2>/dev/null \
+    $DC exec -T db psql -U postgres -d topshelf -tAc "$1" 2>/dev/null \
         | tr -d '[:space:]' || echo "ERR"
 }
 
@@ -37,14 +51,14 @@ echo "  $(date)"
 echo "============================================================"
 echo ""
 
-if ! docker compose ps db 2>/dev/null | grep -qE "running|Up"; then
+if ! $DC ps db 2>/dev/null | grep -qE "running|Up"; then
     echo "ERROR: The db container is not running."
-    echo "  Start it with:  docker compose up -d db"
+    echo "  Start it with:  $DC up -d db"
     echo "  Then re-run:    bash $SCRIPT_DIR/check-database.sh"
     exit 1
 fi
 
-DB_EXISTS=$(docker compose exec -T db psql -U postgres -d postgres -tAc \
+DB_EXISTS=$($DC exec -T db psql -U postgres -d postgres -tAc \
     "SELECT 1 FROM pg_database WHERE datname='topshelf'" 2>/dev/null \
     | tr -d '[:space:]' || echo "")
 
@@ -106,7 +120,7 @@ fi
 
 # ── 4. Find available backups and score them by data richness ─────────────────
 
-echo "  Scanning backups in $BACKUP_DIR for the best restore candidate..."
+echo "  Scanning backup locations for restore candidates..."
 echo ""
 
 BEST_FILE=""
@@ -115,10 +129,12 @@ BEST_LABEL=""
 
 declare -a BACKUP_LINES
 
-BACKUP_FILES=$(find "$BACKUP_DIR" -maxdepth 1 -name "topshelf_*.sql.gz" 2>/dev/null | sort -r || true)
+BACKUP_FILES=$(for d in "${SEARCH_DIRS[@]}"; do
+    [ -d "$d" ] && find "$d" -maxdepth 1 \( -name "*.sql.gz" -o -name "*.sql" -o -name "*.dump" \) 2>/dev/null
+done | sort -u | sort -r || true)
 
 if [ -z "$BACKUP_FILES" ]; then
-    echo "  No backups found in $BACKUP_DIR."
+    echo "  No backups found in search directories: ${SEARCH_DIRS[*]}"
     echo "  Cannot restore — check your backup directory or search filesystem for backups."
     exit 1
 fi
