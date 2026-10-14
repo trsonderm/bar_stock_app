@@ -1,18 +1,13 @@
-#!/bin/bash
+#!/bin/sh
 # restore-db.sh — Restore the topshelf database from a backup file.
 # Usage:
-#   ./scripts/restore-db.sh                        — list backups and pick interactively
-#   ./scripts/restore-db.sh <backup-file>          — restore a specific file (.sql or .sql.gz)
-#   ./scripts/restore-db.sh --latest               — restore most recent backup
-#   ./scripts/restore-db.sh --list                 — list available backups and exit
-#   ./scripts/restore-db.sh -y <backup-file>       — restore without confirmation prompt
+#   sh ./scripts/restore-db.sh                    — list backups and pick interactively
+#   sh ./scripts/restore-db.sh <backup-file>      — restore a specific file (.sql or .sql.gz)
+#   sh ./scripts/restore-db.sh --latest           — restore most recent backup
+#   sh ./scripts/restore-db.sh --list             — list available backups and exit
+#   sh ./scripts/restore-db.sh -y <backup-file>   — restore without confirmation prompt
 
 set -e
-
-# Re-execute under bash if invoked via `sh` (avoids dash/POSIX syntax errors)
-if [ -z "$BASH_VERSION" ]; then
-    exec bash "$0" "$@"
-fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR/.."
@@ -28,13 +23,10 @@ else
 fi
 
 # ── Resolve backup search directories ─────────────────────────────────────────
-SEARCH_DIRS=()
-[ -n "$TOPSHELF_BACKUP_DIR" ] && SEARCH_DIRS+=("$TOPSHELF_BACKUP_DIR")
-SEARCH_DIRS+=("/opt/topshelf/backups" "$SCRIPT_DIR/../backups" "./backups")
+SEARCH_DIRS="${TOPSHELF_BACKUP_DIR:-} /opt/topshelf/backups $SCRIPT_DIR/../backups ./backups"
 
-# Pick primary BACKUP_DIR
 BACKUP_DIR=""
-for d in "${SEARCH_DIRS[@]}"; do
+for d in $SEARCH_DIRS; do
     if [ -d "$d" ]; then
         BACKUP_DIR="$d"
         break
@@ -70,7 +62,7 @@ done
 
 # ── Helper to find all backup files across known directories ──────────────────
 find_all_backups() {
-    for d in "${SEARCH_DIRS[@]}"; do
+    for d in $SEARCH_DIRS; do
         if [ -d "$d" ]; then
             find "$d" -maxdepth 1 \( -name "*.sql.gz" -o -name "*.sql" -o -name "*.dump" \) 2>/dev/null
         fi
@@ -81,20 +73,18 @@ find_all_backups() {
 BACKUP_FILE=""
 
 if [ "$TARGET_ARG" = "--latest" ]; then
-    BACKUP_FILE=$(find_all_backups | head -1)
+    BACKUP_FILE=$(find_all_backups | head -n 1)
     if [ -z "$BACKUP_FILE" ]; then
-        echo "ERROR: No backups found in search directories: ${SEARCH_DIRS[*]}"
+        echo "ERROR: No backups found in search directories: $SEARCH_DIRS"
         exit 1
     fi
     echo "Latest backup selected: $BACKUP_FILE"
 
 elif [ -n "$TARGET_ARG" ] && [ "$TARGET_ARG" != "--list" ]; then
-    # Direct path or filename
     if [ -f "$TARGET_ARG" ]; then
         BACKUP_FILE="$TARGET_ARG"
     else
-        # Search candidate directories
-        for d in "${SEARCH_DIRS[@]}"; do
+        for d in $SEARCH_DIRS; do
             if [ -f "$d/$TARGET_ARG" ]; then
                 BACKUP_FILE="$d/$TARGET_ARG"
                 break
@@ -104,25 +94,23 @@ elif [ -n "$TARGET_ARG" ] && [ "$TARGET_ARG" != "--list" ]; then
 
     if [ -z "$BACKUP_FILE" ] || [ ! -f "$BACKUP_FILE" ]; then
         echo "ERROR: Backup file not found: $TARGET_ARG"
-        echo "Searched locations: ${SEARCH_DIRS[*]}"
+        echo "Searched locations: $SEARCH_DIRS"
         exit 1
     fi
 
 else
-    # Interactive selection or --list
     echo ""
     echo "Available backups:"
     echo "────────────────────────────────────────────────────────────────────────"
     ALL_FILES=$(find_all_backups)
     if [ -z "$ALL_FILES" ]; then
-        echo "  (no backups found in ${SEARCH_DIRS[*]})"
+        echo "  (no backups found in $SEARCH_DIRS)"
         echo ""
         exit 0
     fi
 
     i=1
-    declare -a FILE_ARRAY
-    while IFS= read -r f; do
+    printf '%s\n' "$ALL_FILES" | while IFS= read -r f; do
         [ -z "$f" ] && continue
         SIZE=$(du -sh "$f" 2>/dev/null | cut -f1 || echo "?")
         NAME=$(basename "$f")
@@ -137,9 +125,8 @@ else
         fi
 
         printf "  [%2d] %s  (%5s)  %s  [%s]\n" "$i" "$HUMAN" "$SIZE" "$NAME" "$DIR_NAME"
-        FILE_ARRAY+=("$f")
         i=$((i + 1))
-    done <<< "$ALL_FILES"
+    done
     echo "────────────────────────────────────────────────────────────────────────"
     echo ""
 
@@ -154,8 +141,7 @@ else
         exit 0
     fi
 
-    INDEX=$((CHOICE - 1))
-    BACKUP_FILE="${FILE_ARRAY[$INDEX]}"
+    BACKUP_FILE=$(printf '%s\n' "$ALL_FILES" | sed -n "${CHOICE}p")
     if [ -z "$BACKUP_FILE" ] || [ ! -f "$BACKUP_FILE" ]; then
         echo "ERROR: Invalid selection."
         exit 1
@@ -205,7 +191,7 @@ cleanup() {
         $DC start app >/dev/null 2>&1 || true
     fi
 }
-trap cleanup EXIT
+trap cleanup EXIT INT TERM
 
 # ── Stop app container temporarily to avoid database connection locks ─────────
 if [ "$APP_WAS_RUNNING" = "true" ]; then
@@ -239,15 +225,12 @@ fi
 
 # ── Drop and recreate topshelf database cleanly ───────────────────────────────
 echo "Resetting topshelf database..."
-# Block any new incoming connections
 $DC exec -T db psql -U postgres -d postgres -c \
     "ALTER DATABASE topshelf WITH ALLOW_CONNECTIONS false;" >/dev/null 2>&1 || true
 
-# Terminate all active backend connections
 $DC exec -T db psql -U postgres -d postgres -c \
     "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='topshelf' AND pid <> pg_backend_pid();" >/dev/null 2>&1 || true
 
-# Drop and recreate
 $DC exec -T db psql -U postgres -d postgres -c "DROP DATABASE IF EXISTS topshelf;"
 $DC exec -T db psql -U postgres -d postgres -c "CREATE DATABASE topshelf OWNER postgres;"
 
@@ -259,7 +242,6 @@ if gzip -t "$BACKUP_FILE" 2>/dev/null; then
     IS_GZIP=true
 fi
 
-# Check magic bytes for pg_dump custom format ("PGDMP")
 MAGIC=""
 if [ "$IS_GZIP" = "true" ]; then
     MAGIC=$(gzip -dc "$BACKUP_FILE" 2>/dev/null | head -c 5 || echo "")

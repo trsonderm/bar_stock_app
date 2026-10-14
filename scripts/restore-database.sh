@@ -1,4 +1,3 @@
-#!/bin/bash
-# restore-database.sh — Alias for restore-db.sh
+#!/bin/sh
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-exec bash "$SCRIPT_DIR/restore-db.sh" "$@"
+exec /bin/sh "$SCRIPT_DIR/restore-db.sh" "$@"

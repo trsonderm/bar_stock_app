@@ -1,13 +1,9 @@
-#!/bin/bash
+#!/bin/sh
 # backup-db.sh — Create a timestamped pg_dump of the topshelf database.
 # Usage: ./scripts/backup-db.sh [backup-dir] [triggered-by]
 # Default backup dir: /opt/topshelf/backups
 
 set -e
-
-if [ -z "$BASH_VERSION" ]; then
-    exec bash "$0" "$@"
-fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR/.."

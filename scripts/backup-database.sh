@@ -1,4 +1,3 @@
-#!/bin/bash
-# backup-database.sh — Alias for backup-db.sh
+#!/bin/sh
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-exec bash "$SCRIPT_DIR/backup-db.sh" "$@"
+exec /bin/sh "$SCRIPT_DIR/backup-db.sh" "$@"

@@ -1,16 +1,12 @@
-#!/bin/bash
+#!/bin/sh
 # check-database.sh — Health check & recovery tool for the TopShelf database.
 #
 # Usage:
-#   bash scripts/check-database.sh           — interactive health check
-#   bash scripts/check-database.sh --auto    — non-interactive: prints status,
-#                                              exits 1 if zero-data detected
+#   sh scripts/check-database.sh           — interactive health check
+#   sh scripts/check-database.sh --auto    — non-interactive: prints status,
+#                                            exits 1 if zero-data detected
 
 set -e
-
-if [ -z "$BASH_VERSION" ]; then
-    exec bash "$0" "$@"
-fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR/.."
@@ -25,11 +21,19 @@ else
     exit 1
 fi
 
-SEARCH_DIRS=()
-[ -n "$TOPSHELF_BACKUP_DIR" ] && SEARCH_DIRS+=("$TOPSHELF_BACKUP_DIR")
-SEARCH_DIRS+=("/opt/topshelf/backups" "$SCRIPT_DIR/../backups" "./backups")
+SEARCH_DIRS="${TOPSHELF_BACKUP_DIR:-} /opt/topshelf/backups $SCRIPT_DIR/../backups ./backups"
 
-BACKUP_DIR="${TOPSHELF_BACKUP_DIR:-/opt/topshelf/backups}"
+BACKUP_DIR=""
+for d in $SEARCH_DIRS; do
+    if [ -d "$d" ]; then
+        BACKUP_DIR="$d"
+        break
+    fi
+done
+if [ -z "$BACKUP_DIR" ]; then
+    BACKUP_DIR="${TOPSHELF_BACKUP_DIR:-/opt/topshelf/backups}"
+fi
+
 AUTO_MODE=false
 [ "$1" = "--auto" ] && AUTO_MODE=true
 
@@ -54,7 +58,7 @@ echo ""
 if ! $DC ps db 2>/dev/null | grep -qE "running|Up"; then
     echo "ERROR: The db container is not running."
     echo "  Start it with:  $DC up -d db"
-    echo "  Then re-run:    bash $SCRIPT_DIR/check-database.sh"
+    echo "  Then re-run:    sh $SCRIPT_DIR/check-database.sh"
     exit 1
 fi
 
@@ -93,12 +97,24 @@ echo ""
 # ── 3. Evaluate health ────────────────────────────────────────────────────────
 
 ZERO_DATA=false
-PROBLEMS=()
+PROBLEMS=""
 
-[ "$ITEMS" = "0" ]     && PROBLEMS+=("items=0 (no products exist)")       && ZERO_DATA=true
-[ "$INVENTORY" = "0" ] && PROBLEMS+=("inventory=0 (no stock counts exist)") && ZERO_DATA=true
-[ "$USERS" = "0" ]     && PROBLEMS+=("users=0 (no user accounts exist)")  && ZERO_DATA=true
-[ "$ORGS" = "0" ]      && PROBLEMS+=("organizations=0 (no org data)")     && ZERO_DATA=true
+if [ "$ITEMS" = "0" ] || [ -z "$ITEMS" ] || [ "$ITEMS" = "ERR" ]; then
+    PROBLEMS="${PROBLEMS}       • items=0 (no products exist)\n"
+    ZERO_DATA=true
+fi
+if [ "$INVENTORY" = "0" ] || [ -z "$INVENTORY" ] || [ "$INVENTORY" = "ERR" ]; then
+    PROBLEMS="${PROBLEMS}       • inventory=0 (no stock counts exist)\n"
+    ZERO_DATA=true
+fi
+if [ "$USERS" = "0" ] || [ -z "$USERS" ] || [ "$USERS" = "ERR" ]; then
+    PROBLEMS="${PROBLEMS}       • users=0 (no user accounts exist)\n"
+    ZERO_DATA=true
+fi
+if [ "$ORGS" = "0" ] || [ -z "$ORGS" ] || [ "$ORGS" = "ERR" ]; then
+    PROBLEMS="${PROBLEMS}       • organizations=0 (no org data)\n"
+    ZERO_DATA=true
+fi
 
 if [ "$ZERO_DATA" = "false" ]; then
     echo "  ✓  Database looks healthy — key tables have data."
@@ -108,118 +124,56 @@ if [ "$ZERO_DATA" = "false" ]; then
 fi
 
 echo "  ⚠  ZERO-DATA DETECTED in critical tables:"
-for P in "${PROBLEMS[@]}"; do
-    echo "       • $P"
-done
+printf "%b" "$PROBLEMS"
 echo ""
 
 if [ "$AUTO_MODE" = "true" ]; then
-    echo "  Run 'bash $SCRIPT_DIR/check-database.sh' for interactive restore."
+    echo "  Run 'sh $SCRIPT_DIR/check-database.sh' for interactive restore."
     exit 1
 fi
 
-# ── 4. Find available backups and score them by data richness ─────────────────
+# ── 4. Find available backups and list them ───────────────────────────────────
 
 echo "  Scanning backup locations for restore candidates..."
 echo ""
 
-BEST_FILE=""
-BEST_SCORE=0
-BEST_LABEL=""
-
-declare -a BACKUP_LINES
-
-BACKUP_FILES=$(for d in "${SEARCH_DIRS[@]}"; do
+BACKUP_FILES=$(for d in $SEARCH_DIRS; do
     [ -d "$d" ] && find "$d" -maxdepth 1 \( -name "*.sql.gz" -o -name "*.sql" -o -name "*.dump" \) 2>/dev/null
 done | sort -u | sort -r || true)
 
 if [ -z "$BACKUP_FILES" ]; then
-    echo "  No backups found in search directories: ${SEARCH_DIRS[*]}"
+    echo "  No backups found in search directories: $SEARCH_DIRS"
     echo "  Cannot restore — check your backup directory or search filesystem for backups."
     exit 1
 fi
 
-while IFS= read -r SQL_FILE; do
-    [ -z "$SQL_FILE" ] && continue
-    NAME=$(basename "$SQL_FILE")
-    META_FILE="${SQL_FILE%.sql.gz}.meta.json"
-    FILE_SIZE=$(du -sh "$SQL_FILE" 2>/dev/null | cut -f1 || echo "?")
-
-    SCORE=0
-    META_SUMMARY=""
-
-    if [ -f "$META_FILE" ]; then
-        READ_COUNTS=$(python3 - "$META_FILE" <<'PYEOF' 2>/dev/null || echo "0|unknown"
-import json, sys
-try:
-    data = json.load(open(sys.argv[1]))
-    tables = {t["table_name"]: int(t["row_count"]) for t in (data.get("tables") or []) if t.get("table_name")}
-    items     = tables.get("items", 0)
-    inventory = tables.get("inventory", 0)
-    users     = tables.get("users", 0)
-    orgs      = tables.get("organizations", 0)
-    score     = items + inventory + users + orgs
-    print(f"{score}|items={items} inventory={inventory} users={users} orgs={orgs}")
-except Exception as e:
-    print("0|unknown")
-PYEOF
-)
-        SCORE=$(echo "$READ_COUNTS" | cut -d'|' -f1)
-        META_SUMMARY=$(echo "$READ_COUNTS" | cut -d'|' -f2)
-    else
-        KB=$(du -k "$SQL_FILE" 2>/dev/null | cut -f1 || echo "0")
-        SCORE=$KB
-        META_SUMMARY="no metadata — ${FILE_SIZE} compressed"
-    fi
-
-    HUMAN=$(echo "$NAME" | sed -E 's/.*topshelf_([0-9]{4})([0-9]{2})([0-9]{2})_([0-9]{2})([0-9]{2})([0-9]{2})\.sql\.gz.*/\1-\2-\3 \4:\5:\6/' 2>/dev/null)
-    if [ "$HUMAN" = "$NAME" ] || [ -z "$HUMAN" ]; then
-        HUMAN="unknown date"
-    fi
-
-    BACKUP_LINES+=("$SCORE|$SQL_FILE|$HUMAN|$FILE_SIZE|$META_SUMMARY")
-
-    if [ "$SCORE" -gt "$BEST_SCORE" ] 2>/dev/null; then
-        BEST_SCORE=$SCORE
-        BEST_FILE=$SQL_FILE
-        BEST_LABEL="$HUMAN  ($META_SUMMARY)  size=$FILE_SIZE"
-    fi
-
-done <<EOF
-$BACKUP_FILES
-EOF
-
-# ── 5. Print scored backup list ───────────────────────────────────────────────
-
-echo "  Available backups (sorted newest first, ★ = most data):"
+echo "  Available backups (sorted newest first):"
 hr
 IDX=1
-declare -a ORDERED_FILES
+printf '%s\n' "$BACKUP_FILES" | while IFS= read -r SQL_FILE; do
+    [ -z "$SQL_FILE" ] && continue
+    NAME=$(basename "$SQL_FILE")
+    FILE_SIZE=$(du -sh "$SQL_FILE" 2>/dev/null | cut -f1 || echo "?")
+    DIR_NAME=$(dirname "$SQL_FILE")
 
-for LINE in "${BACKUP_LINES[@]}"; do
-    SC=$(echo "$LINE" | cut -d'|' -f1)
-    FL=$(echo "$LINE" | cut -d'|' -f2)
-    HU=$(echo "$LINE" | cut -d'|' -f3)
-    SZ=$(echo "$LINE" | cut -d'|' -f4)
-    SM=$(echo "$LINE" | cut -d'|' -f5)
-    STAR="  "
-    [ "$FL" = "$BEST_FILE" ] && STAR="★ "
-    printf "  [%2d] %s%s  (%s)  %s\n" "$IDX" "$STAR" "$HU" "$SZ" "$SM"
-    ORDERED_FILES+=("$FL")
+    HUMAN=$(echo "$NAME" | sed -E 's/.*topshelf_([0-9]{4})([0-9]{2})([0-9]{2})_([0-9]{2})([0-9]{2})([0-9]{2})\.sql.*/\1-\2-\3 \4:\5:\6/' 2>/dev/null)
+    if [ "$HUMAN" = "$NAME" ] || [ -z "$HUMAN" ]; then
+        HUMAN=$(echo "$NAME" | sed -E 's/.*backup-([0-9]{4}-[0-9]{2}-[0-9]{2})-([0-9]+)\.sql.*/\1 \2/' 2>/dev/null)
+    fi
+    if [ "$HUMAN" = "$NAME" ] || [ -z "$HUMAN" ]; then
+        HUMAN="unknown date       "
+    fi
+
+    printf "  [%2d] %s  (%5s)  %s  [%s]\n" "$IDX" "$HUMAN" "$FILE_SIZE" "$NAME" "$DIR_NAME"
     IDX=$((IDX + 1))
 done
 hr
 echo ""
 
-if [ -n "$BEST_FILE" ]; then
-    echo "  ★  Recommended (most data): $BEST_LABEL"
-    echo ""
-fi
-
-# ── 6. Offer restore ─────────────────────────────────────────────────────────
+# ── 5. Offer restore ─────────────────────────────────────────────────────────
 
 printf "  Options:\n"
-printf "    R  — restore the ★ recommended backup\n"
+printf "    1  — restore the most recent backup ([ 1] above)\n"
 printf "    N  — enter a number from the list above\n"
 printf "    Q  — quit without restoring\n"
 printf "\n  Choice: "
@@ -230,18 +184,14 @@ if [ "$CHOICE" = "Q" ] || [ "$CHOICE" = "q" ] || [ -z "$CHOICE" ]; then
     exit 0
 fi
 
-if [ "$CHOICE" = "R" ] || [ "$CHOICE" = "r" ]; then
-    RESTORE_FILE="$BEST_FILE"
-else
-    RESTORE_FILE="${ORDERED_FILES[$((CHOICE - 1))]}"
-    if [ -z "$RESTORE_FILE" ] || [ ! -f "$RESTORE_FILE" ]; then
-        echo "  Invalid selection. No changes made."
-        exit 1
-    fi
+RESTORE_FILE=$(printf '%s\n' "$BACKUP_FILES" | sed -n "${CHOICE}p")
+if [ -z "$RESTORE_FILE" ] || [ ! -f "$RESTORE_FILE" ]; then
+    echo "  Invalid selection. No changes made."
+    exit 1
 fi
 
 echo ""
 echo "  Selected: $(basename "$RESTORE_FILE")"
 echo ""
 
-exec bash "$SCRIPT_DIR/restore-db.sh" "$RESTORE_FILE"
+exec /bin/sh "$SCRIPT_DIR/restore-db.sh" "$RESTORE_FILE"
